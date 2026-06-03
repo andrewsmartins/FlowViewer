@@ -137,23 +137,111 @@ function edgeStyle(external: boolean) {
 
 // ─── Layout ────────────────────────────────────────────────────────────────
 
-function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeData>[] {
-  if (!nodes.length) return []
+const LAYOUT_COLS = 4   // columns in the bin-pack grid
+const COL_GAP     = 80  // horizontal gap between columns (px)
+const ROW_GAP     = 80  // vertical gap between components in the same column (px)
+
+function findComponents(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeData>[][] {
+  const adj = new Map<string, Set<string>>()
+  nodes.forEach(n => adj.set(n.id, new Set()))
+  edges.forEach(e => {
+    adj.get(e.source)?.add(e.target)
+    adj.get(e.target)?.add(e.source)
+  })
+  const visited = new Set<string>()
+  const byId = new Map(nodes.map(n => [n.id, n]))
+  const components: Node<FlowNodeData>[][] = []
+  for (const node of nodes) {
+    if (visited.has(node.id)) continue
+    const comp: Node<FlowNodeData>[] = []
+    const queue = [node.id]
+    while (queue.length) {
+      const id = queue.shift()!
+      if (visited.has(id)) continue
+      visited.add(id)
+      const n = byId.get(id)
+      if (n) comp.push(n)
+      adj.get(id)?.forEach(nb => { if (!visited.has(nb)) queue.push(nb) })
+    }
+    components.push(comp)
+  }
+  return components
+}
+
+function layoutSingle(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeData>[] {
   const ids = new Set(nodes.map(n => n.id))
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'TB', ranksep: 28, nodesep: 18 })
+  g.setGraph({ rankdir: 'TB', ranksep: 60, nodesep: 40 })
   nodes.forEach(n => {
     const s = NODE_SIZES[n.type as NodeKind] ?? NODE_SIZES.defaultNode
     g.setNode(n.id, { width: s.w, height: s.h })
   })
-  edges.filter(e => ids.has(e.source) && ids.has(e.target)).forEach(e => g.setEdge(e.source, e.target))
+  edges.filter(e => ids.has(e.source) && ids.has(e.target))
+       .forEach(e => g.setEdge(e.source, e.target))
   dagre.layout(g)
   return nodes.map(n => {
     const pos = g.node(n.id)
     const s = NODE_SIZES[n.type as NodeKind] ?? NODE_SIZES.defaultNode
     return { ...n, position: { x: pos.x - s.w / 2, y: pos.y - s.h / 2 } }
   })
+}
+
+function bbox(nodes: Node<FlowNodeData>[]): { x: number; y: number; w: number; h: number } {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const n of nodes) {
+    const s = NODE_SIZES[n.type as NodeKind] ?? NODE_SIZES.defaultNode
+    x0 = Math.min(x0, n.position.x)
+    y0 = Math.min(y0, n.position.y)
+    x1 = Math.max(x1, n.position.x + s.w)
+    y1 = Math.max(y1, n.position.y + s.h)
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeData>[] {
+  if (!nodes.length) return []
+
+  // 1. Find connected components, sort largest first
+  const components = findComponents(nodes, edges).sort((a, b) => b.length - a.length)
+
+  // 2. Run Dagre on each component, normalize to origin (0,0)
+  const laid = components.map(comp => {
+    const laidNodes = layoutSingle(comp, edges)
+    const bb = bbox(laidNodes)
+    return {
+      nodes: laidNodes.map(n => ({
+        ...n,
+        position: { x: n.position.x - bb.x, y: n.position.y - bb.y },
+      })),
+      w: bb.w,
+      h: bb.h,
+    }
+  })
+
+  // 3. Bin-pack: each component goes into the shortest column
+  const colHeights   = new Array(LAYOUT_COLS).fill(0)
+  const colMaxWidths = new Array(LAYOUT_COLS).fill(0)
+  const placed: { colIdx: number; yOff: number; nodes: Node<FlowNodeData>[] }[] = []
+
+  for (const comp of laid) {
+    const colIdx = colHeights.indexOf(Math.min(...colHeights))
+    placed.push({ colIdx, yOff: colHeights[colIdx], nodes: comp.nodes })
+    colHeights[colIdx]   += comp.h + ROW_GAP
+    colMaxWidths[colIdx]  = Math.max(colMaxWidths[colIdx], comp.w)
+  }
+
+  // 4. Compute x start for each column based on max widths
+  const colX = new Array(LAYOUT_COLS).fill(0)
+  for (let i = 1; i < LAYOUT_COLS; i++) colX[i] = colX[i - 1] + colMaxWidths[i - 1] + COL_GAP
+
+  // 5. Apply final offsets
+  return placed.flatMap(({ colIdx, yOff, nodes: compNodes }) =>
+    compNodes.map(n => ({
+      ...n,
+      position: { x: n.position.x + colX[colIdx], y: n.position.y + yOff },
+    }))
+  )
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────
