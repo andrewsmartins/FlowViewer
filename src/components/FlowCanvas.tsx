@@ -38,12 +38,9 @@ interface FlowCanvasProps {
   nodes: Node<FlowNodeData>[]
   edges: Edge[]
   onNodeClick: (node: Node<FlowNodeData>) => void
-  layoutMode: 'bottom' | 'left'
-  onToggleLayout: () => void
-  mainFlowNodeIds: string[]
 }
 
-export function FlowCanvas({ nodes, edges, onNodeClick, layoutMode, onToggleLayout, mainFlowNodeIds }: FlowCanvasProps) {
+export function FlowCanvas({ nodes, edges, onNodeClick }: FlowCanvasProps) {
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_, node) => onNodeClick(node as Node<FlowNodeData>),
     [onNodeClick]
@@ -65,28 +62,22 @@ export function FlowCanvas({ nodes, edges, onNodeClick, layoutMode, onToggleLayo
         nodeColor={node => NODE_COLORS[node.type ?? 'defaultNode'] ?? '#64748b'}
         maskColor="rgba(248,250,252,0.7)"
       />
-      <LayoutFitter nodeCount={nodes.length} layoutMode={layoutMode} mainFlowNodeIds={mainFlowNodeIds} />
-      <ExportControls layoutMode={layoutMode} onToggleLayout={onToggleLayout} mainFlowNodeIds={mainFlowNodeIds} />
+      <LayoutFitter nodeCount={nodes.length} />
+      <ExportControls />
     </ReactFlow>
   )
 }
 
-function LayoutFitter({ nodeCount, layoutMode, mainFlowNodeIds }: {
-  nodeCount: number
-  layoutMode: string
-  mainFlowNodeIds: string[]
-}) {
+function LayoutFitter({ nodeCount }: { nodeCount: number }) {
   const { fitView } = useReactFlow()
-  const prevKey = useRef('')
+  const prevCount = useRef(0)
 
   useEffect(() => {
-    const key = `${nodeCount}:${layoutMode}`
-    if (!nodeCount || key === prevKey.current) return
-    prevKey.current = key
-    const nodesToFit = mainFlowNodeIds.length ? mainFlowNodeIds.map(id => ({ id })) : undefined
-    const timer = setTimeout(() => fitView({ nodes: nodesToFit, padding: 0.2, duration: 350 }), 60)
+    if (!nodeCount || nodeCount === prevCount.current) return
+    prevCount.current = nodeCount
+    const timer = setTimeout(() => fitView({ padding: 0.2, duration: 350 }), 60)
     return () => clearTimeout(timer)
-  }, [nodeCount, layoutMode])
+  }, [nodeCount])
 
   return null
 }

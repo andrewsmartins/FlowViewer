@@ -1,24 +1,18 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import { FlowCanvas }  from './components/FlowCanvas'
 import { JsonInput }   from './components/JsonInput'
 import { DetailPanel } from './components/DetailPanel'
-import { parseFlow, layoutFlow } from './utils/parseFlow'
+import { parseFlow } from './utils/parseFlow'
 import type { BotFlowJson, FlowNodeData } from './types'
 
 export default function App() {
-  const [jsonText, setJsonText]       = useState('')
-  const [rawNodes, setRawNodes]       = useState<Node<FlowNodeData>[]>([])
-  const [rawEdges, setRawEdges]       = useState<Edge[]>([])
-  const [layoutMode, setLayoutMode]   = useState<'bottom' | 'left'>('bottom')
-  const [error, setError]             = useState<string | null>(null)
-  const [hasFlow, setHasFlow]         = useState(false)
+  const [jsonText, setJsonText]         = useState('')
+  const [nodes, setNodes]               = useState<Node<FlowNodeData>[]>([])
+  const [edges, setEdges]               = useState<Edge[]>([])
+  const [error, setError]               = useState<string | null>(null)
+  const [hasFlow, setHasFlow]           = useState(false)
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null)
-
-  const { nodes, mainFlowNodeIds } = useMemo(() => {
-    if (!rawNodes.length) return { nodes: [], mainFlowNodeIds: [] }
-    return layoutFlow(rawNodes, rawEdges, layoutMode)
-  }, [rawNodes, rawEdges, layoutMode])
 
   function handleGenerate() {
     if (!jsonText.trim()) {
@@ -43,8 +37,8 @@ export default function App() {
     }
     try {
       const result = parseFlow(data)
-      setRawNodes(result.nodes)
-      setRawEdges(result.edges)
+      setNodes(result.nodes)
+      setEdges(result.edges)
       setError(null)
       setHasFlow(true)
       setSelectedNode(null)
@@ -64,10 +58,6 @@ export default function App() {
 
   const handleClosePanel = useCallback(() => setSelectedNode(null), [])
 
-  const handleToggleLayout = useCallback(() => {
-    setLayoutMode(prev => prev === 'bottom' ? 'left' : 'bottom')
-  }, [])
-
   return (
     <div className="flex h-screen bg-slate-100">
       <aside className="w-72 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col shadow-sm">
@@ -84,11 +74,8 @@ export default function App() {
           <>
             <FlowCanvas
               nodes={nodes}
-              edges={rawEdges}
+              edges={edges}
               onNodeClick={handleNodeClick}
-              layoutMode={layoutMode}
-              onToggleLayout={handleToggleLayout}
-              mainFlowNodeIds={mainFlowNodeIds}
             />
             {selectedNode && (
               <DetailPanel node={selectedNode} onClose={handleClosePanel} />

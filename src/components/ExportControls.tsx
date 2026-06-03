@@ -30,14 +30,8 @@ function triggerDownload(dataUrl: string, format: 'png' | 'svg') {
   a.click()
 }
 
-interface ExportControlsProps {
-  layoutMode: 'bottom' | 'left'
-  onToggleLayout: () => void
-  mainFlowNodeIds: string[]
-}
-
-export function ExportControls({ layoutMode, onToggleLayout, mainFlowNodeIds }: ExportControlsProps) {
-  const { getNodes, fitView } = useReactFlow()
+export function ExportControls() {
+  const { getNodes } = useReactFlow()
   const [exporting, setExporting] = useState<'png' | 'svg' | null>(null)
 
   async function handleExport(format: 'png' | 'svg') {
@@ -64,40 +58,18 @@ export function ExportControls({ layoutMode, onToggleLayout, mainFlowNodeIds }: 
     }
   }
 
-  function handleToggle() {
-    onToggleLayout()
-    // LayoutFitter handles the fitView after reposition; no need to duplicate here
-  }
-
   const busy = exporting !== null
-
-  const layoutLabel = layoutMode === 'bottom' ? 'Isolados à esquerda' : 'Isolados abaixo'
 
   return (
     <Panel position="top-right">
       <div className="flex gap-2 bg-white border border-slate-200 rounded-lg shadow-sm p-1.5">
-        <button
-          onClick={handleToggle}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 rounded-md hover:bg-slate-50 transition-colors"
-          title={layoutLabel}
-        >
-          <LayoutToggleIcon mode={layoutMode} />
-          Layout
-        </button>
-
-        <div className="w-px bg-slate-200" />
-
         <button
           onClick={() => handleExport('png')}
           disabled={busy}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="Exportar como PNG (2400×1600)"
         >
-          {exporting === 'png' ? (
-            <Spinner />
-          ) : (
-            <ImageIcon />
-          )}
+          {exporting === 'png' ? <Spinner /> : <ImageIcon />}
           PNG
         </button>
 
@@ -109,36 +81,11 @@ export function ExportControls({ layoutMode, onToggleLayout, mainFlowNodeIds }: 
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="Exportar como SVG (vetor)"
         >
-          {exporting === 'svg' ? (
-            <Spinner />
-          ) : (
-            <VectorIcon />
-          )}
+          {exporting === 'svg' ? <Spinner /> : <VectorIcon />}
           SVG
         </button>
       </div>
     </Panel>
-  )
-}
-
-function LayoutToggleIcon({ mode }: { mode: 'bottom' | 'left' }) {
-  // Rotates 90deg depending on current mode to hint the next state
-  const rotate = mode === 'bottom' ? '0' : '90'
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ transform: `rotate(${rotate}deg)`, transition: 'transform 0.3s ease' }}
-    >
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-      <path d="M3 3v5h5" />
-    </svg>
   )
 }
 
