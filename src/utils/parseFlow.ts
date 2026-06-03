@@ -168,11 +168,11 @@ function findComponents(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNo
   return components
 }
 
-function layoutSingle(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeData>[] {
+function layoutSingle(nodes: Node<FlowNodeData>[], edges: Edge[], ranksep: number, nodesep: number): Node<FlowNodeData>[] {
   const ids = new Set(nodes.map(n => n.id))
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'TB', ranksep: 60, nodesep: 40 })
+  g.setGraph({ rankdir: 'TB', ranksep, nodesep })
   nodes.forEach(n => {
     const s = NODE_SIZES[n.type as NodeKind] ?? NODE_SIZES.defaultNode
     g.setNode(n.id, { width: s.w, height: s.h })
@@ -199,7 +199,7 @@ function bbox(nodes: Node<FlowNodeData>[]): { x: number; y: number; w: number; h
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
-function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeData>[] {
+function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[], ranksep: number, nodesep: number): Node<FlowNodeData>[] {
   if (!nodes.length) return []
 
   // 1. Find connected components, sort largest first
@@ -207,7 +207,7 @@ function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeD
 
   // 2. Run Dagre on each component, normalize to origin (0,0)
   const laid = components.map(comp => {
-    const laidNodes = layoutSingle(comp, edges)
+    const laidNodes = layoutSingle(comp, edges, ranksep, nodesep)
     const bb = bbox(laidNodes)
     return {
       nodes: laidNodes.map(n => ({
@@ -246,7 +246,7 @@ function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[]): Node<FlowNodeD
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
-export function parseFlow(json: BotFlowJson): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
+export function parseFlow(json: BotFlowJson, spacing?: { ranksep?: number; nodesep?: number }): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
   const intents   = json.list
   const mainBotId = intents.find(i => i.category === 'start')?.botId ?? intents[0]?.botId ?? ''
   const intentIds = new Set(intents.map(i => i.id))
@@ -328,6 +328,7 @@ export function parseFlow(json: BotFlowJson): { nodes: Node<FlowNodeData>[]; edg
     }
   }
 
+  const { ranksep = 60, nodesep = 40 } = spacing ?? {}
   const allNodes = [...internalNodes, ...Array.from(externalNodeMap.values())]
-  return { nodes: dagreLayout(allNodes, edges), edges }
+  return { nodes: dagreLayout(allNodes, edges, ranksep, nodesep), edges }
 }
