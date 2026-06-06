@@ -15,13 +15,54 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [0.5.0] - 2026-06-06
+
+### Adicionado
+- `ThemeContext` (`src/contexts/ThemeContext.tsx`) com hook `useTheme()` — distribui `isDark` via React Context sem prop drilling
+- Script anti-flash em `index.html`: lê `localStorage` antes de o React montar para evitar piscar no carregamento
+
+### Corrigido
+- **Dark mode não afetava a plataforma inteira** — apenas a janela de preview (Background/MiniMap do canvas) respondia ao toggle; sidebar, nodes e painéis permaneciam estáticos
+- **Causa raiz**: regras CSS `dark:*` do Tailwind (`.dark .dark\:bg-*`) não estavam presentes no bundle compilado pois o servidor foi iniciado antes de `darkMode: 'class'` ser adicionado ao `tailwind.config.js`; adicionar a classe `.dark` ao DOM não tinha efeito visual algum
+
+### Alterado
+- Arquitetura de tematização completamente reescrita: `dark:` prefix Tailwind removido de todos os arquivos — classes agora são computadas diretamente via ternário React (`isDark ? 'bg-slate-800' : 'bg-white'`)
+- Todos os 8 node components, `JsonInput`, `DetailPanel`, `ExportControls` e `ThemeToggle` passam a consumir `useTheme()` ou receber `isDark` como prop
+- `ThemeToggle` refatorado como componente controlado (recebe `isDark` + `onToggle` do `App.tsx`)
+
+---
+
+## [0.4.2] - 2026-06-06
+
+### Adicionado
+- Link **Documentação** ao lado do badge Beta no cabeçalho do sidebar (aponta para o repositório GitHub)
+
+### Alterado
+- Largura do sidebar aumentada de `w-72` para `w-96` para melhor legibilidade do JSON
+- Itens do rodapé de legenda centralizados
+
+---
+
+## [0.4.1] - 2026-06-06
+
+### Adicionado
+- Badge de versão (`v0.4.1`) e **Beta** no cabeçalho do sidebar
+
+### Corrigido
+- Exportação PNG/SVG agora calcula dimensões a partir dos bounds reais dos nós (2× resolução, máx 8000 px) em vez de tamanho fixo 2400×1600 — fluxos grandes não ficam mais cortados
+- `minZoom` reduzido de `0.3` para `0.01` no `ExportControls` para capturar fluxos muito grandes
+
+---
+
 ## [0.4.0] - 2026-06-03
 
 ### Adicionado
-- **Modo escuro completo** com toggle sol/lua na sidebar
-- Hook `useDarkMode` com persistência em `localStorage` e detecção automática via `prefers-color-scheme`
-- Variantes `dark:` em todos os 10 tipos de nó, `DetailPanel`, `ExportControls`, `FlowCanvas` e layout principal
+- Botão toggle sol/lua para dark mode na sidebar com persistência em `localStorage`
 - Cores dinâmicas no `Background` e `MiniMap` do React Flow de acordo com o tema ativo
+- `tailwind.config.js` atualizado com `darkMode: 'class'`
+
+### Nota
+- A implementação via variantes `dark:` do Tailwind estava incompleta nesta versão: apenas o canvas (Background/MiniMap) respondia ao toggle. Corrigido definitivamente na [0.5.0].
 
 ---
 

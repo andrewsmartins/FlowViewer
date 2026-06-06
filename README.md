@@ -12,7 +12,8 @@ Visualizador de fluxos de chatbot a partir de JSON. Cole ou importe o JSON de co
 - Rótulos nas arestas com o texto dos botões de escolha
 - Zoom, pan e minimapa interativos
 - Controle de espaçamento entre nós (botões `−` / `+` no canto superior direito)
-- Exportação do fluxo completo em **PNG** (2400×1600) e **SVG** (vetor)
+- Exportação do fluxo completo em **PNG** e **SVG** com dimensões calculadas pelos bounds reais dos nós
+- **Dark mode** completo — toggle sol/lua na sidebar altera sidebar, nodes, painéis e canvas simultaneamente; preferência salva em `localStorage`
 - Input via textarea (colar JSON) ou upload de arquivo `.json`
 
 ---
