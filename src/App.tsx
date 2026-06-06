@@ -1,8 +1,10 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { Node, Edge } from '@xyflow/react'
-import { FlowCanvas }  from './components/FlowCanvas'
-import { JsonInput }   from './components/JsonInput'
-import { DetailPanel } from './components/DetailPanel'
+import { FlowCanvas }    from './components/FlowCanvas'
+import { JsonInput }     from './components/JsonInput'
+import { DetailPanel }   from './components/DetailPanel'
+import { ThemeToggle }   from './components/ThemeToggle'
+import { ThemeContext }  from './contexts/ThemeContext'
 import { parseFlow } from './utils/parseFlow'
 import type { BotFlowJson, FlowNodeData } from './types'
 
@@ -11,6 +13,7 @@ const SPACING_MIN  = 20
 const SPACING_MAX  = 600
 
 export default function App() {
+  const [isDark, setIsDark]             = useState(() => document.documentElement.classList.contains('dark'))
   const [jsonText, setJsonText]         = useState('')
   const [nodes, setNodes]               = useState<Node<FlowNodeData>[]>([])
   const [edges, setEdges]               = useState<Edge[]>([])
@@ -19,6 +22,18 @@ export default function App() {
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null)
   const parsedDataRef                   = useRef<BotFlowJson | null>(null)
   const spacingRef                      = useRef({ ranksep: 60, nodesep: 40 })
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
+    }
+  }, [isDark])
+
+  const toggleTheme = useCallback(() => setIsDark(d => !d), [])
 
   function handleGenerate() {
     if (!jsonText.trim()) {
@@ -79,13 +94,15 @@ export default function App() {
   const handleClosePanel = useCallback(() => setSelectedNode(null), [])
 
   return (
-    <div className="flex h-screen bg-slate-100">
-      <aside className="w-96 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col shadow-sm">
+    <ThemeContext.Provider value={isDark}>
+    <div className={`flex h-screen transition-colors duration-200 ${isDark ? 'bg-slate-950' : 'bg-slate-100'}`}>
+      <aside className={`w-96 flex-shrink-0 border-r flex flex-col shadow-sm transition-colors duration-200 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
         <JsonInput
           value={jsonText}
           onChange={handleJsonChange}
           onSubmit={handleGenerate}
           error={error}
+          themeToggle={<ThemeToggle isDark={isDark} onToggle={toggleTheme} />}
         />
       </aside>
 
@@ -95,6 +112,7 @@ export default function App() {
             <FlowCanvas
               nodes={nodes}
               edges={edges}
+              isDark={isDark}
               onNodeClick={handleNodeClick}
               onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
               onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
@@ -104,7 +122,7 @@ export default function App() {
             )}
           </>
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3">
+          <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <rect x="3" y="3" width="7" height="4" rx="1" />
               <rect x="14" y="3" width="7" height="4" rx="1" />
@@ -115,12 +133,13 @@ export default function App() {
               <line x1="12" y1="10" x2="12" y2="17" />
             </svg>
             <div className="text-center">
-              <p className="text-sm font-medium text-slate-500">Nenhum fluxo carregado</p>
-              <p className="text-xs text-slate-400 mt-1">Cole o JSON no painel e clique em Gerar Fluxo</p>
+              <p className={`text-sm font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Nenhum fluxo carregado</p>
+              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Cole o JSON no painel e clique em Gerar Fluxo</p>
             </div>
           </div>
         )}
       </main>
     </div>
+    </ThemeContext.Provider>
   )
 }

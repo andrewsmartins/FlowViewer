@@ -1,13 +1,16 @@
-import { useRef, type ChangeEvent } from 'react'
+import { useRef, type ChangeEvent, type ReactNode } from 'react'
+import { useTheme } from '../contexts/ThemeContext'
 
 interface JsonInputProps {
   value: string
   onChange: (value: string) => void
   onSubmit: () => void
   error: string | null
+  themeToggle?: ReactNode
 }
 
-export function JsonInput({ value, onChange, onSubmit, error }: JsonInputProps) {
+export function JsonInput({ value, onChange, onSubmit, error, themeToggle }: JsonInputProps) {
+  const isDark = useTheme()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -30,19 +33,20 @@ export function JsonInput({ value, onChange, onSubmit, error }: JsonInputProps) 
     <div className="flex flex-col h-full gap-3 p-4">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-slate-800">Flow Viewer</h1>
-          <span className="text-xs font-medium text-slate-400">v0.4.2</span>
-          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">Beta</span>
+          <h1 className={`text-lg font-bold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Flow Viewer</h1>
+          <span className={`text-xs font-medium ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>v0.5.0</span>
+          <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${isDark ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>Beta</span>
           <a
             href="https://github.com/andrewsmartins/Fluxo-Bot"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] font-medium text-slate-500 hover:text-blue-600 border border-slate-200 rounded px-1.5 py-0.5 hover:border-blue-300 transition-colors"
+            className={`text-[10px] font-medium rounded px-1.5 py-0.5 border transition-colors ${isDark ? 'text-slate-400 border-slate-700 hover:text-blue-400 hover:border-blue-700' : 'text-slate-500 border-slate-200 hover:text-blue-600 hover:border-blue-300'}`}
           >
             Documentação
           </a>
+          {themeToggle && <span className="ml-auto">{themeToggle}</span>}
         </div>
-        <p className="text-xs text-slate-500 mt-0.5">Cole ou importe o JSON do bot para visualizar o fluxo.</p>
+        <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Cole ou importe o JSON do bot para visualizar o fluxo.</p>
       </div>
 
       <textarea
@@ -51,11 +55,11 @@ export function JsonInput({ value, onChange, onSubmit, error }: JsonInputProps) 
         onKeyDown={handleKeyDown}
         placeholder='{ "list": [...] }'
         spellCheck={false}
-        className="flex-1 w-full font-mono text-xs bg-slate-900 text-slate-200 rounded-lg p-3 resize-none border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-600"
+        className={`flex-1 w-full font-mono text-xs rounded-lg p-3 resize-none border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${isDark ? 'bg-slate-800 text-slate-200 border-slate-700 placeholder:text-slate-600' : 'bg-slate-50 text-slate-900 border-slate-200 placeholder:text-slate-400'}`}
       />
 
       {error && (
-        <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 leading-relaxed">
+        <div className={`text-xs rounded-lg px-3 py-2 leading-relaxed border ${isDark ? 'text-rose-300 bg-rose-950 border-rose-800' : 'text-rose-600 bg-rose-50 border-rose-200'}`}>
           {error}
         </div>
       )}
@@ -63,7 +67,7 @@ export function JsonInput({ value, onChange, onSubmit, error }: JsonInputProps) 
       <div className="flex gap-2">
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="flex-1 py-2 px-3 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg border transition-colors ${isDark ? 'text-slate-300 bg-slate-800 border-slate-700 hover:bg-slate-700' : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'}`}
         >
           Importar .json
         </button>
@@ -91,7 +95,7 @@ export function JsonInput({ value, onChange, onSubmit, error }: JsonInputProps) 
           { kind: 'transferNode', color: 'bg-rose-500', label: 'Transferência' },
           { kind: 'defaultNode', color: 'bg-slate-500', label: 'Padrão' },
         ].map(item => (
-          <span key={item.kind} className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span key={item.kind} className={`flex items-center gap-1.5 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             <span className={`w-2.5 h-2.5 rounded-full ${item.color}`} />
             {item.label}
           </span>

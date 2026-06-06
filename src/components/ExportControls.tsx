@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Panel, useReactFlow, getNodesBounds, getViewportForBounds } from '@xyflow/react'
 import { toPng, toSvg } from 'html-to-image'
+import { useTheme } from '../contexts/ThemeContext'
 
 const MAX_EXPORT_PX = 8000
 
@@ -42,6 +43,7 @@ interface ExportControlsProps {
 }
 
 export function ExportControls({ onSpacingIncrease, onSpacingDecrease }: ExportControlsProps) {
+  const isDark = useTheme()
   const { getNodes } = useReactFlow()
   const [exporting, setExporting] = useState<'png' | 'svg' | null>(null)
 
@@ -84,42 +86,48 @@ export function ExportControls({ onSpacingIncrease, onSpacingDecrease }: ExportC
 
   const busy = exporting !== null
 
+  const panelBg  = isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+  const btnText  = isDark ? 'text-slate-300' : 'text-slate-600'
+  const btnHover = isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'
+  const divider  = isDark ? 'bg-slate-700' : 'bg-slate-200'
+  const spaceTxt = isDark ? 'text-slate-500' : 'text-slate-400'
+
   return (
     <Panel position="top-right">
-      <div className="flex gap-2 bg-white border border-slate-200 rounded-lg shadow-sm p-1.5">
+      <div className={`flex gap-2 border rounded-lg shadow-sm p-1.5 ${panelBg}`}>
         <button
           onClick={() => handleExport('png')}
           disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${btnText} ${btnHover}`}
           title="Exportar como PNG (dimensões dinâmicas baseadas no fluxo)"
         >
           {exporting === 'png' ? <Spinner /> : <ImageIcon />}
           PNG
         </button>
 
-        <div className="w-px bg-slate-200" />
+        <div className={`w-px ${divider}`} />
 
         <button
           onClick={() => handleExport('svg')}
           disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${btnText} ${btnHover}`}
           title="Exportar como SVG (vetor)"
         >
           {exporting === 'svg' ? <Spinner /> : <VectorIcon />}
           SVG
         </button>
 
-        <div className="w-px bg-slate-200" />
+        <div className={`w-px ${divider}`} />
 
         <button
           onClick={onSpacingDecrease}
-          className="w-7 h-7 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-50 active:bg-slate-100 text-base font-medium leading-none transition-colors"
+          className={`w-7 h-7 flex items-center justify-center rounded-md text-base font-medium leading-none transition-colors ${btnText} ${btnHover}`}
           title="Diminuir espaçamento"
         >−</button>
-        <span className="text-xs text-slate-400 select-none self-center">espaço</span>
+        <span className={`text-xs select-none self-center ${spaceTxt}`}>espaço</span>
         <button
           onClick={onSpacingIncrease}
-          className="w-7 h-7 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-50 active:bg-slate-100 text-base font-medium leading-none transition-colors"
+          className={`w-7 h-7 flex items-center justify-center rounded-md text-base font-medium leading-none transition-colors ${btnText} ${btnHover}`}
           title="Aumentar espaçamento"
         >+</button>
       </div>

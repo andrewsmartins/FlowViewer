@@ -41,12 +41,13 @@ function MiniMapNodeRect({ x, y, width, height, color }: MiniMapNodeProps) {
 interface FlowCanvasProps {
   nodes: Node<FlowNodeData>[]
   edges: Edge[]
+  isDark: boolean
   onNodeClick: (node: Node<FlowNodeData>) => void
   onSpacingIncrease: () => void
   onSpacingDecrease: () => void
 }
 
-export function FlowCanvas({ nodes: propNodes, edges, onNodeClick, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
+export function FlowCanvas({ nodes: propNodes, edges, isDark, onNodeClick, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
   const [nodes, setNodes] = useState(propNodes)
 
   useEffect(() => { setNodes(propNodes) }, [propNodes])
@@ -72,11 +73,11 @@ export function FlowCanvas({ nodes: propNodes, edges, onNodeClick, onSpacingIncr
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
     >
-      <Background gap={20} color="#e2e8f0" />
+      <Background gap={20} color={isDark ? '#1e293b' : '#e2e8f0'} />
       <Controls />
       <MiniMap
         nodeColor={node => NODE_COLORS[node.type ?? 'defaultNode'] ?? '#64748b'}
-        maskColor="rgba(248,250,252,0.7)"
+        maskColor={isDark ? 'rgba(15,23,42,0.75)' : 'rgba(248,250,252,0.7)'}
         nodeComponent={MiniMapNodeRect}
       />
       <LayoutFitter nodeCount={propNodes.length} />

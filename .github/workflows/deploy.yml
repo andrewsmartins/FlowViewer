@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, UpdateV2, UpdateV4]
+    branches: [main, UpdateV2, UpdateV4, V5]
 
 jobs:
   deploy:

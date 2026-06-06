@@ -1,15 +1,17 @@
 import { Handle, Position } from '@xyflow/react'
 import type { FlowNodeData } from '../../types'
+import { useTheme } from '../../contexts/ThemeContext'
 
 export function ChoiceNode({ data }: { data: FlowNodeData }) {
+  const isDark = useTheme()
   const preview = data.messagePreview?.replace(/@[\w.#]+/g, m => `[${m.slice(1)}]`) ?? ''
   const isList  = data.actionType === 'list'
 
   return (
-    <div className="bg-white border border-blue-200 rounded-xl shadow-sm w-[240px] overflow-hidden">
-      <Handle type="target" position={Position.Top} className="!bg-blue-400" />
+    <div className={`border rounded-xl shadow-sm w-[240px] overflow-hidden ${isDark ? 'bg-slate-800 border-blue-800' : 'bg-white border-blue-200'}`}>
+      <Handle type="target" position={Position.Top} className={isDark ? '!bg-blue-500' : '!bg-blue-400'} />
 
-      <div className="bg-blue-500 text-white px-3 py-2 flex items-center gap-2">
+      <div className={`text-white px-3 py-2 flex items-center gap-2 ${isDark ? 'bg-blue-600' : 'bg-blue-500'}`}>
         {isList ? <ListIcon /> : <ChoiceIcon />}
         <div className="min-w-0">
           <p className="text-xs font-semibold leading-tight truncate">{data.name}</p>
@@ -19,7 +21,7 @@ export function ChoiceNode({ data }: { data: FlowNodeData }) {
 
       {preview && (
         <div className="px-3 pt-2 pb-1">
-          <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">{preview}</p>
+          <p className={`text-xs leading-relaxed line-clamp-3 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{preview}</p>
         </div>
       )}
 
@@ -28,21 +30,21 @@ export function ChoiceNode({ data }: { data: FlowNodeData }) {
           {data.buttons.slice(0, 4).map(btn => (
             <span
               key={btn.id}
-              className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 truncate"
+              className={`text-[10px] border rounded-full px-2 py-0.5 truncate ${isDark ? 'bg-blue-950 text-blue-300 border-blue-800' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
               title={btn.description ?? btn.text}
             >
               {btn.text}
             </span>
           ))}
           {data.buttons.length > 4 && (
-            <span className="text-[10px] text-slate-400 pl-1">
+            <span className={`text-[10px] pl-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               +{data.buttons.length - 4} opções
             </span>
           )}
         </div>
       )}
 
-      <Handle type="source" position={Position.Bottom} className="!bg-blue-400" />
+      <Handle type="source" position={Position.Bottom} className={isDark ? '!bg-blue-500' : '!bg-blue-400'} />
     </div>
   )
 }
