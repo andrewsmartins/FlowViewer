@@ -80,7 +80,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-slate-100">
-      <aside className="w-72 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col shadow-sm">
+      <aside className="w-96 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col shadow-sm">
         <JsonInput
           value={jsonText}
           onChange={handleJsonChange}

@@ -31,8 +31,16 @@ export function JsonInput({ value, onChange, onSubmit, error }: JsonInputProps) 
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-bold text-slate-800">Flow Viewer</h1>
-          <span className="text-xs font-medium text-slate-400">v0.4.1</span>
+          <span className="text-xs font-medium text-slate-400">v0.4.2</span>
           <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">Beta</span>
+          <a
+            href="https://github.com/andrewsmartins/Fluxo-Bot"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-medium text-slate-500 hover:text-blue-600 border border-slate-200 rounded px-1.5 py-0.5 hover:border-blue-300 transition-colors"
+          >
+            Documentação
+          </a>
         </div>
         <p className="text-xs text-slate-500 mt-0.5">Cole ou importe o JSON do bot para visualizar o fluxo.</p>
       </div>
@@ -75,7 +83,7 @@ export function JsonInput({ value, onChange, onSubmit, error }: JsonInputProps) 
         className="hidden"
       />
 
-      <div className="flex flex-wrap gap-2 pt-1">
+      <div className="flex flex-wrap gap-2 pt-1 justify-center">
         {[
           { kind: 'startNode', color: 'bg-emerald-500', label: 'Início' },
           { kind: 'choiceNode', color: 'bg-blue-500', label: 'Escolha' },
