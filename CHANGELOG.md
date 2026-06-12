@@ -15,6 +15,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [0.12.1] - 2026-06-11
+
+### Alterado
+- Controles de espaçamento (− espaço +) movidos do canvas para a barra superior, junto dos demais controles (desfazer/refazer); o painel flutuante `CanvasControls` foi removido
+
+---
+
 ## [0.12.0] - 2026-06-11
 
 ### Adicionado

@@ -61,7 +61,7 @@ O servidor sobe em `http://localhost:5173`.
 
 1. **Importar** (toolbar) abre o modal: cole o JSON do bot (resposta da aba Network) ou carregue um arquivo `.json`, e clique em **Gerar fluxo** (`Ctrl+Enter`) — ou use **Novo fluxo** informando o botId para começar do zero
    > Arquivos de exemplo em `samples/` (não versionados — dados reais): `sample01.json` (12 nós), `sample02.json` (159 nós) e `sample03.json` (141 nós)
-2. Use scroll para zoom e arraste para navegar; os botões **−** / **+** no topo do canvas ajustam o espaçamento do layout
+2. Use scroll para zoom e arraste para navegar; os botões **−** / **+** na barra superior ajustam o espaçamento do layout
 3. Para **criar** um nó, arraste um tipo da paleta (canto superior esquerdo) até a posição desejada
 4. Para **conectar**, arraste do handle inferior de um nó até outro nó; para **reconectar**, arraste a ponta de destino (seta) de uma aresta — conexões para outros bots não são editáveis
 5. Para **editar conteúdo**, clique no nó e use o painel à direita (Aplicar alterações grava no modelo)

@@ -17,6 +17,8 @@ interface TopBarProps {
   onImport: () => void
   onNewFlow: () => void
   onExport: (format: ExportFormat) => void
+  onSpacingIncrease: () => void
+  onSpacingDecrease: () => void
 }
 
 /** Fecha o dropdown ao clicar fora dele. */
@@ -32,7 +34,7 @@ function useClickOutside(onOutside: () => void) {
   return ref
 }
 
-export function TopBar({ version, hasFlow, report, exporting, themeToggle, canUndo, canRedo, onUndo, onRedo, onImport, onNewFlow, onExport }: TopBarProps) {
+export function TopBar({ version, hasFlow, report, exporting, themeToggle, canUndo, canRedo, onUndo, onRedo, onImport, onNewFlow, onExport, onSpacingIncrease, onSpacingDecrease }: TopBarProps) {
   const isDark = useTheme()
   const [exportOpen, setExportOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
@@ -98,6 +100,24 @@ export function TopBar({ version, hasFlow, report, exporting, themeToggle, canUn
         <button className={btnCls} disabled={!canRedo} onClick={onRedo} title="Refazer (Ctrl+Shift+Z)" aria-label="Refazer">
           ↷
         </button>
+
+        <div className={`w-px h-5 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
+
+        <button
+          className={btnCls}
+          disabled={!hasFlow}
+          onClick={onSpacingDecrease}
+          title="Diminuir espaçamento entre os nós (refaz o layout)"
+          aria-label="Diminuir espaçamento"
+        >−</button>
+        <span className={`text-xs select-none ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>espaço</span>
+        <button
+          className={btnCls}
+          disabled={!hasFlow}
+          onClick={onSpacingIncrease}
+          title="Aumentar espaçamento entre os nós (refaz o layout)"
+          aria-label="Aumentar espaçamento"
+        >+</button>
       </div>
 
       <div className="ml-auto flex items-center gap-2">

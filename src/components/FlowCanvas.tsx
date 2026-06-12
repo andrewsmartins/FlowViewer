@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, type DragEvent } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, useReactFlow, type Node, type Edge, type NodeMouseHandler, type MiniMapNodeProps, type NodeChange, type EdgeChange, type Connection, type XYPosition } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { NodePalette, PALETTE_DRAG_TYPE } from './NodePalette'
-import { CanvasControls } from './CanvasControls'
 import { isCreatableKind, type CreatableKind } from '../utils/intentTemplates'
 import { StartNode }       from './nodes/StartNode'
 import { ChoiceNode }      from './nodes/ChoiceNode'
@@ -52,8 +51,6 @@ interface FlowCanvasProps {
   onConnect: (connection: Connection) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onCreateNode: (kind: CreatableKind, position: XYPosition) => void
-  onSpacingIncrease: () => void
-  onSpacingDecrease: () => void
 }
 
 export function FlowCanvas(props: FlowCanvasProps) {
@@ -64,7 +61,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
   )
 }
 
-function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
+function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode }: FlowCanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
 
   const handleNodeClick: NodeMouseHandler = useCallback(
@@ -114,7 +111,6 @@ function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onN
       />
       <LayoutFitter layoutVersion={layoutVersion} />
       <NodePalette />
-      <CanvasControls onSpacingIncrease={onSpacingIncrease} onSpacingDecrease={onSpacingDecrease} />
     </ReactFlow>
     </div>
   )

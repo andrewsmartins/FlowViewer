@@ -402,6 +402,8 @@ export default function App() {
         onImport={() => setImportOpen(true)}
         onNewFlow={() => setNewFlowOpen(true)}
         onExport={handleExport}
+        onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
+        onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
       />
 
       <main className="flex-1 relative overflow-hidden">
@@ -418,8 +420,6 @@ export default function App() {
               onConnect={handleConnect}
               onEdgesChange={handleEdgesChange}
               onCreateNode={handleCreateNode}
-              onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
-              onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
             />
             {selectedNode && (
               <DetailPanel
