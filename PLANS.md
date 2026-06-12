@@ -1,7 +1,7 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
 > Última atualização: 2026-06-11. Este arquivo orienta sessões futuras do Claude Code.
-> Status: **Fases 1–3b concluídas (v0.9.0, branch `feat/editor-roundtrip`). Próxima: Fase 5 (redesign UI). Fase 4 (push API) segue opcional.**
+> Status: **Fases 1–3b e 5 (a, b, c) concluídas (v0.12.0, branch `feat/editor-roundtrip`). Fase 4 (push API) em STANDBY por decisão do Andy (2026-06-11) — parte mais sensível.**
 
 ## Contexto
 
@@ -175,7 +175,20 @@ Implementação efetiva:
 - **Sempre testar em bot sandbox — nunca em bot de cliente em produção.**
 - Caminho infeliz: 401 (token expirado), 4xx de validação — exibir erro claro.
 
-### Fase 5 — Redesign UI: de visualizador para editor (PLANEJADA 2026-06-11)
+### Fase 5 — Redesign UI: de visualizador para editor ✅ CONCLUÍDA (v0.10–0.12)
+
+Notas de implementação além do planejado:
+- Versão da toolbar lida de `package.json` (import direto, resolveJsonModule).
+- Undo/redo ganhou de brinde o **rollback de edição parcial** do DetailPanel:
+  `onBeforeApply` captura snapshot → falha no meio dos patches → `onApplyFailed`
+  restaura (antes o modelo ficava meio-aplicado).
+- Snapshots usam refs espelho (nodesRef/edgesRef) para callbacks estáveis.
+- Smokes migrados para `scripts/lib/loadFlow.mjs` (loadFlow/exportJson/readToast);
+  novo `scripts/smoke-phase5.mjs` cobre novo fluxo + undo/redo.
+- Aprendizado Playwright: cliques "em área vazia" do pane precisam evitar a
+  paleta (top-left) — ela cresceu com a legenda.
+
+Plano original (decisões e desenho):
 
 Decisões do Andy (2026-06-11): toolbar superior + canvas cheio; importação em
 modal (colar + arquivo); novo fluxo do zero pedindo botId; undo/redo no escopo.

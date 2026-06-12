@@ -1,6 +1,6 @@
 # Fluxo Bot
 
-Visualizador de fluxos de chatbot a partir de JSON. Cole ou importe o JSON de configuração do bot e veja o fluxograma gerado automaticamente com layout hierárquico.
+Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um fluxo do zero a partir do botId), edite nós, conexões e conteúdo no canvas, e exporte de volta no formato aceito pela plataforma.
 
 ---
 
@@ -59,15 +59,16 @@ O servidor sobe em `http://localhost:5173`.
 
 ## Como usar
 
-1. **Cole** o JSON no painel esquerdo ou clique em **Importar .json** para carregar um arquivo
-   > Três arquivos de exemplo estão disponíveis na raiz do projeto: `sample01.json` (12 nós), `sample02.json` (159 nós) e `sample03.json` (141 nós)
-2. Clique em **Gerar Fluxo** (ou `Ctrl+Enter`)
-3. Use scroll para zoom e arraste para navegar pelo fluxo
-4. Use os botões **−** / **+** no canto superior direito para ajustar o espaçamento entre os nós
-5. Para **criar** um nó, arraste um tipo da paleta (canto superior esquerdo) até a posição desejada no canvas
-6. Para **conectar**, arraste do handle inferior de um nó até outro nó; para **reconectar**, arraste a ponta de destino (seta) de uma aresta até outro nó — conexões para outros bots não são editáveis
-7. Para **excluir** uma transição, clique na aresta e pressione Delete (arestas de escolha são protegidas — o botão correspondente ficaria órfão)
-8. Para exportar, clique em **PNG**, **SVG** ou **JSON** no painel do canto superior direito (o JSON inclui todas as edições)
+1. **Importar** (toolbar) abre o modal: cole o JSON do bot (resposta da aba Network) ou carregue um arquivo `.json`, e clique em **Gerar fluxo** (`Ctrl+Enter`) — ou use **Novo fluxo** informando o botId para começar do zero
+   > Arquivos de exemplo em `samples/` (não versionados — dados reais): `sample01.json` (12 nós), `sample02.json` (159 nós) e `sample03.json` (141 nós)
+2. Use scroll para zoom e arraste para navegar; os botões **−** / **+** no topo do canvas ajustam o espaçamento do layout
+3. Para **criar** um nó, arraste um tipo da paleta (canto superior esquerdo) até a posição desejada
+4. Para **conectar**, arraste do handle inferior de um nó até outro nó; para **reconectar**, arraste a ponta de destino (seta) de uma aresta — conexões para outros bots não são editáveis
+5. Para **editar conteúdo**, clique no nó e use o painel à direita (Aplicar alterações grava no modelo)
+6. Para **excluir**, selecione nó ou aresta e pressione Delete, ou use o botão no painel
+7. **Ctrl+Z** desfaz e **Ctrl+Shift+Z** refaz qualquer edição (botões ↶ ↷ na toolbar)
+8. O **indicador de validação** na toolbar mostra erros/avisos do fluxo em tempo real (clique para ver a lista)
+9. **Exportar** (toolbar) baixa o **JSON** no formato da plataforma (com todas as edições) ou imagem **PNG**/**SVG**
 
 ---
 

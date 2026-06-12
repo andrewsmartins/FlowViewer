@@ -15,6 +15,34 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [0.12.0] - 2026-06-11
+
+### Adicionado
+- **Fase 5c: undo/redo** — Ctrl+Z desfaz e Ctrl+Shift+Z/Ctrl+Y refaz qualquer edição (reconectar, conectar, criar/excluir nó, deletar aresta, edições do painel); botões ↶ ↷ na toolbar; histórico de até 30 passos por snapshot (`src/utils/history.ts`); atalhos ignorados com foco em campos de texto
+- **Rollback de edição parcial**: se um patch do "Aplicar alterações" falhar no meio, o modelo volta ao estado pré-edição (antes ficava meio-aplicado)
+
+## [0.11.0] - 2026-06-11
+
+### Adicionado
+- **Fase 5b: novo fluxo do zero** — botão "Novo fluxo" na toolbar pede o botId (UUID validado, copiado da URL da plataforma) e cria a intenção de início canônica (`{botId}-start`); o JSON exportado já nasce com IDs reais
+
+## [0.10.0] - 2026-06-11
+
+### Alterado
+- **Fase 5a: redesign — de visualizador para editor**
+  - Sidebar permanente de 384px removido; o canvas ocupa toda a tela sob uma toolbar fina
+  - Importação virou modal (colar JSON da aba Network ou carregar arquivo), com aviso quando substitui um fluxo com edições
+  - Exportação (JSON/PNG/SVG) movida do canvas para dropdown na toolbar
+  - Erros e avisos viram **toasts** no rodapé do canvas (avisos somem sozinhos)
+  - **Indicador de validação vivo** na toolbar: ✓ válido / ⚠ avisos / ✕ erros, recalculado a cada edição e clicável para ver a lista completa
+  - Legenda de cores absorvida pela paleta (chips de Início/Outro Bot)
+  - Versão exibida na toolbar agora vem do `package.json` (não dessincroniza mais)
+
+### Removido
+- Componentes `JsonInput` e `ExportControls` (substituídos por `TopBar`, `ImportDialog`, `Toast` e `CanvasControls`)
+
+---
+
 ## [0.9.0] - 2026-06-11
 
 ### Adicionado
