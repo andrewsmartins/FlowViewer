@@ -15,6 +15,21 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [0.9.0] - 2026-06-11
+
+### Adicionado
+- **Fase 3b do editor: edição estrutural completa**
+  - **Botões com sincronia posicional**: adicionar botão cria um slot vazio em `action.choices` (conecte no canvas para preenchê-lo); remover botão remove a escolha na mesma posição; "Criar mensagem de botões" monta a mensagem BUTTON canônica em nós de escolha recém-criados
+  - **Conectar escolhas**: arrastar do handle de origem agora também preenche o primeiro slot de escolha vazio (a aresta nasce com o texto do botão como label)
+  - **Deletar aresta de escolha**: esvazia o slot mantendo o botão (reconectável depois)
+  - **Condições editáveis**: nome, tipo (qualquer/igual/existe/senão), variável e valor; adicionar e remover condições (a última é protegida)
+  - **Excluir intenção** (botão no painel ou Delete no nó selecionado) com limpeza completa de referências de entrada: `next` resetado, botão+escolha removidos na mesma posição, `error.next` reapontado para o start e fallbacks filtrados; o start não é excluível
+
+### Corrigido
+- Controles de exportação movidos para o centro superior — ficavam cobertos pelo DetailPanel aberto
+
+---
+
 ## [0.8.0] - 2026-06-11
 
 ### Adicionado

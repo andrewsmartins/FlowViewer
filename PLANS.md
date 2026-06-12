@@ -1,7 +1,7 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
 > Última atualização: 2026-06-11. Este arquivo orienta sessões futuras do Claude Code.
-> Status: **Fases 1, 2 e 3a concluídas (v0.8.0, branch `feat/editor-roundtrip`). Pendências: Fase 3b + Fase 4 (push API).**
+> Status: **Fases 1, 2, 3a e 3b concluídas (v0.9.0, branch `feat/editor-roundtrip`). Pendência: Fase 4 (push API) — opcional.**
 
 ## Contexto
 
@@ -142,15 +142,31 @@ Implementação efetiva:
   sem start, buttons.length ≠ choices.length).
 - Testes: `editIntent.test.ts` (19 casos) + `scripts/smoke-phase3.mjs`.
 
-### Fase 3b — Edição estrutural avançada (PENDENTE)
-- Adicionar/remover botões com sincronia posicional buttons[i] ↔ choices[i]
-  (e a aresta correspondente).
-- Adicionar/remover/editar condições (tipo, variável, valor).
-- Deleção de nós com limpeza de referências de entrada (next refs apontando
-  para o nó deletado → reset; choices → remover botão + escolha).
-- UX: DetailPanel aberto cobre os controles de export (canto sup. direito) —
-  reposicionar controles ou fechar painel ao exportar.
-- Mensagens BUTTON/LIST: criar do zero (hoje só em intents que já as têm).
+### Fase 3b — Edição estrutural avançada ✅ CONCLUÍDA (v0.9.0)
+
+Implementação efetiva:
+- Botões: `addButton` cria botão + slot vazio `''` em choices (posicional);
+  `removeButton` remove ambos na mesma posição; `addButtonsMessage` cria a
+  mensagem BUTTON canônica (`messageConfig.type: 'text'`, content null) em
+  choiceNodes da paleta. Tudo no painel, seção "Opções".
+- `applyConnect` estendido: em ordem de documento, preenche slot de escolha
+  vazio OU `next` de condição não-choice livre. Aresta de escolha nasce com o
+  texto do botão como label. Após conectar, o App reconstrói TODAS as arestas
+  via `buildEdges(model)` (não mais aresta avulsa).
+- `applyEdgeDelete` para escolhas: esvazia o slot por valor (índice da aresta
+  é da lista deduplicada), botão preservado.
+- Condições: `updateCondition`/`addCondition`/`removeCondition` (última
+  protegida). Draft do painel carrega `originalIdx` (null = novo) — mesma
+  técnica dos botões — e remoções aplicam em índice decrescente, condições
+  por último (refs de mensagem usam condIdx pré-remoção).
+- `applyNodeDelete`: limpa next refs (reset canônico), choices+botões
+  (posicional), `error.next` → `{botId}-start`, fallbackIntents filtrados.
+  Start não excluível. Disparado pelo Delete (via onNodesChange) ou pelo
+  botão "Excluir intenção" do painel.
+- ExportControls movido para top-center (DetailPanel cobria o canto direito).
+- Testes: `editFlow.phase3b.test.ts` (10 casos) + `scripts/smoke-phase3b.mjs`.
+- Aprendizado Playwright: não criar nós de teste no canto inferior direito —
+  o MiniMap intercepta o mouse e o gesto de conexão nunca inicia.
 
 ### Fase 4 (opcional) — Push direto via API
 - Configuração de token de sessão (nunca persistir em repo; usar campo na UI ou

@@ -15,7 +15,8 @@ Visualizador de fluxos de chatbot a partir de JSON. Cole ou importe o JSON de co
 - Exportação do fluxo completo em **PNG** e **SVG** com dimensões calculadas pelos bounds reais dos nós
 - **Criação de nós** — paleta no canto superior esquerdo: arraste um tipo (Mensagem, Escolha, Captura, Transferência, Espera, Definir dados) para o canvas para criar uma intenção nova com template canônico
 - **Edição de conexões** — arraste a ponta de destino de uma aresta para outra intenção; conecte nós arrastando do handle inferior; delete arestas com Delete/Backspace; o JSON subjacente é atualizado (`next.intent` ou `action.choices`)
-- **Edição de conteúdo** — clique num nó para abrir o painel: edite nome, categoria, keywords, mensagens, botões, transferência, captura e variáveis; **Aplicar alterações** grava no modelo
+- **Edição de conteúdo** — clique num nó para abrir o painel: edite nome, categoria, keywords, mensagens, botões (adicionar/remover, com sincronia automática das escolhas), condições, transferência, captura e variáveis; **Aplicar alterações** grava no modelo
+- **Exclusão de intenções** — botão no painel ou tecla Delete; todas as referências de entrada são limpas automaticamente
 - **Validação no export** — erros estruturais bloqueiam o download; inconsistências prováveis aparecem como aviso
 - **Exportação JSON** — baixa o fluxo (com as edições) no mesmo formato `{ "list": [...] }` aceito pela plataforma, preservando todos os campos não editados
 - **Dark mode** completo — toggle sol/lua na sidebar altera sidebar, nodes, painéis e canvas simultaneamente; preferência salva em `localStorage`
