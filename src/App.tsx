@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { reconnectEdge, type Connection, type Node, type Edge } from '@xyflow/react'
+import { reconnectEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Node, type Edge, type EdgeChange, type NodeChange, type XYPosition } from '@xyflow/react'
 import { FlowCanvas }    from './components/FlowCanvas'
 import { JsonInput }     from './components/JsonInput'
 import { DetailPanel }   from './components/DetailPanel'
 import { ThemeToggle }   from './components/ThemeToggle'
 import { ThemeContext }  from './contexts/ThemeContext'
-import { parseFlow } from './utils/parseFlow'
-import { applyEdgeReconnect, serializeFlow } from './utils/editFlow'
+import { parseFlow, intentToNodeData, buildNextEdge } from './utils/parseFlow'
+import { applyEdgeReconnect, applyConnect, applyEdgeDelete, serializeFlow } from './utils/editFlow'
+import { createIntentTemplate, type CreatableKind } from './utils/intentTemplates'
 import type { BotFlowJson, FlowNodeData } from './types'
 
 const SPACING_STEP = 60
@@ -21,6 +22,7 @@ export default function App() {
   const [error, setError]               = useState<string | null>(null)
   const [hasFlow, setHasFlow]           = useState(false)
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null)
+  const [layoutVersion, setLayoutVersion] = useState(0)
   const parsedDataRef                   = useRef<BotFlowJson | null>(null)
   const spacingRef                      = useRef({ ranksep: 60, nodesep: 40 })
 
@@ -65,6 +67,7 @@ export default function App() {
       setError(null)
       setHasFlow(true)
       setSelectedNode(null)
+      setLayoutVersion(v => v + 1)
     } catch (e) {
       setError(`Erro ao processar o fluxo: ${e instanceof Error ? e.message : 'desconhecido'}`)
     }
@@ -81,6 +84,7 @@ export default function App() {
     const result = parseFlow(parsedDataRef.current, next)
     setNodes(result.nodes)
     setEdges(result.edges)
+    setLayoutVersion(v => v + 1)
   }, [])
 
   function handleJsonChange(value: string) {
@@ -102,6 +106,76 @@ export default function App() {
       return
     }
     setEdges(eds => reconnectEdge(oldEdge, connection, eds, { shouldReplaceId: false }))
+    setError(null)
+  }, [])
+
+  /**
+   * Mudanças de nós do canvas: posição/seleção/dimensões são estado visual;
+   * remoção de nós ainda não é suportada (exigiria limpar referências no
+   * modelo — Fase 3), então mudanças do tipo remove são descartadas.
+   */
+  const handleNodesChange = useCallback((changes: NodeChange<Node<FlowNodeData>>[]) => {
+    const allowed = changes.filter(c => c.type !== 'remove')
+    if (allowed.length) setNodes(curr => applyNodeChanges(allowed, curr))
+  }, [])
+
+  /**
+   * Conecta dois nós criando a referência next na primeira condição livre da
+   * origem. A aresta usa o ID posicional do modelo para permitir reconexão
+   * e exclusão posteriores.
+   */
+  const handleConnect = useCallback((connection: Connection) => {
+    const model = parsedDataRef.current
+    if (!model || !connection.source || !connection.target) return
+    const result = applyConnect(model, connection.source, connection.target)
+    if (!result.ok) {
+      setError(`Não foi possível conectar: ${result.reason}.`)
+      return
+    }
+    const edge = buildNextEdge(model, connection.source, result.condIdx)
+    if (edge) setEdges(eds => [...eds, edge])
+    setError(null)
+  }, [])
+
+  /**
+   * Mudanças de aresta vindas do canvas: seleção é aplicada direto; remoção
+   * (Delete/Backspace) só é aplicada se o patch no modelo for válido —
+   * arestas de escolha e externas não são deletáveis.
+   */
+  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+    const model = parsedDataRef.current
+    const allowed: EdgeChange[] = []
+    for (const change of changes) {
+      if (change.type !== 'remove') {
+        allowed.push(change)
+        continue
+      }
+      if (!model) continue
+      const result = applyEdgeDelete(model, change.id)
+      if (result.ok) {
+        allowed.push(change)
+        setError(null)
+      } else {
+        setError(`Não foi possível excluir: ${result.reason}.`)
+      }
+    }
+    if (allowed.length) setEdges(eds => applyEdgeChanges(allowed, eds))
+  }, [])
+
+  /** Cria uma intenção nova (template canônico) na posição do drop da paleta. */
+  const handleCreateNode = useCallback((kind: CreatableKind, position: XYPosition) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const botId = model.list.find(i => i.category === 'start')?.botId ?? model.list[0]?.botId ?? ''
+    const count = model.list.filter(i => i.name.startsWith('nova_intencao')).length
+    const intent = createIntentTemplate(kind, botId, `nova_intencao_${count + 1}`)
+    model.list.push(intent)
+    setNodes(ns => [...ns, {
+      id: intent.id,
+      type: kind,
+      position,
+      data: intentToNodeData(intent),
+    }])
     setError(null)
   }, [])
 
@@ -142,9 +216,14 @@ export default function App() {
             <FlowCanvas
               nodes={nodes}
               edges={edges}
+              layoutVersion={layoutVersion}
               isDark={isDark}
               onNodeClick={handleNodeClick}
+              onNodesChange={handleNodesChange}
               onReconnect={handleReconnect}
+              onConnect={handleConnect}
+              onEdgesChange={handleEdgesChange}
+              onCreateNode={handleCreateNode}
               onExportJson={handleExportJson}
               onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
               onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}

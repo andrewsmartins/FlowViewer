@@ -250,6 +250,44 @@ function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[], ranksep: number
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
+/** Constrói o view-model (FlowNodeData) exibido no nó a partir da intenção crua. */
+export function intentToNodeData(intent: BotIntent): FlowNodeData {
+  return {
+    name:            intent.name,
+    category:        intent.category,
+    messagePreview:  getMessagePreview(intent),
+    buttons:         getButtons(intent),
+    actionType:      intent.conditions[0]?.action.type ?? 'none',
+    captureDataType: getCaptureDataType(intent),
+    transferType:    getTransferType(intent),
+    transferValue:   getTransferValue(intent),
+    allMessages:     getAllMessages(intent),
+    setDataItems:    getSetDataItems(intent),
+    keywords:        intent.keywords ?? [],
+    conditions:      getConditionInfos(intent),
+  }
+}
+
+/**
+ * Constrói a aresta `-next` de uma condição a partir do modelo, com o mesmo ID
+ * e estilo que o parseFlow geraria — usado ao conectar nós manualmente.
+ * Retorna null se a condição não existir ou não tiver destino interno.
+ */
+export function buildNextEdge(json: BotFlowJson, sourceId: string, condIdx: number): Edge | null {
+  const intent = json.list.find(i => i.id === sourceId)
+  const cond = intent?.conditions[condIdx]
+  if (!cond) return null
+  const ref = getNextRef(cond.next)
+  if (!ref || !json.list.some(i => i.id === ref.id)) return null
+  return {
+    id: `${sourceId}-c${condIdx}-next`,
+    source: sourceId,
+    target: ref.id,
+    label: getEdgeLabel(cond),
+    ...edgeStyle(false),
+  }
+}
+
 export function parseFlow(json: BotFlowJson, spacing?: { ranksep?: number; nodesep?: number }): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
   const intents   = json.list
   const mainBotId = intents.find(i => i.category === 'start')?.botId ?? intents[0]?.botId ?? ''
@@ -261,20 +299,7 @@ export function parseFlow(json: BotFlowJson, spacing?: { ranksep?: number; nodes
     id:   intent.id,
     type: getNodeKind(intent),
     position: { x: 0, y: 0 },
-    data: {
-      name:            intent.name,
-      category:        intent.category,
-      messagePreview:  getMessagePreview(intent),
-      buttons:         getButtons(intent),
-      actionType:      intent.conditions[0]?.action.type ?? 'none',
-      captureDataType: getCaptureDataType(intent),
-      transferType:    getTransferType(intent),
-      transferValue:   getTransferValue(intent),
-      allMessages:     getAllMessages(intent),
-      setDataItems:    getSetDataItems(intent),
-      keywords:        intent.keywords ?? [],
-      conditions:      getConditionInfos(intent),
-    },
+    data: intentToNodeData(intent),
   }))
 
   const edges: Edge[] = []
