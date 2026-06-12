@@ -12,6 +12,12 @@ dist/
 .env
 .env.*
 
+# Dados reais de clientes OmniChat — nunca commitar (testes os usam localmente)
+samples/
+
+# Arquivo de workspace pessoal do editor
+*.code-workspace
+
 # Editor / SO
 .vscode/
 .idea/
