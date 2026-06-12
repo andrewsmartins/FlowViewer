@@ -29,6 +29,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Arestas internas são reconectáveis apenas pela ponta de destino (mover a origem seria ambíguo); arestas para outros bots (externas) não são editáveis
 - Falhas de reconexão exibem mensagem de erro no painel lateral em vez de falhar silenciosamente
 
+### Corrigido
+- Reconexão "não pegava" ao soltar no corpo do nó: o drop exigia acertar o handle de ~6px no topo — adicionados `connectionRadius={80}` e `reconnectRadius={16}`, handles maiores e destaque visual dos alvos válidos durante o arrasto (`.connectionindicator`)
+
 ---
 
 ## [0.5.0] - 2026-06-06

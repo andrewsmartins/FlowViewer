@@ -72,6 +72,10 @@ export function FlowCanvas({ nodes: propNodes, edges, isDark, onNodeClick, onRec
       onReconnect={onReconnect}
       nodeTypes={nodeTypes}
       onNodeClick={handleNodeClick}
+      // Tolerância de drop ao reconectar: sem isso o usuário precisa acertar
+      // exatamente o handle (~6px) no topo do nó e o gesto parece "não pegar"
+      connectionRadius={80}
+      reconnectRadius={16}
       minZoom={0.1}
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
