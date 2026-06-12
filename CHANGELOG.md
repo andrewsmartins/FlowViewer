@@ -15,6 +15,26 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [0.7.0] - 2026-06-11
+
+### Adicionado
+- **Fase 2 do editor: criação de nós e arestas**
+  - Paleta "Criar nó" no canto superior esquerdo do canvas: arraste um dos 6 tipos (Mensagem, Escolha, Captura, Transferência, Espera, Definir dados) para criar uma intenção nova na posição do drop
+  - Templates canônicos de intenção (`src/utils/intentTemplates.ts`) com a forma exata que a tela oficial envia no POST — UUID v4 novo, `advanced`, defaults por tipo (transfer → `direct4group`, captureData → `free`) e caminho de erro apontando para o start
+  - Conectar nós: arraste do handle inferior (origem) até outro nó — preenche `next.intent` na primeira condição livre (`redirect: continueFlow`)
+  - Deletar arestas: selecione e pressione Delete/Backspace — remove a referência `next` no modelo (arestas de escolha e externas são protegidas)
+  - Nós agora podem ser arrastados para reposicionar (estado visual; não afeta o JSON)
+- Smoke test da Fase 2 (`scripts/smoke-phase2.mjs`): cria nó via drop, conecta, deleta aresta e valida tudo no JSON exportado
+
+### Corrigido
+- `fitView` não é mais disparado ao criar um nó (re-zoom no meio da edição desorientava e invalidava o gesto em andamento) — agora só ao gerar fluxo ou mudar espaçamento
+
+### Alterado
+- Estado dos nós elevado ao `App` (canvas totalmente controlado) — posições manuais sobrevivem à criação de novos nós
+- `parseFlow` exporta `intentToNodeData` e `buildNextEdge` para reuso na criação
+
+---
+
 ## [0.6.0] - 2026-06-11
 
 ### Adicionado

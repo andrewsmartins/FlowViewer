@@ -1,7 +1,7 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
 > Última atualização: 2026-06-11. Este arquivo orienta sessões futuras do Claude Code.
-> Status: **Fase 1 concluída (v0.6.0, branch `feat/editor-roundtrip`). Próxima: Fase 2.**
+> Status: **Fases 1 e 2 concluídas (v0.7.0, branch `feat/editor-roundtrip`). Próxima: Fase 3.**
 
 ## Contexto
 
@@ -95,13 +95,34 @@ Implementação efetiva (com desvios deliberados do plano original):
   samples, decodificação de IDs (incl. `{botId}-start`), patches e caminhos
   infelizes. `@types/node` instalado para o `tsc` aceitar `node:fs` nos testes.
 
-### Fase 2 — Criação de nós
-- Paleta lateral com um template de `BotIntent` mínimo válido por tipo
-  (choiceNode, captureNode, transferNode, waitNode, setDataNode, defaultNode).
-- Template = forma canônica completa do POST capturado (todos os defaults).
-- Gerar UUID v4 para `id`; `botId` herdado do fluxo carregado.
-- Drag & drop com `screenToFlowPosition`; `onConnect` preenche `next`.
-- **Teste:** criar 2 nós, conectar, exportar, validar contra o schema canônico.
+### Fase 2 — Criação de nós ✅ CONCLUÍDA (v0.7.0)
+
+Implementação efetiva:
+- Paleta (`src/components/NodePalette.tsx`) como `<Panel position="top-left">`
+  dentro do ReactFlow; drag & drop HTML5 com MIME `application/fluxo-node-kind`
+  e `screenToFlowPosition` (FlowCanvas envolto em `ReactFlowProvider`).
+- Templates canônicos em `src/utils/intentTemplates.ts` (forma do POST
+  capturado, com nulls explícitos): transfer → `direct4group` + error→start;
+  captureData → `free` + error→start; choice → `choices: []`. Nome gerado
+  `nova_intencao_{n}`, categoria "Sem Categoria", `crypto.randomUUID()`.
+- `onConnect` (editFlow.applyConnect): preenche `next.intent` na PRIMEIRA
+  condição livre (sem ref e não-choice), com `redirect: continueFlow` (277 de
+  343 refs nos bots reais usam esse valor). A aresta usa o ID posicional
+  (`{id}-c{idx}-next`) via `parseFlow.buildNextEdge` — reconexão/deleção
+  funcionam nela imediatamente.
+- Deleção de arestas `-next` (Delete/Backspace): reseta `next` para
+  `{ redirect: 'waitInteraction', type }`. Arestas de escolha são protegidas
+  (botão ficaria órfão — mapeamento posicional buttons[i] ↔ choices[i]);
+  externas idem. Deleção de NÓS ainda bloqueada (Fase 3: exigiria limpar
+  referências de entrada).
+- Estado dos nós elevado ao App (canvas controlado); `fitView` agora responde
+  a `layoutVersion` (gerar/espaçamento), não à contagem de nós — criar nó não
+  re-enquadra mais a viewport.
+- Testes: `intentTemplates.test.ts` (23 casos) + `scripts/smoke-phase2.mjs`
+  (drop cria nó, drag conecta, Delete remove, export reflete tudo).
+- Aprendizado p/ testes Playwright: selecionar aresta exige clicar num ponto
+  REAL do path (`getPointAtLength`) — o centro do bounding box de um
+  smoothstep cai fora da linha e seleciona outro elemento.
 
 ### Fase 3 — Edição de conteúdo
 - DetailPanel vira formulário: mensagens (TEXT/BUTTON/LIST), botões, condições,
