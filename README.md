@@ -2,6 +2,8 @@
 
 Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um fluxo do zero a partir do botId), edite nós, conexões e conteúdo no canvas, e exporte de volta no formato aceito pela plataforma.
 
+> 📖 **[Guia de uso](docs/GUIA-DE-USO.md)** — passo a passo de todas as features, do import ao push para o rascunho do bot.
+
 ---
 
 ## Funcionalidades
@@ -21,6 +23,7 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 - **Exportação JSON** — baixa o fluxo (com as edições) no mesmo formato `{ "list": [...] }` aceito pela plataforma, preservando todos os campos não editados
 - **Dark mode** completo — toggle sol/lua na sidebar altera sidebar, nodes, painéis e canvas simultaneamente; preferência salva em `localStorage`
 - Input via textarea (colar JSON) ou upload de arquivo `.json`
+- **Push para a plataforma (CLI)** — `scripts/push-flow.mjs` envia o JSON exportado para o **rascunho** do bot, com remapeamento automático de IDs em 2 passadas, dry-run por padrão, backup automático e rollback (`scripts/rollback-bot.mjs`); a publicação continua manual na plataforma
 
 ---
 

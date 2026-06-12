@@ -13,6 +13,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Adicionado
+- **Fase 4a: push para a plataforma via CLI** (`scripts/push-flow.mjs`) — envia o JSON exportado para o **rascunho** do bot em 2 passadas (cria → captura IDs reais do servidor → remapeia `next.intent`/`choices`/`error.next`/`fallbackIntents` → atualiza), pois a API ignora IDs novos no POST e gera outros; guardrails: dry-run sem `--yes`, `--bot` obrigatório e conferido contra o arquivo, backup automático em `samples/` e parada no primeiro erro; rollback via `scripts/rollback-bot.mjs`. Validado ponta a ponta na plataforma real ([docs/fase4-resultados.md](docs/fase4-resultados.md))
+- **Guia de uso** ([docs/GUIA-DE-USO.md](docs/GUIA-DE-USO.md)) — passo a passo de todas as features atuais: importar/criar do zero, edição no canvas, painel de detalhes, undo/redo, validação, exportação, push CLI e atalhos de teclado
+
 ---
 
 ## [0.12.1] - 2026-06-11
