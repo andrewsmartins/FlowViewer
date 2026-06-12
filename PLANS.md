@@ -1,7 +1,7 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
 > Última atualização: 2026-06-11. Este arquivo orienta sessões futuras do Claude Code.
-> Status: **Fases 1, 2, 3a e 3b concluídas (v0.9.0, branch `feat/editor-roundtrip`). Pendência: Fase 4 (push API) — opcional.**
+> Status: **Fases 1–3b concluídas (v0.9.0, branch `feat/editor-roundtrip`). Próxima: Fase 5 (redesign UI). Fase 4 (push API) segue opcional.**
 
 ## Contexto
 
@@ -174,6 +174,58 @@ Implementação efetiva:
 - Para cada intent alterado/criado: `POST /v1/{botId}/intents/{id}`.
 - **Sempre testar em bot sandbox — nunca em bot de cliente em produção.**
 - Caminho infeliz: 401 (token expirado), 4xx de validação — exibir erro claro.
+
+### Fase 5 — Redesign UI: de visualizador para editor (PLANEJADA 2026-06-11)
+
+Decisões do Andy (2026-06-11): toolbar superior + canvas cheio; importação em
+modal (colar + arquivo); novo fluxo do zero pedindo botId; undo/redo no escopo.
+Motivação: o sidebar permanente de 384px (JSON + branding + legenda) era o
+centro do app quando ele era um visualizador estático; num editor é espaço
+morto. O JSON deixa de ser visível — vira só entrada (modal) e saída (export).
+
+#### 5a — Toolbar + canvas cheio + modal de importação
+- **TopBar** (`src/components/TopBar.tsx`), barra fina no topo:
+  título "Fluxo" + versão + badge Beta; botões **Novo fluxo**, **Importar**,
+  **Exportar ▾** (dropdown JSON/PNG/SVG — sai do canvas); indicador de
+  validação (✓ verde / ⚠ N avisos / ✖ N erros, clicável → lista); link
+  Documentação; ThemeToggle.
+- **ImportDialog** (`src/components/ImportDialog.tsx`): modal com textarea
+  (colar da aba Network — fluxo real de trabalho) + botão de arquivo .json +
+  "Gerar fluxo". Mesma validação atual (list array etc.). Substituir fluxo já
+  carregado pede confirmação (perde edições não exportadas).
+- **Status/erros**: remover o painel de erro do sidebar; criar **toast**
+  (canto inferior central, auto-dismiss para avisos, persistente para erros)
+  usado por todas as mensagens de edição/validação que hoje vão para
+  `setError` do App.
+- **Remoções**: sidebar `JsonInput` inteiro; legenda de cores (a paleta já
+  mostra cor+nome; acrescentar chips não arrastáveis de Início/Outro Bot nela).
+- Controles de espaçamento (− espaço +) permanecem flutuando no canvas
+  (top-center, agora sem os botões de export).
+- **Impacto nos testes**: os 4 smoke scripts localizam `textarea` e "Gerar
+  Fluxo" na página — todos precisam ser atualizados para abrir o modal.
+  Extrair helper comum `scripts/lib/loadFlow.mjs`.
+
+#### 5b — Novo fluxo do zero
+- "Novo fluxo" na toolbar abre **NewFlowDialog**: pede o **botId** (copiado
+  da URL da plataforma; validar formato UUID) e cria
+  `{ list: [createStartIntent(botId)] }`.
+- `createStartIntent(botId)` em intentTemplates: `id = "{botId}-start"`,
+  `category: 'start'`, `name: 'start'`, condição canônica "Start" com action
+  none (forma observada no sample02).
+- Export desse fluxo nasce compatível com o push da Fase 4 (IDs reais).
+
+#### 5c — Undo/redo (Ctrl+Z / Ctrl+Shift+Z)
+- Histórico por **snapshot do modelo**: `structuredClone(model)` + nodes/edges
+  (posições incluídas) após cada mutação bem-sucedida (reconnect, connect,
+  delete de aresta/nó, criação de nó, apply do painel, importação).
+- Centralizar num `commitChange()` no App que todas as mutações chamam —
+  hoje cada handler chama setError/setNodes/setEdges por conta própria.
+- Cap de 30 passos (modelo de 300 intents ≈ 1 MB por snapshot).
+- Atalhos ignorados quando o foco está em input/textarea (painel de edição).
+- Botões ↶ ↷ na toolbar além dos atalhos.
+
+Ordem: 5a → 5b → 5c, uma versão minor cada (0.10.0, 0.11.0, 0.12.0).
+Critério de pronto por fatia: tsc + vitest + smoke atualizados verdes.
 
 ## Melhorias paralelas (independentes das fases)
 
