@@ -1,6 +1,7 @@
 /** Diagnóstico do gesto de conexão: a connection line aparece? O nó se move? */
 import { chromium } from 'playwright'
 import { readFileSync } from 'node:fs'
+import { loadFlow } from './lib/loadFlow.mjs'
 
 const baseUrl = process.argv[2] ?? 'http://localhost:5174/Fluxo-Bot/'
 const sample = readFileSync(new URL('../samples/sample01.json', import.meta.url), 'utf-8')
@@ -9,11 +10,7 @@ const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
 page.on('console', m => console.log('[browser]', m.text()))
 page.on('pageerror', e => console.log('[pageerror]', e.message))
-await page.goto(baseUrl, { waitUntil: 'networkidle' })
-await page.locator('textarea').fill(sample)
-await page.getByRole('button', { name: /gerar fluxo/i }).click()
-await page.waitForSelector('.react-flow__node')
-await page.waitForTimeout(800)
+await loadFlow(page, baseUrl, sample)
 
 // cria um nó novo via paleta e usa ELE como origem
 await page.evaluate(() => {
@@ -68,8 +65,8 @@ const edges = await page.evaluate((p) => {
     .filter(id => id.startsWith(p.srcNode) && id.includes('next'))
 }, info)
 console.log('arestas -next da origem após drop:', edges)
-const sidebarError = await page.evaluate(() =>
-  document.querySelector('aside')?.innerText.match(/Não foi possível[^\n]*/)?.[0] ?? '(sem erro)')
-console.log('painel:', sidebarError)
+const toast = await page.evaluate(() =>
+  document.querySelector('[role="status"]')?.textContent?.trim() ?? '(sem toast)')
+console.log('toast:', toast)
 
 await browser.close()

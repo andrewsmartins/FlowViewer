@@ -6,6 +6,7 @@
  */
 import { chromium } from 'playwright'
 import { readFileSync } from 'node:fs'
+import { loadFlow, exportJson } from './lib/loadFlow.mjs'
 
 const baseUrl = process.argv[2] ?? 'http://localhost:5174/Fluxo-Bot/'
 const sample = readFileSync(new URL('../samples/sample01.json', import.meta.url), 'utf-8')
@@ -19,11 +20,7 @@ const browser = await chromium.launch()
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
   page.on('pageerror', err => console.log('[pageerror]', err.message))
-  await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  await page.locator('textarea').fill(sample)
-  await page.getByRole('button', { name: /gerar fluxo/i }).click()
-  await page.waitForSelector('.react-flow__node')
-  await page.waitForTimeout(800)
+  await loadFlow(page, baseUrl, sample)
 
   // Abre o painel de um nó de escolha (tem mensagens E botões)
   const choiceNodeId = JSON.parse(sample).list.find(i =>
@@ -37,11 +34,8 @@ try {
   await nameInput.fill('editado_pelo_fluxo')
   const firstMsg = page.locator('aside ~ * textarea, .absolute textarea').first()
   await firstMsg.fill('Mensagem editada pelo Fluxo!')
-  const btnInput = page.locator('input').filter({ hasNotText: '' }).nth(0) // primeiro input de botão fica abaixo da seção Opções
-  // melhor: localizar pela seção
-  const optionsSection = page.locator('div:has(> p:text-is("OPÇÕES (TEXTO DOS BOTÕES)"))')
   let buttonEdited = false
-  const btnField = page.locator('p:has-text("Opções (texto dos botões)")').locator('xpath=following-sibling::div//input').first()
+  const btnField = page.getByPlaceholder('Texto do botão').first()
   if (await btnField.count()) {
     await btnField.fill('Botão Editado')
     buttonEdited = true
@@ -64,14 +58,8 @@ try {
     if (!edgeLabels.includes('Botão Editado')) fail('label da aresta não atualizou com o texto do botão')
   }
 
-  // Fecha o painel (ele cobre os controles de export no canto superior direito)
-  await page.getByLabel('Fechar').click()
-  await page.waitForTimeout(200)
-
-  // Exporta e confere o modelo
-  const downloadPromise = page.waitForEvent('download')
-  await page.getByTitle('Exportar o JSON do fluxo (inclui edições de conexões)').click()
-  const exported = JSON.parse(readFileSync(await (await downloadPromise).path(), 'utf-8'))
+  // Exporta pela toolbar (não é mais coberta pelo painel) e confere o modelo
+  const exported = await exportJson(page)
   const edited = exported.list.find(i => i.id === choiceNodeId)
   console.log('nome no export:', edited?.name)
   if (edited?.name !== 'editado_pelo_fluxo') fail('nome não está no export')

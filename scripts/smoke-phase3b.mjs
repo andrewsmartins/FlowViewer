@@ -7,6 +7,7 @@
  */
 import { chromium } from 'playwright'
 import { readFileSync } from 'node:fs'
+import { loadFlow, exportJson } from './lib/loadFlow.mjs'
 
 const baseUrl = process.argv[2] ?? 'http://localhost:5174/Fluxo-Bot/'
 const sample = readFileSync(new URL('../samples/sample01.json', import.meta.url), 'utf-8')
@@ -20,11 +21,7 @@ const browser = await chromium.launch()
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
   page.on('pageerror', err => console.log('[pageerror]', err.message))
-  await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  await page.locator('textarea').fill(sample)
-  await page.getByRole('button', { name: /gerar fluxo/i }).click()
-  await page.waitForSelector('.react-flow__node')
-  await page.waitForTimeout(800)
+  await loadFlow(page, baseUrl, sample)
 
   // 1. Cria nó de escolha num espaço livre (canto inferior direito)
   await page.evaluate(() => {
@@ -116,9 +113,7 @@ try {
   if (!victimGone) fail('nó não sumiu do canvas')
 
   // 5. Exporta e valida tudo
-  const downloadPromise = page.waitForEvent('download')
-  await page.getByTitle('Exportar o JSON do fluxo (inclui edições de conexões)').click()
-  const exported = JSON.parse(readFileSync(await (await downloadPromise).path(), 'utf-8'))
+  const exported = await exportJson(page)
 
   const choiceIntent = exported.list.find(i => i.name === 'nova_intencao_1')
   const btns = choiceIntent?.conditions[0]?.assistant_says[0]?.messages[0]?.messageConfig?.buttons ?? []

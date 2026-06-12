@@ -6,6 +6,7 @@
  */
 import { chromium } from 'playwright'
 import { readFileSync } from 'node:fs'
+import { loadFlow, exportJson } from './lib/loadFlow.mjs'
 
 const baseUrl = process.argv[2] ?? 'http://localhost:5174/Fluxo-Bot/'
 const sample = readFileSync(new URL('../samples/sample01.json', import.meta.url), 'utf-8')
@@ -15,11 +16,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
 page.on('console', msg => console.log(`[browser:${msg.type()}]`, msg.text()))
 page.on('pageerror', err => console.log('[pageerror]', err.message))
 
-await page.goto(baseUrl, { waitUntil: 'networkidle' })
-await page.locator('textarea').fill(sample)
-await page.getByRole('button', { name: /gerar fluxo/i }).click()
-await page.waitForSelector('.react-flow__node')
-await page.waitForTimeout(800) // fitView animation
+await loadFlow(page, baseUrl, sample)
 
 // Escolhe uma aresta -next e identifica origem/destino
 const edgeInfo = await page.evaluate(() => {
@@ -73,16 +70,13 @@ await page.waitForTimeout(300)
 // Estado depois: a aresta aponta para o novo nó? Apareceu erro no painel?
 const after = await page.evaluate((id) => {
   const e = document.querySelector(`.react-flow__edge[data-id="${id}"]`)
-  const error = document.querySelector('aside')?.innerText.match(/Não foi possível[^\n]*/)?.[0] ?? null
-  return { edgeStillExists: !!e, ariaLabel: e?.getAttribute('aria-label') ?? null, sidebarError: error }
+  const error = document.querySelector('[role="status"]')?.textContent?.trim() ?? null
+  return { edgeStillExists: !!e, ariaLabel: e?.getAttribute('aria-label') ?? null, toast: error }
 }, edgeInfo.id)
 console.log('depois do drag:', after)
 
 // Exporta e verifica se o modelo mudou
-const downloadPromise = page.waitForEvent('download')
-await page.getByTitle('Exportar o JSON do fluxo (inclui edições de conexões)').click()
-const download = await downloadPromise
-const exported = JSON.parse(readFileSync(await download.path(), 'utf-8'))
+const exported = await exportJson(page)
 const changed = JSON.stringify(exported) !== JSON.stringify(JSON.parse(sample))
 console.log('modelo mudou após drag:', changed)
 

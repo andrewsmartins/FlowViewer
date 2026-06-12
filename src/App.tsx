@@ -1,15 +1,19 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { reconnectEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Node, type Edge, type EdgeChange, type NodeChange, type XYPosition } from '@xyflow/react'
 import { FlowCanvas }    from './components/FlowCanvas'
-import { JsonInput }     from './components/JsonInput'
+import { TopBar, type ExportFormat } from './components/TopBar'
+import { ImportDialog }  from './components/ImportDialog'
 import { DetailPanel }   from './components/DetailPanel'
+import { Toast, type Notice } from './components/Toast'
 import { ThemeToggle }   from './components/ThemeToggle'
 import { ThemeContext }  from './contexts/ThemeContext'
 import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
 import { createIntentTemplate, type CreatableKind } from './utils/intentTemplates'
 import { validateFlow } from './utils/validateFlow'
+import { exportFlowImage } from './utils/exportImage'
 import type { BotFlowJson, FlowNodeData } from './types'
+import pkg from '../package.json'
 
 const SPACING_STEP = 60
 const SPACING_MIN  = 20
@@ -17,13 +21,15 @@ const SPACING_MAX  = 600
 
 export default function App() {
   const [isDark, setIsDark]             = useState(() => document.documentElement.classList.contains('dark'))
-  const [jsonText, setJsonText]         = useState('')
   const [nodes, setNodes]               = useState<Node<FlowNodeData>[]>([])
   const [edges, setEdges]               = useState<Edge[]>([])
-  const [error, setError]               = useState<string | null>(null)
+  const [notice, setNotice]             = useState<Notice | null>(null)
   const [hasFlow, setHasFlow]           = useState(false)
+  const [importOpen, setImportOpen]     = useState(false)
+  const [exporting, setExporting]       = useState(false)
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null)
   const [layoutVersion, setLayoutVersion] = useState(0)
+  const [modelVersion, setModelVersion]   = useState(0)
   const parsedDataRef                   = useRef<BotFlowJson | null>(null)
   const spacingRef                      = useRef({ ranksep: 60, nodesep: 40 })
 
@@ -38,39 +44,47 @@ export default function App() {
   }, [isDark])
 
   const toggleTheme = useCallback(() => setIsDark(d => !d), [])
+  const bumpModel   = useCallback(() => setModelVersion(v => v + 1), [])
 
-  function handleGenerate() {
-    if (!jsonText.trim()) {
-      setError('Cole ou importe um JSON antes de gerar o fluxo.')
-      return
-    }
+  /** Relatório de validação vivo, recalculado a cada mutação do modelo. */
+  const report = useMemo(
+    () => hasFlow && parsedDataRef.current ? validateFlow(parsedDataRef.current) : null,
+    [hasFlow, modelVersion],
+  )
+
+  const fail = useCallback((text: string) => setNotice({ level: 'error', text }), [])
+
+  /**
+   * Importa o JSON colado/carregado no modal. Retorna a mensagem de erro
+   * (exibida no próprio modal) ou null em caso de sucesso.
+   */
+  function generateFromText(text: string): string | null {
+    if (!text.trim()) return 'Cole ou importe um JSON antes de gerar o fluxo.'
     let parsed: unknown
     try {
-      parsed = JSON.parse(jsonText)
+      parsed = JSON.parse(text)
     } catch {
-      setError('JSON inválido. Verifique a sintaxe e tente novamente.')
-      return
+      return 'JSON inválido. Verifique a sintaxe e tente novamente.'
     }
     const data = parsed as BotFlowJson
     if (!data?.list || !Array.isArray(data.list)) {
-      setError('O JSON deve conter uma propriedade "list" com o array de intents.')
-      return
+      return 'O JSON deve conter uma propriedade "list" com o array de intents.'
     }
-    if (data.list.length === 0) {
-      setError('A lista de intents está vazia.')
-      return
-    }
+    if (data.list.length === 0) return 'A lista de intents está vazia.'
     try {
       parsedDataRef.current = data
       const result = parseFlow(data, spacingRef.current)
       setNodes(result.nodes)
       setEdges(result.edges)
-      setError(null)
+      setNotice(null)
       setHasFlow(true)
       setSelectedNode(null)
+      setImportOpen(false)
       setLayoutVersion(v => v + 1)
+      bumpModel()
+      return null
     } catch (e) {
-      setError(`Erro ao processar o fluxo: ${e instanceof Error ? e.message : 'desconhecido'}`)
+      return `Erro ao processar o fluxo: ${e instanceof Error ? e.message : 'desconhecido'}`
     }
   }
 
@@ -88,43 +102,22 @@ export default function App() {
     setLayoutVersion(v => v + 1)
   }, [])
 
-  function handleJsonChange(value: string) {
-    setJsonText(value)
-    setError(null)
-  }
-
-  /**
-   * Reconecta o destino de uma aresta: aplica o patch no modelo (fonte de
-   * verdade para exportação) e, só se ele for válido, atualiza o canvas.
-   * O ID da aresta é preservado porque codifica a posição no modelo.
-   */
-  const handleReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
-    const model = parsedDataRef.current
-    if (!model) return
-    const result = applyEdgeReconnect(model, oldEdge.id, oldEdge.target, connection.target)
-    if (!result.ok) {
-      setError(`Não foi possível reconectar: ${result.reason}.`)
-      return
-    }
-    setEdges(eds => reconnectEdge(oldEdge, connection, eds, { shouldReplaceId: false }))
-    setError(null)
-  }, [])
-
   /** Exclui a intenção do modelo (com limpeza de referências) e some com o nó. */
   const deleteNode = useCallback((nodeId: string) => {
     const model = parsedDataRef.current
     if (!model) return false
     const result = applyNodeDelete(model, nodeId)
     if (!result.ok) {
-      setError(`Não foi possível excluir: ${result.reason}.`)
+      fail(`Não foi possível excluir: ${result.reason}.`)
       return false
     }
     setNodes(ns => ns.filter(n => n.id !== nodeId))
     setEdges(buildEdges(model).edges)
     setSelectedNode(prev => prev?.id === nodeId ? null : prev)
-    setError(null)
+    setNotice(null)
+    bumpModel()
     return true
-  }, [])
+  }, [fail, bumpModel])
 
   /**
    * Mudanças de nós do canvas: posição/seleção/dimensões são estado visual;
@@ -140,32 +133,48 @@ export default function App() {
   }, [deleteNode])
 
   /**
-   * Conecta dois nós criando a referência next na primeira condição livre da
-   * origem. A aresta usa o ID posicional do modelo para permitir reconexão
-   * e exclusão posteriores.
+   * Reconecta o destino de uma aresta: aplica o patch no modelo (fonte de
+   * verdade para exportação) e, só se ele for válido, atualiza o canvas.
+   * O ID da aresta é preservado porque codifica a posição no modelo.
+   */
+  const handleReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const result = applyEdgeReconnect(model, oldEdge.id, oldEdge.target, connection.target)
+    if (!result.ok) {
+      fail(`Não foi possível reconectar: ${result.reason}.`)
+      return
+    }
+    setEdges(eds => reconnectEdge(oldEdge, connection, eds, { shouldReplaceId: false }))
+    setNotice(null)
+    bumpModel()
+  }, [fail, bumpModel])
+
+  /**
+   * Conecta dois nós: preenche o primeiro slot de escolha vazio ou o next da
+   * primeira condição livre, e reconstrói as arestas do modelo.
    */
   const handleConnect = useCallback((connection: Connection) => {
     const model = parsedDataRef.current
     if (!model || !connection.source || !connection.target) return
     const result = applyConnect(model, connection.source, connection.target)
     if (!result.ok) {
-      setError(`Não foi possível conectar: ${result.reason}.`)
+      fail(`Não foi possível conectar: ${result.reason}.`)
       return
     }
-    // Reconstrói todas as arestas do modelo: cobre tanto next quanto slots de
-    // escolha, com IDs posicionais e labels (texto do botão) consistentes
     setEdges(buildEdges(model).edges)
-    setError(null)
-  }, [])
+    setNotice(null)
+    bumpModel()
+  }, [fail, bumpModel])
 
   /**
    * Mudanças de aresta vindas do canvas: seleção é aplicada direto; remoção
-   * (Delete/Backspace) só é aplicada se o patch no modelo for válido —
-   * arestas de escolha e externas não são deletáveis.
+   * (Delete/Backspace) só é aplicada se o patch no modelo for válido.
    */
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
     const model = parsedDataRef.current
     const allowed: EdgeChange[] = []
+    let removed = false
     for (const change of changes) {
       if (change.type !== 'remove') {
         allowed.push(change)
@@ -175,13 +184,15 @@ export default function App() {
       const result = applyEdgeDelete(model, change.id)
       if (result.ok) {
         allowed.push(change)
-        setError(null)
+        removed = true
+        setNotice(null)
       } else {
-        setError(`Não foi possível excluir: ${result.reason}.`)
+        fail(`Não foi possível excluir: ${result.reason}.`)
       }
     }
     if (allowed.length) setEdges(eds => applyEdgeChanges(allowed, eds))
-  }, [])
+    if (removed) bumpModel()
+  }, [fail, bumpModel])
 
   /** Cria uma intenção nova (template canônico) na posição do drop da paleta. */
   const handleCreateNode = useCallback((kind: CreatableKind, position: XYPosition) => {
@@ -197,8 +208,9 @@ export default function App() {
       position,
       data: intentToNodeData(intent),
     }])
-    setError(null)
-  }, [])
+    setNotice(null)
+    bumpModel()
+  }, [bumpModel])
 
   /**
    * Pós-edição de conteúdo: refaz o view-model do nó editado e os labels das
@@ -213,23 +225,22 @@ export default function App() {
     setNodes(ns => ns.map(n => n.id === intentId ? { ...n, data } : n))
     setEdges(buildEdges(model).edges)
     setSelectedNode(prev => prev && prev.id === intentId ? { ...prev, data } : prev)
-    setError(null)
-  }, [])
+    setNotice(null)
+    bumpModel()
+  }, [bumpModel])
 
-  function handleExportJson() {
-    const model = parsedDataRef.current
-    if (!model) return
-    const report = validateFlow(model)
-    if (report.errors.length) {
-      const extra = report.errors.length > 1 ? ` (+${report.errors.length - 1} erro(s))` : ''
-      setError(`Export bloqueado — ${report.errors[0]}${extra}.`)
+  function exportJson(model: BotFlowJson) {
+    const validation = validateFlow(model)
+    if (validation.errors.length) {
+      const extra = validation.errors.length > 1 ? ` (+${validation.errors.length - 1} erro(s))` : ''
+      fail(`Export bloqueado — ${validation.errors[0]}${extra}.`)
       return
     }
-    if (report.warnings.length) {
-      const extra = report.warnings.length > 1 ? ` (+${report.warnings.length - 1} aviso(s))` : ''
-      setError(`Exportado com aviso: ${report.warnings[0]}${extra}.`)
+    if (validation.warnings.length) {
+      const extra = validation.warnings.length > 1 ? ` (+${validation.warnings.length - 1} aviso(s))` : ''
+      setNotice({ level: 'warning', text: `Exportado com aviso: ${validation.warnings[0]}${extra}.` })
     } else {
-      setError(null)
+      setNotice({ level: 'success', text: 'JSON exportado.' })
     }
     const blob = new Blob([serializeFlow(model)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -240,6 +251,24 @@ export default function App() {
     URL.revokeObjectURL(url)
   }
 
+  async function handleExport(format: ExportFormat) {
+    const model = parsedDataRef.current
+    if (!model) return
+    if (format === 'json') {
+      exportJson(model)
+      return
+    }
+    setExporting(true)
+    try {
+      await exportFlowImage(nodes, format)
+    } catch (err) {
+      console.error('Erro ao exportar imagem:', err)
+      fail('Não foi possível exportar a imagem.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleNodeClick = useCallback((node: Node<FlowNodeData>) => {
     setSelectedNode(prev => prev?.id === node.id ? null : node)
   }, [])
@@ -248,16 +277,16 @@ export default function App() {
 
   return (
     <ThemeContext.Provider value={isDark}>
-    <div className={`flex h-screen transition-colors duration-200 ${isDark ? 'bg-slate-950' : 'bg-slate-100'}`}>
-      <aside className={`w-96 flex-shrink-0 border-r flex flex-col shadow-sm transition-colors duration-200 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-        <JsonInput
-          value={jsonText}
-          onChange={handleJsonChange}
-          onSubmit={handleGenerate}
-          error={error}
-          themeToggle={<ThemeToggle isDark={isDark} onToggle={toggleTheme} />}
-        />
-      </aside>
+    <div className={`flex flex-col h-screen transition-colors duration-200 ${isDark ? 'bg-slate-950' : 'bg-slate-100'}`}>
+      <TopBar
+        version={pkg.version}
+        hasFlow={hasFlow}
+        report={report}
+        exporting={exporting}
+        themeToggle={<ThemeToggle isDark={isDark} onToggle={toggleTheme} />}
+        onImport={() => setImportOpen(true)}
+        onExport={handleExport}
+      />
 
       <main className="flex-1 relative overflow-hidden">
         {hasFlow ? (
@@ -273,7 +302,6 @@ export default function App() {
               onConnect={handleConnect}
               onEdgesChange={handleEdgesChange}
               onCreateNode={handleCreateNode}
-              onExportJson={handleExportJson}
               onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
               onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
             />
@@ -288,7 +316,7 @@ export default function App() {
             )}
           </>
         ) : (
-          <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+          <div className={`absolute inset-0 flex flex-col items-center justify-center gap-4 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <rect x="3" y="3" width="7" height="4" rx="1" />
               <rect x="14" y="3" width="7" height="4" rx="1" />
@@ -300,11 +328,27 @@ export default function App() {
             </svg>
             <div className="text-center">
               <p className={`text-sm font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Nenhum fluxo carregado</p>
-              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Cole o JSON no painel e clique em Gerar Fluxo</p>
+              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Importe o JSON do bot para visualizar e editar o fluxo</p>
             </div>
+            <button
+              onClick={() => setImportOpen(true)}
+              className="py-2 px-4 text-xs font-semibold text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              Importar JSON
+            </button>
           </div>
         )}
+
+        {notice && <Toast notice={notice} onDismiss={() => setNotice(null)} />}
       </main>
+
+      {importOpen && (
+        <ImportDialog
+          hasFlow={hasFlow}
+          onGenerate={generateFromText}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
     </div>
     </ThemeContext.Provider>
   )

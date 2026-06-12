@@ -8,6 +8,7 @@
  */
 import { chromium } from 'playwright'
 import { readFileSync } from 'node:fs'
+import { loadFlow, exportJson } from './lib/loadFlow.mjs'
 
 const baseUrl = process.argv[2] ?? 'http://localhost:5173/Fluxo-Bot/'
 const sample = readFileSync(new URL('../samples/sample01.json', import.meta.url), 'utf-8')
@@ -20,11 +21,7 @@ function fail(msg) {
 const browser = await chromium.launch()
 try {
   const page = await browser.newPage()
-  await page.goto(baseUrl, { waitUntil: 'networkidle' })
-
-  await page.locator('textarea').fill(sample)
-  await page.getByRole('button', { name: /gerar fluxo/i }).click()
-  await page.waitForSelector('.react-flow__node', { timeout: 10_000 })
+  await loadFlow(page, baseUrl, sample)
 
   const nodeCount = await page.locator('.react-flow__node').count()
   const edgeCount = await page.locator('.react-flow__edge').count()
@@ -38,11 +35,7 @@ try {
   if (reconnectAnchors < 1) fail('nenhuma aresta reconectável encontrada')
 
   // Exportar JSON e comparar com o importado (round-trip)
-  const downloadPromise = page.waitForEvent('download', { timeout: 10_000 })
-  await page.getByTitle('Exportar o JSON do fluxo (inclui edições de conexões)').click()
-  const download = await downloadPromise
-  const path = await download.path()
-  const exported = JSON.parse(readFileSync(path, 'utf-8'))
+  const exported = await exportJson(page)
   const original = JSON.parse(sample)
   const equal = JSON.stringify(exported) === JSON.stringify(original)
   console.log(`round-trip exportado idêntico ao importado: ${equal}`)

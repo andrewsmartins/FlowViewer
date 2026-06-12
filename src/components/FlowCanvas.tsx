@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type DragEvent } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, useReactFlow, type Node, type Edge, type NodeMouseHandler, type MiniMapNodeProps, type NodeChange, type EdgeChange, type Connection, type XYPosition } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { NodePalette, PALETTE_DRAG_TYPE } from './NodePalette'
+import { CanvasControls } from './CanvasControls'
 import { isCreatableKind, type CreatableKind } from '../utils/intentTemplates'
 import { StartNode }       from './nodes/StartNode'
 import { ChoiceNode }      from './nodes/ChoiceNode'
@@ -11,7 +12,6 @@ import { DefaultNode }     from './nodes/DefaultNode'
 import { WaitNode }        from './nodes/WaitNode'
 import { SetDataNode }     from './nodes/SetDataNode'
 import { ExternalBotNode } from './nodes/ExternalBotNode'
-import { ExportControls }  from './ExportControls'
 import type { FlowNodeData } from '../types'
 
 const nodeTypes = {
@@ -52,7 +52,6 @@ interface FlowCanvasProps {
   onConnect: (connection: Connection) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onCreateNode: (kind: CreatableKind, position: XYPosition) => void
-  onExportJson: () => void
   onSpacingIncrease: () => void
   onSpacingDecrease: () => void
 }
@@ -65,7 +64,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
   )
 }
 
-function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onExportJson, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
+function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
 
   const handleNodeClick: NodeMouseHandler = useCallback(
@@ -115,7 +114,7 @@ function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onN
       />
       <LayoutFitter layoutVersion={layoutVersion} />
       <NodePalette />
-      <ExportControls onExportJson={onExportJson} onSpacingIncrease={onSpacingIncrease} onSpacingDecrease={onSpacingDecrease} />
+      <CanvasControls onSpacingIncrease={onSpacingIncrease} onSpacingDecrease={onSpacingDecrease} />
     </ReactFlow>
     </div>
   )

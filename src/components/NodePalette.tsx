@@ -55,6 +55,16 @@ export function NodePalette() {
             {KIND_LABELS[kind]}
           </div>
         ))}
+
+        {/* Tipos que existem no fluxo mas não são criáveis — papel de legenda */}
+        <div className={`flex flex-col gap-1 pt-1 mt-0.5 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+          {[{ color: '#10b981', label: 'Início' }, { color: '#f59e0b', label: 'Outro Bot' }].map(item => (
+            <div key={item.label} className={`flex items-center gap-2 px-2 py-0.5 text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+              {item.label}
+            </div>
+          ))}
+        </div>
       </div>
     </Panel>
   )
