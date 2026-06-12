@@ -11,6 +11,7 @@ interface TopBarProps {
   exporting: boolean
   themeToggle: React.ReactNode
   onImport: () => void
+  onNewFlow: () => void
   onExport: (format: ExportFormat) => void
 }
 
@@ -27,7 +28,7 @@ function useClickOutside(onOutside: () => void) {
   return ref
 }
 
-export function TopBar({ version, hasFlow, report, exporting, themeToggle, onImport, onExport }: TopBarProps) {
+export function TopBar({ version, hasFlow, report, exporting, themeToggle, onImport, onNewFlow, onExport }: TopBarProps) {
   const isDark = useTheme()
   const [exportOpen, setExportOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
@@ -57,6 +58,10 @@ export function TopBar({ version, hasFlow, report, exporting, themeToggle, onImp
       </div>
 
       <div className="flex items-center gap-2 ml-4">
+        <button className={btnCls} onClick={onNewFlow}>
+          <PlusIcon /> Novo fluxo
+        </button>
+
         <button className={btnCls} onClick={onImport}>
           <UploadIcon /> Importar
         </button>
@@ -124,6 +129,14 @@ export function TopBar({ version, hasFlow, report, exporting, themeToggle, onImp
         {themeToggle}
       </div>
     </header>
+  )
+}
+
+function PlusIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
   )
 }
 

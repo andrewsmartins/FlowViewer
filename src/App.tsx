@@ -3,13 +3,14 @@ import { reconnectEdge, applyEdgeChanges, applyNodeChanges, type Connection, typ
 import { FlowCanvas }    from './components/FlowCanvas'
 import { TopBar, type ExportFormat } from './components/TopBar'
 import { ImportDialog }  from './components/ImportDialog'
+import { NewFlowDialog } from './components/NewFlowDialog'
 import { DetailPanel }   from './components/DetailPanel'
 import { Toast, type Notice } from './components/Toast'
 import { ThemeToggle }   from './components/ThemeToggle'
 import { ThemeContext }  from './contexts/ThemeContext'
 import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
-import { createIntentTemplate, type CreatableKind } from './utils/intentTemplates'
+import { createIntentTemplate, createStartIntent, type CreatableKind } from './utils/intentTemplates'
 import { validateFlow } from './utils/validateFlow'
 import { exportFlowImage } from './utils/exportImage'
 import type { BotFlowJson, FlowNodeData } from './types'
@@ -26,6 +27,7 @@ export default function App() {
   const [notice, setNotice]             = useState<Notice | null>(null)
   const [hasFlow, setHasFlow]           = useState(false)
   const [importOpen, setImportOpen]     = useState(false)
+  const [newFlowOpen, setNewFlowOpen]   = useState(false)
   const [exporting, setExporting]       = useState(false)
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null)
   const [layoutVersion, setLayoutVersion] = useState(0)
@@ -72,20 +74,32 @@ export default function App() {
     }
     if (data.list.length === 0) return 'A lista de intents está vazia.'
     try {
-      parsedDataRef.current = data
-      const result = parseFlow(data, spacingRef.current)
-      setNodes(result.nodes)
-      setEdges(result.edges)
-      setNotice(null)
-      setHasFlow(true)
-      setSelectedNode(null)
-      setImportOpen(false)
-      setLayoutVersion(v => v + 1)
-      bumpModel()
+      loadModel(data)
       return null
     } catch (e) {
       return `Erro ao processar o fluxo: ${e instanceof Error ? e.message : 'desconhecido'}`
     }
+  }
+
+  /** Carrega um modelo no editor (importação ou fluxo novo). */
+  function loadModel(data: BotFlowJson) {
+    parsedDataRef.current = data
+    const result = parseFlow(data, spacingRef.current)
+    setNodes(result.nodes)
+    setEdges(result.edges)
+    setNotice(null)
+    setHasFlow(true)
+    setSelectedNode(null)
+    setImportOpen(false)
+    setNewFlowOpen(false)
+    setLayoutVersion(v => v + 1)
+    bumpModel()
+  }
+
+  /** Cria um fluxo do zero com a intenção de início canônica do botId informado. */
+  function handleCreateFlow(botId: string) {
+    loadModel({ list: [createStartIntent(botId)] })
+    setNotice({ level: 'success', text: 'Fluxo criado. Arraste tipos da paleta para adicionar intenções.' })
   }
 
   const handleSpacingChange = useCallback((delta: number) => {
@@ -285,6 +299,7 @@ export default function App() {
         exporting={exporting}
         themeToggle={<ThemeToggle isDark={isDark} onToggle={toggleTheme} />}
         onImport={() => setImportOpen(true)}
+        onNewFlow={() => setNewFlowOpen(true)}
         onExport={handleExport}
       />
 
@@ -347,6 +362,14 @@ export default function App() {
           hasFlow={hasFlow}
           onGenerate={generateFromText}
           onClose={() => setImportOpen(false)}
+        />
+      )}
+
+      {newFlowOpen && (
+        <NewFlowDialog
+          hasFlow={hasFlow}
+          onCreate={handleCreateFlow}
+          onClose={() => setNewFlowOpen(false)}
         />
       )}
     </div>

@@ -118,3 +118,26 @@ export function createIntentTemplate(kind: CreatableKind, botId: string, name: s
 export function isCreatableKind(kind: string): kind is CreatableKind {
   return (CREATABLE_KINDS as readonly string[]).includes(kind)
 }
+
+/**
+ * Intenção inicial de um fluxo novo, na forma observada nos bots reais:
+ * ID especial `{botId}-start`, categoria `start` e condição "Start" sem ação.
+ */
+export function createStartIntent(botId: string): BotIntent {
+  const cond = createConditionTemplate()
+  cond.name = 'Start'
+  const now = new Date().toUTCString()
+  return {
+    id: `${botId}-start`,
+    botId,
+    name: 'start',
+    category: 'start',
+    keywords: [],
+    context: null,
+    priority: 0,
+    conditions: [cond],
+    createdAt: now,
+    updatedAt: now,
+    advanced: { active: false, endpointId: null },
+  }
+}

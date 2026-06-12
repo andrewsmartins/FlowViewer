@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { createIntentTemplate, CREATABLE_KINDS, isCreatableKind } from './intentTemplates'
+import { createIntentTemplate, createStartIntent, CREATABLE_KINDS, isCreatableKind } from './intentTemplates'
+import { validateFlow } from './validateFlow'
 import { applyConnect, applyEdgeDelete, serializeFlow, parseEdgeId } from './editFlow'
 import { parseFlow, buildNextEdge } from './parseFlow'
 import type { BotFlowJson } from '../types'
@@ -50,6 +51,19 @@ describe('createIntentTemplate', () => {
     const a = createIntentTemplate('defaultNode', BOT_ID, 'a')
     const b = createIntentTemplate('defaultNode', BOT_ID, 'b')
     expect(a.id).not.toBe(b.id)
+  })
+
+  it('createStartIntent: ID especial, categoria start e renderiza como startNode', () => {
+    const start = createStartIntent(BOT_ID)
+    expect(start.id).toBe(`${BOT_ID}-start`)
+    expect(start.category).toBe('start')
+    expect(start.conditions[0].name).toBe('Start')
+
+    const json = { list: [start] }
+    expect(parseFlow(json).nodes[0].type).toBe('startNode')
+    const report = validateFlow(json)
+    expect(report.errors).toEqual([])
+    expect(report.warnings.some(w => w.includes('início'))).toBe(false)
   })
 
   it('isCreatableKind rejeita tipos não criáveis', () => {
