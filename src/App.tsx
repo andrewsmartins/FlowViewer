@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { Node, Edge } from '@xyflow/react'
+import { reconnectEdge, type Connection, type Node, type Edge } from '@xyflow/react'
 import { FlowCanvas }    from './components/FlowCanvas'
 import { JsonInput }     from './components/JsonInput'
 import { DetailPanel }   from './components/DetailPanel'
 import { ThemeToggle }   from './components/ThemeToggle'
 import { ThemeContext }  from './contexts/ThemeContext'
 import { parseFlow } from './utils/parseFlow'
+import { applyEdgeReconnect, serializeFlow } from './utils/editFlow'
 import type { BotFlowJson, FlowNodeData } from './types'
 
 const SPACING_STEP = 60
@@ -87,6 +88,35 @@ export default function App() {
     setError(null)
   }
 
+  /**
+   * Reconecta o destino de uma aresta: aplica o patch no modelo (fonte de
+   * verdade para exportação) e, só se ele for válido, atualiza o canvas.
+   * O ID da aresta é preservado porque codifica a posição no modelo.
+   */
+  const handleReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const result = applyEdgeReconnect(model, oldEdge.id, oldEdge.target, connection.target)
+    if (!result.ok) {
+      setError(`Não foi possível reconectar: ${result.reason}.`)
+      return
+    }
+    setEdges(eds => reconnectEdge(oldEdge, connection, eds, { shouldReplaceId: false }))
+    setError(null)
+  }, [])
+
+  function handleExportJson() {
+    const model = parsedDataRef.current
+    if (!model) return
+    const blob = new Blob([serializeFlow(model)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.download = 'fluxo.json'
+    a.href = url
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleNodeClick = useCallback((node: Node<FlowNodeData>) => {
     setSelectedNode(prev => prev?.id === node.id ? null : node)
   }, [])
@@ -114,6 +144,8 @@ export default function App() {
               edges={edges}
               isDark={isDark}
               onNodeClick={handleNodeClick}
+              onReconnect={handleReconnect}
+              onExportJson={handleExportJson}
               onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
               onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
             />

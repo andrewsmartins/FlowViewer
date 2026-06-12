@@ -127,6 +127,10 @@ function edgeStyle(external: boolean) {
   return {
     type: 'smoothstep' as const,
     animated: external,
+    // Apenas a ponta de destino é editável: mover a origem mudaria de qual
+    // condição a aresta nasce, o que é ambíguo. Arestas externas apontam para
+    // nós sintéticos (outro bot) e não são editáveis.
+    reconnectable: external ? false : ('target' as const),
     style: { stroke: external ? '#f59e0b' : '#94a3b8' },
     labelStyle: { fontSize: 11, fill: '#475569' },
     labelBgStyle: { fill: '#f8fafc', fillOpacity: 0.9 },

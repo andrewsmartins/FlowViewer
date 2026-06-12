@@ -38,11 +38,12 @@ function triggerDownload(dataUrl: string, format: 'png' | 'svg') {
 }
 
 interface ExportControlsProps {
+  onExportJson: () => void
   onSpacingIncrease: () => void
   onSpacingDecrease: () => void
 }
 
-export function ExportControls({ onSpacingIncrease, onSpacingDecrease }: ExportControlsProps) {
+export function ExportControls({ onExportJson, onSpacingIncrease, onSpacingDecrease }: ExportControlsProps) {
   const isDark = useTheme()
   const { getNodes } = useReactFlow()
   const [exporting, setExporting] = useState<'png' | 'svg' | null>(null)
@@ -120,6 +121,18 @@ export function ExportControls({ onSpacingIncrease, onSpacingDecrease }: ExportC
         <div className={`w-px ${divider}`} />
 
         <button
+          onClick={onExportJson}
+          disabled={busy}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${btnText} ${btnHover}`}
+          title="Exportar o JSON do fluxo (inclui edições de conexões)"
+        >
+          <JsonIcon />
+          JSON
+        </button>
+
+        <div className={`w-px ${divider}`} />
+
+        <button
           onClick={onSpacingDecrease}
           className={`w-7 h-7 flex items-center justify-center rounded-md text-base font-medium leading-none transition-colors ${btnText} ${btnHover}`}
           title="Diminuir espaçamento"
@@ -149,6 +162,15 @@ function ImageIcon() {
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <path d="m21 15-5-5L5 21" />
+    </svg>
+  )
+}
+
+function JsonIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
     </svg>
   )
 }

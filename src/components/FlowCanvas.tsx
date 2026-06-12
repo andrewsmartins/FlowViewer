@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { ReactFlow, Background, Controls, MiniMap, useReactFlow, applyNodeChanges, type Node, type Edge, type NodeMouseHandler, type MiniMapNodeProps, type NodeChange } from '@xyflow/react'
+import { ReactFlow, Background, Controls, MiniMap, useReactFlow, applyNodeChanges, type Node, type Edge, type NodeMouseHandler, type MiniMapNodeProps, type NodeChange, type Connection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { StartNode }       from './nodes/StartNode'
 import { ChoiceNode }      from './nodes/ChoiceNode'
@@ -43,11 +43,13 @@ interface FlowCanvasProps {
   edges: Edge[]
   isDark: boolean
   onNodeClick: (node: Node<FlowNodeData>) => void
+  onReconnect: (oldEdge: Edge, connection: Connection) => void
+  onExportJson: () => void
   onSpacingIncrease: () => void
   onSpacingDecrease: () => void
 }
 
-export function FlowCanvas({ nodes: propNodes, edges, isDark, onNodeClick, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
+export function FlowCanvas({ nodes: propNodes, edges, isDark, onNodeClick, onReconnect, onExportJson, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
   const [nodes, setNodes] = useState(propNodes)
 
   useEffect(() => { setNodes(propNodes) }, [propNodes])
@@ -67,6 +69,7 @@ export function FlowCanvas({ nodes: propNodes, edges, isDark, onNodeClick, onSpa
       nodes={nodes}
       edges={edges}
       onNodesChange={handleNodesChange}
+      onReconnect={onReconnect}
       nodeTypes={nodeTypes}
       onNodeClick={handleNodeClick}
       minZoom={0.1}
@@ -81,7 +84,7 @@ export function FlowCanvas({ nodes: propNodes, edges, isDark, onNodeClick, onSpa
         nodeComponent={MiniMapNodeRect}
       />
       <LayoutFitter nodeCount={propNodes.length} />
-      <ExportControls onSpacingIncrease={onSpacingIncrease} onSpacingDecrease={onSpacingDecrease} />
+      <ExportControls onExportJson={onExportJson} onSpacingIncrease={onSpacingIncrease} onSpacingDecrease={onSpacingDecrease} />
     </ReactFlow>
   )
 }
