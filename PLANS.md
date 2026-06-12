@@ -168,12 +168,32 @@ Implementação efetiva:
 - Aprendizado Playwright: não criar nós de teste no canto inferior direito —
   o MiniMap intercepta o mouse e o gesto de conexão nunca inicia.
 
-### Fase 4 (opcional) — Push direto via API
-- Configuração de token de sessão (nunca persistir em repo; usar campo na UI ou
-  variável de ambiente local).
-- Para cada intent alterado/criado: `POST /v1/{botId}/intents/{id}`.
-- **Sempre testar em bot sandbox — nunca em bot de cliente em produção.**
-- Caminho infeliz: 401 (token expirado), 4xx de validação — exibir erro claro.
+### Fase 4 — Push direto via API (REVISADA 2026-06-12 — pronta para teste guiado)
+
+Revisão de segurança feita em 2026-06-12. Protocolo completo de teste em
+**docs/TESTE-FASE4.md**; sonda read-only em **scripts/probe-api.mjs**.
+
+Decisões do redesenho seguro:
+- **Fase 4a primeiro: CLI, não UI.** `scripts/push-flow.mjs` (a construir após
+  a sonda) lê o fluxo.json exportado + `$env:OMNI_TOKEN` e faz os POSTs.
+  Motivos: CORS pode bloquear o navegador (a API atende `app.omni.chat`;
+  sonda confirma), e um script com flags explícitas (`--only <id>`,
+  `--dry-run`) é mais auditável que um botão.
+- **Fase 4b (UI no Fluxo) só se**: CORS permitir E a 4a se provar estável.
+  Guardrails da UI: token em memória (nunca localStorage), digitar os últimos
+  caracteres do botId para confirmar, checkbox de bot de testes, backup
+  automático (GET) antes do primeiro POST, relatório por intenção com botão
+  "copiar relatório" sanitizado (sem token).
+- **Backup-first sempre**: nenhuma escrita sem GET prévio salvo em samples/.
+- **Push sequencial com stop-on-first-error** e relatório do que entrou.
+- Hipótese a confirmar na Etapa 3 do protocolo: salvar via API altera só o
+  RASCUNHO (existe `POST /v1/{botId}/publish` separado, além de
+  `versions`/`restore`) — se confirmada, o risco de afetar canal ao vivo
+  durante o teste é estruturalmente baixo.
+- Riscos mapeados: push no bot errado (mitigado por confirmação explícita do
+  botId), push parcial (sequencial + relatório + backup), schema rejeitado
+  (a tela da Omni é o validador final — Etapa 1 do protocolo), token vazado
+  (nunca logar/persistir; instrução de rotação no protocolo).
 
 ### Fase 5 — Redesign UI: de visualizador para editor ✅ CONCLUÍDA (v0.10–0.12)
 
