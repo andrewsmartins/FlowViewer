@@ -5,9 +5,10 @@ import { JsonInput }     from './components/JsonInput'
 import { DetailPanel }   from './components/DetailPanel'
 import { ThemeToggle }   from './components/ThemeToggle'
 import { ThemeContext }  from './contexts/ThemeContext'
-import { parseFlow, intentToNodeData, buildNextEdge } from './utils/parseFlow'
+import { parseFlow, intentToNodeData, buildNextEdge, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, serializeFlow } from './utils/editFlow'
 import { createIntentTemplate, type CreatableKind } from './utils/intentTemplates'
+import { validateFlow } from './utils/validateFlow'
 import type { BotFlowJson, FlowNodeData } from './types'
 
 const SPACING_STEP = 60
@@ -179,9 +180,37 @@ export default function App() {
     setError(null)
   }, [])
 
+  /**
+   * Pós-edição de conteúdo: refaz o view-model do nó editado e os labels das
+   * arestas (texto de botão vira label de aresta de escolha), sem relayout.
+   */
+  const handleApplyEdit = useCallback((intentId: string) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const intent = model.list.find(i => i.id === intentId)
+    if (!intent) return
+    const data = intentToNodeData(intent)
+    setNodes(ns => ns.map(n => n.id === intentId ? { ...n, data } : n))
+    setEdges(buildEdges(model).edges)
+    setSelectedNode(prev => prev && prev.id === intentId ? { ...prev, data } : prev)
+    setError(null)
+  }, [])
+
   function handleExportJson() {
     const model = parsedDataRef.current
     if (!model) return
+    const report = validateFlow(model)
+    if (report.errors.length) {
+      const extra = report.errors.length > 1 ? ` (+${report.errors.length - 1} erro(s))` : ''
+      setError(`Export bloqueado — ${report.errors[0]}${extra}.`)
+      return
+    }
+    if (report.warnings.length) {
+      const extra = report.warnings.length > 1 ? ` (+${report.warnings.length - 1} aviso(s))` : ''
+      setError(`Exportado com aviso: ${report.warnings[0]}${extra}.`)
+    } else {
+      setError(null)
+    }
     const blob = new Blob([serializeFlow(model)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -229,7 +258,12 @@ export default function App() {
               onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
             />
             {selectedNode && (
-              <DetailPanel node={selectedNode} onClose={handleClosePanel} />
+              <DetailPanel
+                node={selectedNode}
+                intent={parsedDataRef.current?.list.find(i => i.id === selectedNode.id) ?? null}
+                onApply={handleApplyEdit}
+                onClose={handleClosePanel}
+              />
             )}
           </>
         ) : (
