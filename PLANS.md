@@ -1,7 +1,10 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
-> Última atualização: 2026-06-11. Este arquivo orienta sessões futuras do Claude Code.
-> Status: **Fases 1–3b e 5 (a, b, c) concluídas (v0.12.0, branch `feat/editor-roundtrip`). Fase 4 (push API) em STANDBY por decisão do Andy (2026-06-11) — parte mais sensível.**
+> Última atualização: 2026-06-15. Este arquivo orienta sessões futuras do Claude Code.
+> Status: **Fases 1–3b, 4a (push CLI) e 5 (a, b, c) concluídas (v0.12.1, branch `feat/visual-editor`).**
+> **Fase 4a PRONTA e validada ponta a ponta** — todos os critérios do protocolo
+> cumpridos, incl. caminhos infelizes e rollback real (ver docs/fase4-resultados.md,
+> Etapa 4, 2026-06-15). Próximo passo em aberto: **Fase 4b** (push pela UI do Fluxo).
 
 ## Contexto
 
@@ -177,6 +180,15 @@ Implementação efetiva:
 > da Omni abre/salva as intenções, simulador percorre o fluxo, publicado
 > intocado. Decisão pendente: Fase 4b (mesmo push pela UI do Fluxo — CORS
 > permite) ou manter só CLI.
+>
+> **Fechamento do protocolo (2026-06-15):** caminhos infelizes da Etapa 2 e
+> rollback real concluídos — todos os 4 critérios de "pronta" cumpridos
+> (docs/fase4-resultados.md, Etapa 4). Achados: a API aceita payloads inválidos
+> (sem `conditions`, ref `next` quebrada) silenciosamente, e `DELETE` é de
+> consistência eventual (rollback agora reverifica em laço). **Pré-requisito da
+> Fase 4b:** promover "ref interna quebrada" de aviso para ERRO bloqueante em
+> `src/utils/validateFlow.ts` (a plataforma a trata como erro a preencher), já
+> que o Fluxo precisa validar antes do push — o servidor não barra lixo.
 
 #### Histórico do planejamento (REVISADO 2026-06-12)
 

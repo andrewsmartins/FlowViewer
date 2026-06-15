@@ -36,8 +36,24 @@ Bot de testes: `2a3859ff-62d5-4c01-ae60-6ae2f812e786` (sandbox, sem canais de cl
 | botId inexistente/alheio | HTTP 403 | mesmo código; sem vazamento |
 | ID novo no POST | ID ignorado, outro gerado | ver achado da Etapa 1 |
 
-(Pendentes para rodar manualmente se quiser cobertura total: intent malformada
-sem `conditions`, push duplicado da mesma intenção.)
+### Pendências da Etapa 2 — concluídas (2026-06-15)
+
+Rodadas via `scripts/etapa2-unhappy.mjs --bot <botTestes> --yes` (backup automático
+antes de escrever). Resultado da API + validação manual na tela da Omni:
+
+| Teste | API | Tela / simulador da Omni |
+|---|---|---|
+| **Intent sem `conditions`** | HTTP 200 — **aceita** (servidor não valida) | Aparece na lista sem quebrar; formulário abre e edita normal — a tela **backfilla uma "Condição Padrão" vazia**, como intenção recém-criada (só erros no console, sem impacto funcional) |
+| **Push duplicado** (mesmo POST 2×) | HTTP 200/200 — **duplica** (2 IDs distintos) | — (confirma o achado da Etapa 1: POST com ID novo sempre gera ID novo, então re-rodar o push do mesmo arquivo cria cópias) |
+| **Ref `next` quebrada** (UUID inexistente) | HTTP 200 — **aceita e armazena** a ref fantasma (confirmado via GET) | Formulário abre; o campo **"Próximo Fluxo" sinaliza erro e fica vazio, exigindo preenchimento**. No simulador, a intenção envia a mensagem e **volta ao Start** (fallback padrão do sistema) |
+
+**Conclusão para a Fase 4b:** a API aceita payloads inválidos silenciosamente
+(sem `conditions`, refs quebradas). Logo o **Fluxo precisa ser o validador antes
+do push** — não dá para confiar no servidor para barrar. Reforça a decisão de
+bloquear o push na UI quando `validateFlow` acusar **erros** (ID duplicado, sem
+nome, sem condições). Ref interna quebrada hoje é só *aviso* no `validateFlow`;
+como a plataforma a trata como erro a preencher, vale **promover ref quebrada a
+erro bloqueante** antes de habilitar o push pela UI.
 
 ## Etapa 3 — Fluxo encadeado + remapeamento (2026-06-12)
 
@@ -59,6 +75,45 @@ categoria certas, formulários abrem sem erro, mensagem configurada correta,
 **salvar pela própria tela da Omni funciona** (compatibilidade total do
 template), simulador percorre a cadeia start → mensagem → espera, e o
 publicado permanece intocado. **Fase 4a validada ponta a ponta.**
+
+## Etapa 4 — DELETE é de consistência eventual + validação do rollback (2026-06-15)
+
+Ao limpar o bot de testes (rollback do estado de 8 intenções para só o `start`),
+descobrimos um comportamento crítico da API:
+
+- **`DELETE /v1/{botId}/intents/{id}` responde 200 mas a remoção é EVENTUAL.**
+  Um GET logo após uma passada de deletes ainda lista parte das intenções
+  "deletadas" (lag de réplica de leitura). Reproduzido: passada 1 levou 8→5,
+  passada 2 levou 5→3; só um laço **deletar → esperar ~4s → reverificar**
+  convergiu para 1 (só o `start`). Dois GETs seguidos davam o mesmo número, ou
+  seja, não era o GET pegando estado intermediário — a réplica estabiliza atrás.
+- **Correção aplicada:** `scripts/rollback-bot.mjs` virou um laço com
+  reverificação (até 6 rodadas, espera de 4s) e só reporta sucesso quando o GET
+  confirma que restou apenas o que o backup mantém — antes ele confiava no 200 e
+  podia declarar "concluído" deixando lixo no bot.
+- **Implicação para a Fase 4b:** qualquer operação que dependa de "ler logo após
+  escrever/deletar" precisa tolerar lag. O push (Fase 4a) não é afetado porque o
+  remapeamento usa o ID devolvido no corpo do POST, não um GET subsequente.
+
+**Critério 4 do protocolo (backup + restauração na prática) — CUMPRIDO.** O
+backup limpo (`samples/backup-...-03-15-08-066Z.json`, só o `start`) restaurou o
+bot ao estado pristino: GET final = 1 intenção, `start.conditions[0].next.intent`
+= `""` (sem referência pendente). Todas as operações ficaram **exclusivamente no
+bot `2a3859ff-62d5-4c01-ae60-6ae2f812e786`** (endpoints sempre `/v1/{botId}/...`).
+
+### Resumo dos critérios de "pronta" (TESTE-FASE4.md)
+
+1. Etapas 1–3 concluídas sem surpresas não documentadas — **OK**.
+2. Push não publica sozinho (só rascunho) — **OK** (confirmado pelo Andy).
+3. Caminhos infelizes da Etapa 2 com comportamento conhecido e tratado — **OK**
+   (token inválido/botId alheio → 403; sem `conditions` → API aceita, tela
+   backfilla; push duplicado → duplica; ref quebrada → API aceita, tela marca
+   erro a preencher e simulador cai no Start).
+4. Backup + restauração validados na prática — **OK** (esta etapa).
+
+**Fase 4a está PRONTA.** Único débito técnico levantado: promover "ref interna
+quebrada" de aviso para erro bloqueante no `validateFlow` antes de habilitar o
+push pela UI (Fase 4b), já que a plataforma a trata como erro.
 
 ## Pendências para validação MANUAL na tela da Omni
 

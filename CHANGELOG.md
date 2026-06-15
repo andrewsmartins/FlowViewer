@@ -16,6 +16,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ### Adicionado
 - **Fase 4a: push para a plataforma via CLI** (`scripts/push-flow.mjs`) — envia o JSON exportado para o **rascunho** do bot em 2 passadas (cria → captura IDs reais do servidor → remapeia `next.intent`/`choices`/`error.next`/`fallbackIntents` → atualiza), pois a API ignora IDs novos no POST e gera outros; guardrails: dry-run sem `--yes`, `--bot` obrigatório e conferido contra o arquivo, backup automático em `samples/` e parada no primeiro erro; rollback via `scripts/rollback-bot.mjs`. Validado ponta a ponta na plataforma real ([docs/fase4-resultados.md](docs/fase4-resultados.md))
 - **Guia de uso** ([docs/GUIA-DE-USO.md](docs/GUIA-DE-USO.md)) — passo a passo de todas as features atuais: importar/criar do zero, edição no canvas, painel de detalhes, undo/redo, validação, exportação, push CLI e atalhos de teclado
+- **Testes de caminhos infelizes da API** (`scripts/etapa2-unhappy.mjs`) — roda os 3 testes pendentes da Etapa 2 do protocolo da Fase 4 (intent sem `conditions`, push duplicado, referência `next` quebrada) com os mesmos guardrails do push: dry-run sem `--yes`, `--bot` obrigatório, backup automático e relatório sanitizado
+
+### Alterado
+- **Referência interna quebrada agora é ERRO bloqueante** (antes era só aviso) no `validateFlow` — um `next.intent` apontando para um ID inexistente passa a impedir o export. Motivo: a API aceita a ref quebrada silenciosamente (HTTP 200), mas a tela da Omni a trata como erro a preencher e o simulador cai no Start; como o servidor não barra payloads inválidos, o Fluxo precisa barrar antes do push (pré-requisito da Fase 4b). Validado na Etapa 2 da Fase 4 ([docs/fase4-resultados.md](docs/fase4-resultados.md))
+
+### Corrigido
+- **Rollback confiável apesar da consistência eventual da API** (`scripts/rollback-bot.mjs`) — o `DELETE` da plataforma responde 200 mas a remoção é eventual (um GET logo depois ainda lista parte das intenções "deletadas"); o script virou um laço **deletar → esperar → reverificar** (até 6 rodadas) e só reporta sucesso quando o GET confirma o estado final, em vez de confiar no 200 de uma passada só. Detalhes em [docs/fase4-resultados.md](docs/fase4-resultados.md)
+- **Saída limpa dos scripts de API no Windows** (`etapa2-unhappy.mjs`, `rollback-bot.mjs`) — trocado `process.exit()` por `process.exitCode` nos caminhos pós-`fetch`, que disparava uma assertion do libuv (`async.c`) ao encerrar com sockets ainda abertos
 
 ---
 

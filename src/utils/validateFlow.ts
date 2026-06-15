@@ -7,6 +7,12 @@ export interface ValidationReport {
   warnings: string[]
 }
 
+// Por que ref interna quebrada é ERRO (e não aviso): a API aceita silenciosamente
+// um `next.intent` apontando para um ID inexistente (HTTP 200), mas a tela da Omni
+// marca o campo "Próximo Fluxo" como erro a preencher e o simulador cai no Start.
+// Como o servidor não barra lixo, o Fluxo precisa barrar antes do push.
+// Validado na Etapa 2 da Fase 4 — ver docs/fase4-resultados.md (2026-06-15).
+
 function getRefIds(json: BotFlowJson): { id: string; botId: string; from: string }[] {
   const refs: { id: string; botId: string; from: string }[] = []
   for (const intent of json.list) {
@@ -27,8 +33,8 @@ function getRefIds(json: BotFlowJson): { id: string; botId: string; from: string
 
 /**
  * Valida o modelo antes do export. Erros bloqueiam (IDs duplicados, intenção
- * sem nome/condições); avisos informam (referências quebradas, choice com
- * botões dessincronizados) mas não impedem o download.
+ * sem nome/condições, referência interna quebrada); avisos informam (fluxo sem
+ * início, choice com botões dessincronizados) mas não impedem o download.
  */
 export function validateFlow(json: BotFlowJson): ValidationReport {
   const errors: string[] = []
@@ -50,7 +56,7 @@ export function validateFlow(json: BotFlowJson): ValidationReport {
   for (const ref of getRefIds(json)) {
     const isExternal = ref.botId && ref.botId !== mainBotId
     if (!isExternal && !ids.has(ref.id)) {
-      warnings.push(`"${ref.from}" referencia uma intenção inexistente (${ref.id})`)
+      errors.push(`"${ref.from}" referencia uma intenção inexistente (${ref.id})`)
     }
   }
 
