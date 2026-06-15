@@ -13,6 +13,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Alterado
+- **Troca de `dagre@0.8.5` por `@dagrejs/dagre@3.0.0`** — o `dagre` original está sem manutenção; o fork `@dagrejs/dagre` é o sucessor mantido pela mesma comunidade, com **API idêntica**, então a mudança se resume ao import em [src/utils/parseFlow.ts](src/utils/parseFlow.ts). O fork **embarca os próprios tipos**, permitindo remover a dependência `@types/dagre`. Build (tsc + vite) e os 100 testes Vitest seguem verdes; smoke Playwright (`smoke-phase5.mjs`) confirma o layout renderizando no browser. Bundle reduziu de ~526 kB para ~477 kB.
+
 ---
 
 ## [0.13.0] - 2026-06-15

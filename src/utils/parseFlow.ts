@@ -1,4 +1,4 @@
-import dagre from 'dagre'
+import dagre from '@dagrejs/dagre'
 import type { Edge, Node } from '@xyflow/react'
 import type {
   BotFlowJson, BotIntent, Condition, Action,
