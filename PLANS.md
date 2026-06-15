@@ -1,6 +1,6 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
-> Última atualização: 2026-06-15. Este arquivo orienta sessões futuras do Claude Code.
+> Última atualização: 2026-06-15 (Fase 6 planejada). Este arquivo orienta sessões futuras do Claude Code.
 > Status: **Fases 1–5 concluídas, incl. 4a (push CLI) e 4b (push + restore pela
 > UI). v0.13.0, MERGEADO NA `main`.**
 > **MERGE NA MAIN CONCLUÍDO (2026-06-15):** a `feat/visual-editor` (v0.13.0) está
@@ -23,10 +23,11 @@
 > Validação manual aprovada pelo Andy (fluxo completo e só-start). Ver
 > docs/fase4-resultados.md (seção "Fase 4b") e seção "Fase 4b" abaixo.
 >
-> **Próximos passos sugeridos (próxima sessão):** (1) merge da `feat/visual-editor`
-> na `main` (abrir PR); (2) avaliar as "Melhorias paralelas" abaixo (trocar dagre,
-> avaliar elkjs); (3) possível recriação de refs órfãs no restore (caveat
-> registrado na seção "Fase 4b"). Publicação (`POST /publish`) segue FORA de escopo.
+> **Próximos passos sugeridos (próxima sessão):** (1) **Fase 6 — Modelo B (nós por
+> condição alinhados ao modelo da plataforma)**, PLANEJADA: começar pelo Marco A
+> (visualização). Ver seção "Fase 6" abaixo + spec em docs/MODELO-INTENCAO-OMNICHAT.md;
+> (2) avaliar as "Melhorias paralelas" (avaliar elkjs); (3) possível recriação de refs
+> órfãs no restore (caveat na seção "Fase 4b"). Publicação (`POST /publish`) FORA de escopo.
 
 ## Contexto
 
@@ -443,6 +444,90 @@ morto. O JSON deixa de ser visível — vira só entrada (modal) e saída (expor
 
 Ordem: 5a → 5b → 5c, uma versão minor cada (0.10.0, 0.11.0, 0.12.0).
 Critério de pronto por fatia: tsc + vitest + smoke atualizados verdes.
+
+### Fase 6 — Nós por condição alinhados ao modelo da plataforma (Modelo B) 🔜 PLANEJADA
+
+> Objetivo: aproximar os tipos de nó do que a plataforma realmente expõe.
+> Spec de referência completa (UI ↔ JSON + todos os enums): **[docs/MODELO-INTENCAO-OMNICHAT.md](docs/MODELO-INTENCAO-OMNICHAT.md)**.
+> Decisão de modelagem (escolhida pelo Andy): **Modelo B — um nó por CONDIÇÃO,
+> agrupado por intenção**. A relação `condição → action.type` é 1:1, então cada
+> condição vira um nó tipado pela ação. O `getNodeKind` atual "achata" intenções
+> multi-ação (ex.: `Confirmar_nome` com `[choice, captureData]` vira só `choiceNode`
+> e a captura some) — o Modelo B resolve isso.
+
+**Por que mudar.** Hoje 1 intenção = 1 nó, tipo único por prioridade
+(`parseFlow.ts:getNodeKind`). O enum oficial tem **11 ActionTypes**; só 6 viram nó
+dedicado. Faltam 5: `endConversation`, `external` (API), `order`, `captureCsat`,
+`store`. E intenções com várias condições/ações perdem informação visual.
+
+**Decisões fechadas:**
+- **Agrupamento:** `intentGroupNode` (parent React Flow) + nós-condição como filhos
+  (`parentId` + `extent: 'parent'`). Intenção com **1 condição** = **nó solto** (sem
+  container — evita poluir o caso comum). Container só com **2+ condições**.
+- **5 novos NodeKinds:** `endNode` (Terminar conversa), `apiCallNode` (Chamada externa
+  API — **≠** `externalBotNode`, que é redirect p/ outro bot), `orderNode` (Pedido),
+  `csatNode` (Captura CSAT), `storeNode` (Loja física). `action.type=none` → nó de
+  mensagem (renomear `defaultNode`→conceito "Mensagem").
+- **Header do grupo (rico):** Nome + Categoria (subtítulo) + **badge de Prioridade
+  SEMPRE visível** (Nenhuma..Muita Alta) + keywords como chips + ícones discretos para
+  Contexto e tempo de resposta (`executionDelay`).
+- **Aresta especial de Contexto:** desenhar `intent.context` como aresta **tracejada**
+  (intenção-de-contexto → esta intenção), distinta da aresta de fluxo (`next`/`choice`).
+  Fluxos Alternativos (`fallbackIntents`) **fora de escopo por ora** (decisão do Andy).
+- **Layout 2 camadas (evita dagre composto):** (1) filhos em linha dentro do grupo;
+  (2) dagre atual roda sobre os **grupos**, com arestas colapsadas intent→intent só
+  para posicionar. As arestas renderizadas saem do handle do filho → **grupo de destino**.
+- **IDs:** nó-condição = `{intentId}::c{idx}`. O ID de aresta já codifica `condIdx`
+  (`editFlow.ts`), então a origem por condição fica explícita (simplifica `applyConnect`).
+- **DetailPanel dois-modos:** clicar no **grupo** edita meta da intenção (nome, categoria,
+  prioridade, contexto, keywords, delay); clicar no **filho** edita condição + ação.
+- **Labels de gatilho:** usar os 10 rótulos do `ConditionType` (ex.: "Valor contém",
+  "Total é maior que", "Senão") em vez do label genérico atual.
+
+**Marcos (implementar nesta ordem):**
+- **Marco A — Visualização. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - `types.ts`: `NodeKind` +6 (`endNode`, `apiCallNode`, `orderNode`, `csatNode`,
+    `storeNode`, `intentGroupNode`) e campos opcionais em `FlowNodeData` (triggerLabel,
+    priority, conditionCount, hasContext, hasDelay, orderType, storeType, apiName).
+  - `src/utils/nodeMeta.ts` (NOVO): `actionToNodeKind` (11 ActionTypes), rótulos de
+    `ConditionType` e `PriorityType`, `hasExecutionDelay`. Centraliza os enums (reusado
+    por parseFlow, componentes e DetailPanel).
+  - `parseFlow.ts` reescrito: `buildIntentNodes` emite grupo+filhos (2+ cond) ou nó solto
+    (1/0 cond); dados por condição (`conditionNodeData`); `groupNodeData` p/ o cabeçalho;
+    **layout 2 camadas** (`collapseEdges` → `dagreLayout` só sobre os nós-macro; filhos
+    em linha relativos ao pai). `dagreLayout`/`layoutSingle`/`bbox` agora recebem
+    `sizeById` (grupos têm tamanho dinâmico). `buildEdges`/`buildNextEdge`: origem =
+    nó-condição (`{id}::c{idx}` no grupo, ou ID cru no solto).
+  - 6 componentes novos: `IntentGroupNode` (cabeçalho rico) + `EndNode`/`ApiCallNode`/
+    `OrderNode`/`CsatNode`/`StoreNode`. Registrados em `FlowCanvas` (nodeTypes + cores).
+  - `DetailPanel`: badges dos 6 kinds novos + guarda read-only p/ filho (`ReadOnlyCondition`).
+  - **DECISÃO DE ID (registrar p/ Marco C):** a **entrada de uma intenção** (destino das
+    arestas) é sempre o **ID cru** `{intentId}` — container do grupo OU nó solto. Só os
+    **filhos** usam `{intentId}::c{idx}`. Isso mantém `edge.target` = ID cru (casa com
+    `choices`/`next.intent.id`) e deixou `editFlow`/`parseEdgeId` e os 100 testes de edição
+    **intactos**. Os IDs de aresta seguem `{intentId}-c{condIdx}-…`.
+  - **Testes:** `parseFlow.test.ts` (35 casos, incl. caminhos infelizes) + smoke
+    `scripts/smoke-phase6.mjs`. Build + **135 testes** Vitest verdes; os 7 smokes
+    anteriores (round-trip, push, restore, fase2/3/3b/5) passam sem alteração. Validado
+    importando `samples/sample01-v2.json` no app (4 grupos + 8 filhos, 19 arestas, sem
+    erros de página).
+- **Marco B — Aresta de Contexto.** Novo tipo de aresta tracejada a partir de `context`.
+- **Marco C — Edição.** `DetailPanel` dois-modos; ajustar `editFlow`/`editIntent` para
+  origem por condição (reconnect/connect/delete) e meta da intenção.
+- **Marco D — Criação + polish.** Paleta cria intenção nova com a ação escolhida
+  (template em `intentTemplates`); revalidar `pushFlow`/`restoreFlow`/`exportImage`/
+  `validateFlow` com a nova estrutura de nós.
+
+**Como testar (incl. caminho infeliz):** samples com intenção multi-condição
+(`Confirmar_nome` = choice+captureData), intenção de 1 condição (deve colapsar em nó
+solto), intenção com 0 mensagens, `choice` com slot de escolha vazio, `next` ausente
+(`waitInteraction`/`endConversation`), `context` apontando para intenção inexistente
+(não desenhar aresta órfã), e os 5 novos action types isolados. Build + Vitest +
+smoke Playwright devem seguir verdes.
+
+**Riscos:** maior mudança desde a Fase 5 — mexe em parse, layout, edição, criação e
+push/restore. Mitigação: faseado por Marco, cada um deixando o app funcional; `parseFlow`
+é o núcleo isolável (Marco A primeiro, com testes).
 
 ## Melhorias paralelas (independentes das fases)
 
