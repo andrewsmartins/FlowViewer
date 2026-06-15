@@ -2,7 +2,16 @@
 
 > Última atualização: 2026-06-15. Este arquivo orienta sessões futuras do Claude Code.
 > Status: **Fases 1–5 concluídas, incl. 4a (push CLI) e 4b (push + restore pela
-> UI). v0.13.0, branch `feat/visual-editor`.**
+> UI). v0.13.0, MERGEADO NA `main`.**
+> **MERGE NA MAIN CONCLUÍDO (2026-06-15):** a `feat/visual-editor` (v0.13.0) está
+> 100% na `main`. Cuidado registrado: o PR #2 (GitHub) mergeou um estado ANTIGO
+> da feature (só até a Fase 4a, `02578ca`), deixando a Fase 4b de fora; corrigido
+> com um merge complementar (`feat/visual-editor` completo → `main`) + sincronização
+> da `version` do `package-lock` (estava em 0.12.1). A `main` agora bate com a
+> feature (100 testes verdes). A branch `feat/visual-editor` segue existindo.
+> **`dagre` TROCADO por `@dagrejs/dagre@3.0.0` (2026-06-15):** fork mantido, API
+> idêntica, embarca os próprios tipos (removido `@types/dagre`). Só mudou o import
+> em `parseFlow.ts`. Ver "Melhorias paralelas".
 > **Fase 4a PRONTA e validada ponta a ponta** — todos os critérios do protocolo
 > cumpridos, incl. caminhos infelizes e rollback real (docs/fase4-resultados.md,
 > Etapa 4, 2026-06-15).
@@ -437,8 +446,10 @@ Critério de pronto por fatia: tsc + vitest + smoke atualizados verdes.
 
 ## Melhorias paralelas (independentes das fases)
 
-- Trocar `dagre@0.8.5` (sem manutenção) por `@dagrejs/dagre` (fork mantido,
-  API idêntica) — só muda o import em `parseFlow.ts`.
+- ~~Trocar `dagre@0.8.5` (sem manutenção) por `@dagrejs/dagre` (fork mantido,
+  API idêntica) — só muda o import em `parseFlow.ts`.~~ ✅ FEITO (2026-06-15):
+  `@dagrejs/dagre@3.0.0`. O fork embarca tipos próprios, então `@types/dagre` saiu.
+  Build + 100 testes + smoke-phase5 verdes; bundle caiu ~526→477 kB.
 - Avaliar `elkjs` se a estética do layout automático incomodar: é port-aware
   (considera a posição dos handles, melhora fluxos com muitos botões/saídas).
   Restrito a `parseFlow.ts:dagreLayout`.
