@@ -11,6 +11,12 @@ import { DefaultNode }     from './nodes/DefaultNode'
 import { WaitNode }        from './nodes/WaitNode'
 import { SetDataNode }     from './nodes/SetDataNode'
 import { ExternalBotNode } from './nodes/ExternalBotNode'
+import { EndNode }         from './nodes/EndNode'
+import { ApiCallNode }     from './nodes/ApiCallNode'
+import { OrderNode }       from './nodes/OrderNode'
+import { CsatNode }        from './nodes/CsatNode'
+import { StoreNode }       from './nodes/StoreNode'
+import { IntentGroupNode } from './nodes/IntentGroupNode'
 import type { FlowNodeData } from '../types'
 
 const nodeTypes = {
@@ -22,6 +28,12 @@ const nodeTypes = {
   waitNode:        WaitNode,
   setDataNode:     SetDataNode,
   externalBotNode: ExternalBotNode,
+  endNode:         EndNode,
+  apiCallNode:     ApiCallNode,
+  orderNode:       OrderNode,
+  csatNode:        CsatNode,
+  storeNode:       StoreNode,
+  intentGroupNode: IntentGroupNode,
 }
 
 const NODE_COLORS: Record<string, string> = {
@@ -33,6 +45,12 @@ const NODE_COLORS: Record<string, string> = {
   setDataNode:     '#6366f1',
   externalBotNode: '#f59e0b',
   defaultNode:     '#64748b',
+  endNode:         '#dc2626',
+  apiCallNode:     '#0d9488',
+  orderNode:       '#ea580c',
+  csatNode:        '#db2777',
+  storeNode:       '#65a30d',
+  intentGroupNode: '#cbd5e1',
 }
 
 function MiniMapNodeRect({ x, y, width, height, color }: MiniMapNodeProps) {

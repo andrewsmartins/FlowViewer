@@ -19,6 +19,12 @@ const KIND_LABELS_LIGHT: Record<NodeKind, { label: string; color: string }> = {
   setDataNode:     { label: 'Variável',         color: 'bg-indigo-100 text-indigo-700' },
   externalBotNode: { label: 'Outro Bot',        color: 'bg-amber-100 text-amber-700' },
   defaultNode:     { label: 'Padrão',           color: 'bg-slate-100 text-slate-600' },
+  endNode:         { label: 'Terminar',         color: 'bg-red-100 text-red-700' },
+  apiCallNode:     { label: 'Chamada API',      color: 'bg-teal-100 text-teal-700' },
+  orderNode:       { label: 'Pedido',           color: 'bg-orange-100 text-orange-700' },
+  csatNode:        { label: 'CSAT',             color: 'bg-pink-100 text-pink-700' },
+  storeNode:       { label: 'Loja física',      color: 'bg-lime-100 text-lime-700' },
+  intentGroupNode: { label: 'Intenção',         color: 'bg-slate-100 text-slate-600' },
 }
 
 const KIND_LABELS_DARK: Record<NodeKind, { label: string; color: string }> = {
@@ -30,6 +36,12 @@ const KIND_LABELS_DARK: Record<NodeKind, { label: string; color: string }> = {
   setDataNode:     { label: 'Variável',         color: 'bg-indigo-950 text-indigo-300' },
   externalBotNode: { label: 'Outro Bot',        color: 'bg-amber-950 text-amber-300' },
   defaultNode:     { label: 'Padrão',           color: 'bg-slate-800 text-slate-400' },
+  endNode:         { label: 'Terminar',         color: 'bg-red-950 text-red-300' },
+  apiCallNode:     { label: 'Chamada API',      color: 'bg-teal-950 text-teal-300' },
+  orderNode:       { label: 'Pedido',           color: 'bg-orange-950 text-orange-300' },
+  csatNode:        { label: 'CSAT',             color: 'bg-pink-950 text-pink-300' },
+  storeNode:       { label: 'Loja física',      color: 'bg-lime-950 text-lime-300' },
+  intentGroupNode: { label: 'Intenção',         color: 'bg-slate-800 text-slate-400' },
 }
 
 const TRANSFER_TYPES = [
@@ -253,7 +265,9 @@ export function DetailPanel({ node, intent, onBeforeApply, onApply, onApplyFaile
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-4">
         {!editable && (
-          <ReadOnlyExternal node={node} isDark={isDark} />
+          kind === 'externalBotNode'
+            ? <ReadOnlyExternal node={node} isDark={isDark} />
+            : <ReadOnlyCondition node={node} isDark={isDark} />
         )}
 
         {editable && draft && (
@@ -553,6 +567,32 @@ export function DetailPanel({ node, intent, onBeforeApply, onApply, onApplyFaile
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Painel read-only de um nó-condição (filho de um grupo) no Modelo B. A edição
+ * por condição chega no Marco C; por ora mostramos só o gatilho, a ação e a
+ * prévia da mensagem para inspeção.
+ */
+function ReadOnlyCondition({ node, isDark }: { node: Node<FlowNodeData>; isDark: boolean }) {
+  const preview = node.data.messagePreview?.replace(/@[\w.#]+/g, m => `[${m.slice(1)}]`) ?? ''
+  return (
+    <Section title="Condição (somente leitura)" isDark={isDark}>
+      <div className="flex flex-col gap-2">
+        <InfoRow label="Gatilho" value={node.data.triggerLabel ?? node.data.name} isDark={isDark} />
+        <InfoRow label="Ação"    value={node.data.actionType} isDark={isDark} />
+        {preview && (
+          <div className="flex flex-col gap-0.5">
+            <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Mensagem</span>
+            <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{preview}</p>
+          </div>
+        )}
+        <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+          A edição por condição chega no próximo marco da Fase 6.
+        </p>
+      </div>
+    </Section>
   )
 }
 
