@@ -463,3 +463,15 @@ Critério de pronto por fatia: tsc + vitest + smoke atualizados verdes.
 3. Não criar/editar `endpoints` e `entities` no escopo atual — só referenciar.
 4. A skill de projeto foi descartada (decisão de 2026-06-11): o conhecimento fica
    neste PLANS.md.
+5. **`npm audit`: 2 vulnerabilidades high do esbuild ≤0.28.0 — ACEITAS, não
+   corrigir com `--force` (decisão de 2026-06-15).** Ambas são de tempo de
+   desenvolvimento e não chegam ao site publicado (o esbuild não vai no bundle):
+   (a) GHSA-67mh-4wv8-2f99 — o dev server do esbuild permite que um site
+   malicioso aberto durante `npm run dev` leia respostas (vetor só em localhost,
+   produção não usa); (b) GHSA-gv7w-rqvm-qjhr — falta de verificação de
+   integridade do binário **no módulo Deno** (projeto é Node, não aplica). O
+   esbuild ≤0.28.0 vem do **vite 5**, e o único fix que o npm oferece é
+   `vite@8` (`audit fix --force`) — major quebrando vite 5→8, desproporcional
+   para falhas que não atingem produção. Se um dia quiser zerar o audit, fazer
+   um **upgrade deliberado do vite** como tarefa própria, com revalidação de
+   build/config/plugin-react — nunca via `--force`.
