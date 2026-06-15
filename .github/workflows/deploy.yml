@@ -14,7 +14,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 24 traz o npm 11, que gerou o package-lock.json. O npm 10
+          # (Node 20) resolve os peers do vite 7 — arrastado pelo vitest 4 —
+          # de forma diferente e rejeita o lock no `npm ci` (esbuild ausente).
+          node-version: 24
           cache: npm
 
       - run: npm ci
