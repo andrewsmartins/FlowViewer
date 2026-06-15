@@ -159,13 +159,13 @@ describe('validateFlow', () => {
     expect(report.errors).toHaveLength(2)
   })
 
-  it('referência interna quebrada vira aviso, não erro', () => {
+  it('referência interna quebrada vira erro bloqueante (a plataforma a trata como erro a preencher)', () => {
     const json = loadSample()
     const cond = json.list.flatMap(i => i.conditions).find(c => c.next?.intent && typeof c.next.intent === 'object')!
     ;(cond.next.intent as { id: string }).id = 'id-que-nao-existe'
     const report = validateFlow(json)
-    expect(report.errors).toEqual([])
-    expect(report.warnings.some(w => w.includes('inexistente'))).toBe(true)
+    expect(report.errors.some(e => e.includes('inexistente'))).toBe(true)
+    expect(report.warnings.some(w => w.includes('inexistente'))).toBe(false)
   })
 
   it('fluxo sem start gera aviso', () => {

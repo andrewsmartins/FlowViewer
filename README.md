@@ -2,6 +2,8 @@
 
 Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um fluxo do zero a partir do botId), edite nós, conexões e conteúdo no canvas, e exporte de volta no formato aceito pela plataforma.
 
+> 📖 **[Guia de uso](docs/GUIA-DE-USO.md)** — passo a passo de todas as features, do import ao push para o rascunho do bot.
+
 ---
 
 ## Funcionalidades
@@ -21,6 +23,9 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 - **Exportação JSON** — baixa o fluxo (com as edições) no mesmo formato `{ "list": [...] }` aceito pela plataforma, preservando todos os campos não editados
 - **Dark mode** completo — toggle sol/lua na sidebar altera sidebar, nodes, painéis e canvas simultaneamente; preferência salva em `localStorage`
 - Input via textarea (colar JSON) ou upload de arquivo `.json`
+- **Push para a plataforma (UI)** — botão **Enviar** envia o fluxo para o **rascunho** do bot direto do navegador, com remapeamento automático de IDs em 2 passadas; guardrails: token só em memória, confirmação do botId, trava de bot de testes, dry-run e backup baixado antes do envio; a publicação continua manual na plataforma
+- **Restaurar backup (UI)** — botão **Restaurar** sobe um backup `.json` e restaura o bot ao estado do arquivo (exclui o excedente, recria o que falta com remap e sobrescreve o resto), baixando um snapshot de segurança antes
+- **Push/restore via CLI** — `scripts/push-flow.mjs` e `scripts/rollback-bot.mjs` para uso em lote/auditável (mesma lógica do `pushFlow.ts`/`restoreFlow.ts`), com dry-run por padrão e backup automático
 
 ---
 

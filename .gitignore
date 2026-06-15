@@ -11,6 +11,7 @@ dist/
 # Variáveis de ambiente — nunca commitar segredos
 .env
 .env.*
+*.env
 
 # Dados reais de clientes OmniChat — nunca commitar (testes os usam localmente)
 samples/
