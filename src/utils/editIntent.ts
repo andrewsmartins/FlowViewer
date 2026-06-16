@@ -59,9 +59,13 @@ export function updateMessageText(intent: BotIntent, ref: MessageRef, text: stri
   return { ok: true }
 }
 
-/** Acrescenta uma mensagem TEXT ao final da primeira condição da intenção. */
-export function addTextMessage(intent: BotIntent, text: string): EditResult {
-  const cond = intent.conditions[0]
+/**
+ * Acrescenta uma mensagem TEXT ao final de uma condição (padrão: a primeira).
+ * No Modelo B (Marco C) o editor de um filho passa o `condIdx` da condição
+ * sendo editada para que a mensagem caia na condição certa.
+ */
+export function addTextMessage(intent: BotIntent, text: string, condIdx = 0): EditResult {
+  const cond = intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: 'intenção sem condições' }
   if (!cond.assistant_says.length) cond.assistant_says.push({ channel: 'any', messages: [] })
   cond.assistant_says[0].messages.push({ type: 'TEXT', content: text, fileName: '' })
@@ -84,9 +88,14 @@ export function removeMessage(intent: BotIntent, ref: MessageRef): EditResult {
   return { ok: true }
 }
 
-/** Atualiza texto/descrição de um botão (BUTTON/LIST) pelo índice exibido. */
-export function updateButton(intent: BotIntent, btnIdx: number, text: string, description: string | null): EditResult {
-  for (const cond of intent.conditions) {
+/**
+ * Atualiza texto/descrição de um botão (BUTTON/LIST) pelo índice exibido.
+ * Com `condIdx` (Modelo B, Marco C) o índice é relativo aos botões DAQUELA
+ * condição; sem ele, procura o primeiro botão na intenção inteira.
+ */
+export function updateButton(intent: BotIntent, btnIdx: number, text: string, description: string | null, condIdx?: number): EditResult {
+  const conds = condIdx === undefined ? intent.conditions : [intent.conditions[condIdx]].filter(Boolean)
+  for (const cond of conds) {
     for (const say of cond.assistant_says) {
       for (const msg of say.messages) {
         const btn = msg.messageConfig?.buttons?.[btnIdx]
@@ -102,8 +111,14 @@ export function updateButton(intent: BotIntent, btnIdx: number, text: string, de
   return { ok: false, reason: 'botão não encontrado na intenção' }
 }
 
-function findChoiceContext(intent: BotIntent): { cond: Condition; msg: BotMessage | null } | null {
-  const cond = intent.conditions.find(c => c.action.type === 'choice')
+/**
+ * Localiza a condição de escolha e sua mensagem de botões. Com `condIdx`, usa
+ * exatamente aquela condição (modo filho); sem ele, a primeira condição choice.
+ */
+function findChoiceContext(intent: BotIntent, condIdx?: number): { cond: Condition; msg: BotMessage | null } | null {
+  const cond = condIdx === undefined
+    ? intent.conditions.find(c => c.action.type === 'choice')
+    : (intent.conditions[condIdx]?.action.type === 'choice' ? intent.conditions[condIdx] : undefined)
   if (!cond) return null
   const msg = cond.assistant_says
     .flatMap(s => s.messages)
@@ -116,8 +131,8 @@ function findChoiceContext(intent: BotIntent): { cond: Condition; msg: BotMessag
  * sincronia um slot vazio em `action.choices` (buttons[i] ↔ choices[i]).
  * O slot é preenchido depois, conectando o nó no canvas.
  */
-export function addButton(intent: BotIntent, text: string, description: string | null): EditResult {
-  const ctx = findChoiceContext(intent)
+export function addButton(intent: BotIntent, text: string, description: string | null, condIdx?: number): EditResult {
+  const ctx = findChoiceContext(intent, condIdx)
   if (!ctx) return { ok: false, reason: 'a intenção não tem ação de escolha' }
   if (!ctx.msg?.messageConfig) {
     return { ok: false, reason: 'a intenção não tem mensagem de botões (crie-a primeiro)' }
@@ -130,8 +145,8 @@ export function addButton(intent: BotIntent, text: string, description: string |
 }
 
 /** Remove o botão e a escolha na mesma posição (mapeamento posicional). */
-export function removeButton(intent: BotIntent, btnIdx: number): EditResult {
-  const ctx = findChoiceContext(intent)
+export function removeButton(intent: BotIntent, btnIdx: number, condIdx?: number): EditResult {
+  const ctx = findChoiceContext(intent, condIdx)
   if (!ctx?.msg?.messageConfig?.buttons[btnIdx]) {
     return { ok: false, reason: 'botão não encontrado na intenção' }
   }
@@ -147,8 +162,8 @@ export function removeButton(intent: BotIntent, btnIdx: number): EditResult {
  * Cria a mensagem BUTTON canônica (body + botões vazios) na condição de
  * escolha — para nós de escolha recém-criados pela paleta.
  */
-export function addButtonsMessage(intent: BotIntent, body: string): EditResult {
-  const ctx = findChoiceContext(intent)
+export function addButtonsMessage(intent: BotIntent, body: string, condIdx?: number): EditResult {
+  const ctx = findChoiceContext(intent, condIdx)
   if (!ctx) return { ok: false, reason: 'a intenção não tem ação de escolha' }
   if (ctx.msg) return { ok: false, reason: 'a intenção já tem mensagem de botões' }
   if (!ctx.cond.assistant_says.length) ctx.cond.assistant_says.push({ channel: 'any', messages: [] })
@@ -201,29 +216,39 @@ export function removeCondition(intent: BotIntent, condIdx: number): EditResult 
   return { ok: true }
 }
 
-/** Atualiza nome, categoria e keywords da intenção. */
+/**
+ * Atualiza a meta da intenção: nome, categoria, keywords e, no Modelo B
+ * (Marco C), também `priority` e `context` (a intenção que precede esta — a
+ * origem da aresta de contexto). `context` vazio limpa a referência (null).
+ */
 export function updateIntentMeta(
   intent: BotIntent,
-  meta: { name: string; category: string; keywords: string[] },
+  meta: { name: string; category: string; keywords: string[]; priority?: number; context?: string | null },
 ): EditResult {
   if (!meta.name.trim()) return { ok: false, reason: 'o nome da intenção não pode ficar vazio' }
   intent.name = meta.name.trim()
   intent.category = meta.category.trim() || 'Sem Categoria'
   intent.keywords = meta.keywords.map(k => k.trim()).filter(Boolean)
+  if (meta.priority !== undefined) intent.priority = meta.priority
+  if (meta.context !== undefined) intent.context = meta.context?.trim() || null
   touch(intent)
   return { ok: true }
 }
 
 /**
- * Atualiza campos da ação na primeira condição cujo action.type seja o
- * informado (transfer → transferType/value; captureData → captureDataType/variable).
+ * Atualiza campos da ação de uma condição (transfer → transferType/value;
+ * captureData → captureDataType/variable). Com `condIdx` (Modelo B, Marco C)
+ * mira aquela condição; sem ele, a primeira condição cujo action.type bate.
  */
 export function updateActionFields(
   intent: BotIntent,
   actionType: string,
   fields: Partial<{ transferType: string; value: string; captureDataType: string; variable: string }>,
+  condIdx?: number,
 ): EditResult {
-  const cond = intent.conditions.find(c => c.action.type === actionType)
+  const cond = condIdx === undefined
+    ? intent.conditions.find(c => c.action.type === actionType)
+    : intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: `a intenção não tem ação do tipo ${actionType}` }
   if (fields.transferType !== undefined) cond.action.transferType = fields.transferType || null
   if (fields.value !== undefined) cond.action.value = fields.value || null
@@ -234,8 +259,10 @@ export function updateActionFields(
 }
 
 /** Substitui as variáveis definidas (bulkUpdate) da condição setData. */
-export function updateSetDataItems(intent: BotIntent, items: BulkUpdateItem[]): EditResult {
-  const cond = intent.conditions.find(c => c.action.type === 'setData')
+export function updateSetDataItems(intent: BotIntent, items: BulkUpdateItem[], condIdx?: number): EditResult {
+  const cond = condIdx === undefined
+    ? intent.conditions.find(c => c.action.type === 'setData')
+    : intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: 'a intenção não tem ação setData' }
   const cleaned = items
     .map(i => ({ variable: i.variable.trim(), value: i.value }))

@@ -23,11 +23,14 @@
 > Validação manual aprovada pelo Andy (fluxo completo e só-start). Ver
 > docs/fase4-resultados.md (seção "Fase 4b") e seção "Fase 4b" abaixo.
 >
-> **Próximos passos sugeridos (próxima sessão):** (1) **Fase 6 — Modelo B (nós por
-> condição alinhados ao modelo da plataforma)**, PLANEJADA: começar pelo Marco A
-> (visualização). Ver seção "Fase 6" abaixo + spec em docs/MODELO-INTENCAO-OMNICHAT.md;
-> (2) avaliar as "Melhorias paralelas" (avaliar elkjs); (3) possível recriação de refs
-> órfãs no restore (caveat na seção "Fase 4b"). Publicação (`POST /publish`) FORA de escopo.
+> **Próximos passos sugeridos (próxima sessão):** (1) **Fase 6 — Modelo B**: Marcos A
+> (visualização), B (aresta de Contexto) e C (edição dois-modos) **CONCLUÍDOS** na branch
+> `feat/model-b-nodes`. Próximo é o **Marco D — Criação + polish**: a paleta cria intenção
+> nova com a ação escolhida (template em `intentTemplates`) e revalidar `pushFlow`/
+> `restoreFlow`/`exportImage`/`validateFlow` com a estrutura de grupo+filhos. Ver seção
+> "Fase 6" abaixo + spec em docs/MODELO-INTENCAO-OMNICHAT.md; (2) avaliar as "Melhorias
+> paralelas" (elkjs); (3) possível recriação de refs órfãs no restore (caveat na "Fase 4b").
+> Publicação (`POST /publish`) FORA de escopo.
 
 ## Contexto
 
@@ -511,9 +514,52 @@ dedicado. Faltam 5: `endConversation`, `external` (API), `order`, `captureCsat`,
     anteriores (round-trip, push, restore, fase2/3/3b/5) passam sem alteração. Validado
     importando `samples/sample01-v2.json` no app (4 grupos + 8 filhos, 19 arestas, sem
     erros de página).
-- **Marco B — Aresta de Contexto.** Novo tipo de aresta tracejada a partir de `context`.
-- **Marco C — Edição.** `DetailPanel` dois-modos; ajustar `editFlow`/`editIntent` para
-  origem por condição (reconnect/connect/delete) e meta da intenção.
+- **Marco B — Aresta de Contexto. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - `parseFlow.ts`: `buildContextEdges(intents, intentIds)` emite, para cada intenção
+    com `intent.context` apontando p/ intenção EXISTENTE, uma aresta tracejada violeta
+    (`#a855f7`) `contexto → esta intenção`, com ID `ctx-{intentId}`, seta, `data.kind:
+    'context'`, `deletable: false` e `reconnectable: false`. Origem/destino = **ID cru**
+    da intenção (container do grupo ou nó solto), igual à entrada de fluxo. `contextEdgeStyle()`
+    centraliza o estilo. Chamada ao fim de `buildEdges` (logo aparece também nos rebuilds
+    do App após edição). Guardas: ignora `context` vazio, auto-referência, destino
+    inexistente (sem aresta órfã) e intenção-alvo `start` (sem handle de entrada).
+  - **Layout:** arestas de contexto NÃO entram no dagre — `collapseEdges` as exclui pelo
+    `data.kind === 'context'`. Decisão: contexto é anotação cruzada, não a hierarquia do
+    fluxo; manter fora do layout deixou o posicionamento do Marco A intacto (isolado).
+  - `IntentGroupNode`: ganhou handle `source` (Bottom) — necessário porque uma
+    intenção-de-contexto pode ser agrupada (o container vira origem da aresta). Os demais
+    kinds que aparecem como contexto em dados reais (choice/capture/api/setData/default/
+    start) já tinham `source`. Usado SÓ pela aresta de contexto (fluxo sai dos filhos).
+  - **Testes:** +6 casos em `parseFlow.test.ts` (origem/destino/estilo, origem agrupada,
+    auto-ref, start, fora do layout, contagem em sample02 real) + smoke
+    `scripts/smoke-phase6-context.mjs` (fluxo sintético — aresta tracejada, órfã sem
+    aresta, origem agrupada). Build + **141 testes** verdes; os 8 smokes anteriores passam.
+    Validado visualmente (aresta violeta tracejada com rótulo "contexto", distinta do fluxo).
+- **Marco C — Edição. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - **`DetailPanel` em 3 modos** (`resolveMode` pelo nó): **group** (clicar no
+    `intentGroupNode`) edita meta da intenção — nome, categoria, keywords, **prioridade**
+    (select) e **context** (select das outras intenções) + lista de condições (add/remove);
+    **condition** (clicar num filho `{id}::c{idx}`) edita só aquela condição — gatilho
+    (10 rótulos do `ConditionType`), mensagens da condição, botões e ação (transfer/
+    capture/setData), com **Excluir condição**; **solo** (1 condição) = editor completo
+    de antes + prioridade/context. Antes do Marco C, filho era somente-leitura.
+  - **`editFlow.applyConnect`** ganhou origem por condição: `splitSourceId` parseia
+    `{id}::c{idx}` e preenche a vaga DAQUELA condição (antes falhava ao conectar a partir
+    de filhos de grupo). Reconnect/delete já eram por condição (o ID de aresta codifica
+    `condIdx` — `parseEdgeId`), então não mudaram.
+  - **`editIntent`**: `condIdx` opcional em `addTextMessage`/`addButton`/`removeButton`/
+    `addButtonsMessage`/`updateButton`/`updateActionFields`/`updateSetDataItems` (sem ele =
+    1ª condição compatível, retrocompatível); `updateIntentMeta` aceita `priority`+`context`.
+  - **App**: `intent` do filho resolvido tirando `::c{idx}` (`intentIdOf`); `intents`
+    passado ao painel p/ o seletor de context; **`handleApplyEdit` re-parseia preservando
+    posições** (robusto a mudança de tipo do filho, nº de condições, grupo↔solo).
+  - **DECISÃO:** condição é removida pelo modo grupo (lista) OU pelo "Excluir condição"
+    no modo filho (bloqueado na última). Add/remove de condição vive no grupo/solo.
+  - **Testes:** +6 em `editFlow.phase3b.test.ts` (conectar por filho), +5 em
+    `editIntent.test.ts` (escopo `condIdx`, priority/context) + smoke
+    `scripts/smoke-phase6-edit.mjs` (dois modos no browser). Build + **152 testes** +
+    10 smokes verdes. Validado visualmente (editor de condição escopado: gatilho +
+    mensagens + ação do filho).
 - **Marco D — Criação + polish.** Paleta cria intenção nova com a ação escolhida
   (template em `intentTemplates`); revalidar `pushFlow`/`restoreFlow`/`exportImage`/
   `validateFlow` com a nova estrutura de nós.

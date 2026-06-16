@@ -47,7 +47,7 @@ export function triggerLabel(type: string): string {
 }
 
 /** Mapa Prioridade (numérica fracionária) → rótulo da plataforma (PriorityType). */
-const PRIORITY_LABELS: { value: number; label: string }[] = [
+export const PRIORITY_LABELS: { value: number; label: string }[] = [
   { value: 0,    label: 'Nenhuma' },
   { value: 0.25, label: 'Baixa' },
   { value: 0.5,  label: 'Média' },

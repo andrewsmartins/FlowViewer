@@ -99,6 +99,61 @@ describe('edição de condições', () => {
   })
 })
 
+describe('applyConnect — origem por condição (Modelo B, Marco C)', () => {
+  // Intenção com 2 condições não-choice (vira grupo: filhos {id}::c0 e {id}::c1).
+  function multiCond(): { json: BotFlowJson; src: BotIntent; target: BotIntent } {
+    const src = createIntentTemplate('defaultNode', BOT_ID, 'multi')
+    addCondition(src) // agora 2 condições, ambas action.none, sem next
+    const target = createIntentTemplate('defaultNode', BOT_ID, 'destino')
+    return { json: { list: [src, target] }, src, target }
+  }
+
+  it('conecta a partir do filho {id}::c1 preenche o next DAQUELA condição', () => {
+    const { json, src, target } = multiCond()
+    const result = applyConnect(json, `${src.id}::c1`, target.id)
+    expect(result).toEqual({ ok: true, kind: 'next', condIdx: 1 })
+    // condição 0 permanece sem destino; só a 1 recebeu
+    expect(src.conditions[0].next.intent).toBeUndefined()
+    expect(src.conditions[1].next.intent).toEqual({ botId: BOT_ID, id: target.id })
+  })
+
+  it('conecta a partir do filho {id}::c0 não toca a condição 1', () => {
+    const { json, src, target } = multiCond()
+    applyConnect(json, `${src.id}::c0`, target.id)
+    expect(src.conditions[0].next.intent).toEqual({ botId: BOT_ID, id: target.id })
+    expect(src.conditions[1].next.intent).toBeUndefined()
+  })
+
+  it('condição já com destino recusa nova conexão (reconectar a aresta existente)', () => {
+    const { json, src, target } = multiCond()
+    applyConnect(json, `${src.id}::c0`, target.id)
+    const again = applyConnect(json, `${src.id}::c0`, target.id)
+    expect(again.ok).toBe(false)
+  })
+
+  it('filho de escolha sem slot livre pede para adicionar botão', () => {
+    const choice = createIntentTemplate('choiceNode', BOT_ID, 'menu')
+    addCondition(choice) // c1 none; c0 é a choice, sem botões → choices vazio
+    const target = createIntentTemplate('defaultNode', BOT_ID, 'd')
+    const json = { list: [choice, target] }
+    const r = applyConnect(json, `${choice.id}::c0`, target.id)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/slot livre|botão/)
+  })
+
+  it('condição inexistente no filho falha com mensagem clara', () => {
+    const { json, src, target } = multiCond()
+    const r = applyConnect(json, `${src.id}::c9`, target.id)
+    expect(r.ok).toBe(false)
+  })
+
+  it('nó solto (ID cru) mantém o comportamento de primeira vaga livre', () => {
+    const { json, src, target } = multiCond()
+    const result = applyConnect(json, src.id, target.id)
+    expect(result).toEqual({ ok: true, kind: 'next', condIdx: 0 }) // primeira vaga
+  })
+})
+
 describe('applyNodeDelete', () => {
   it('remove a intenção e limpa next refs de entrada', () => {
     const json = loadSample()

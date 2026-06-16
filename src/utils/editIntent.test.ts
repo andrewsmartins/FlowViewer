@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path'
 import {
   listMessages, updateMessageText, addTextMessage, removeMessage,
   updateButton, updateIntentMeta, updateActionFields, updateSetDataItems,
+  addCondition,
 } from './editIntent'
 import { validateFlow } from './validateFlow'
 import { createIntentTemplate } from './intentTemplates'
@@ -103,6 +104,57 @@ describe('updateIntentMeta', () => {
     const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
     expect(updateIntentMeta(intent, { name: '  ', category: 'c', keywords: [] }).ok).toBe(false)
     expect(intent.name).toBe('x')
+  })
+
+  it('atualiza priority e context (Modelo B); context vazio vira null', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [], priority: 0.75, context: ' menu-id ' })
+    expect(intent.priority).toBe(0.75)
+    expect(intent.context).toBe('menu-id')
+    updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [], context: '' })
+    expect(intent.context).toBeNull()
+  })
+
+  it('não mexe em priority/context quando os campos são omitidos', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    intent.priority = 0.5
+    intent.context = 'algo'
+    updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [] })
+    expect(intent.priority).toBe(0.5)
+    expect(intent.context).toBe('algo')
+  })
+})
+
+describe('edição escopada por condição (Modelo B, Marco C)', () => {
+  // Intenção com 2 condições: c0 = transfer, c1 = captureData.
+  function twoActionCond(): BotIntent {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'multi')
+    addCondition(intent)
+    intent.conditions[1].action = { ...intent.conditions[0].action, type: 'captureData', transferType: null, value: null }
+    return intent
+  }
+
+  it('updateActionFields com condIdx mira AQUELA condição', () => {
+    const intent = twoActionCond()
+    // a condição 1 é captureData; sem condIdx, "transfer" acharia a c0
+    expect(updateActionFields(intent, 'captureData', { captureDataType: 'cpf', variable: 'c.cpf' }, 1)).toEqual({ ok: true })
+    expect(intent.conditions[1].action.captureDataType).toBe('cpf')
+    expect(intent.conditions[0].action.captureDataType).toBeNull()
+  })
+
+  it('addTextMessage com condIdx cai na condição certa', () => {
+    const intent = twoActionCond()
+    addTextMessage(intent, 'oi da c1', 1)
+    const c1msgs = listMessages(intent).filter(m => m.ref.condIdx === 1)
+    expect(c1msgs.some(m => m.text === 'oi da c1')).toBe(true)
+    expect(listMessages(intent).filter(m => m.ref.condIdx === 0).some(m => m.text === 'oi da c1')).toBe(false)
+  })
+
+  it('updateButton com condIdx só procura na condição informada', () => {
+    const intent = createIntentTemplate('choiceNode', BOT_ID, 'menu')
+    addCondition(intent) // c1 sem botões
+    // c0 é choice mas ainda sem mensagem de botões → updateButton(0) não acha
+    expect(updateButton(intent, 0, 'X', null, 1).ok).toBe(false) // c1 não tem botões
   })
 })
 

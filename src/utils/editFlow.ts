@@ -101,46 +101,80 @@ function dedupedChoices(choices: unknown): string[] {
 }
 
 /**
- * Conecta a origem a um novo destino, na primeira vaga em ordem de documento:
- * slot de escolha vazio (botão criado e ainda não conectado) ou condição
- * não-choice sem referência `next`. Retorna a posição usada — mas o App
- * reconstrói todas as arestas do modelo após o patch.
+ * Decompõe o ID de um nó de origem no Modelo B: filhos de um grupo são
+ * `{intentId}::c{idx}` (origem explícita por condição); nós soltos usam o ID
+ * cru da intenção (sem condição específica → preenche a primeira vaga).
+ */
+function splitSourceId(nodeId: string): { intentId: string; condIdx: number | null } {
+  const m = /^(.+)::c(\d+)$/.exec(nodeId)
+  return m ? { intentId: m[1], condIdx: Number(m[2]) } : { intentId: nodeId, condIdx: null }
+}
+
+/** Preenche o `next` canônico de uma condição apontando para a intenção alvo. */
+function setNext(cond: Condition, target: BotIntent): void {
+  cond.next = {
+    ...cond.next,
+    redirect: 'continueFlow',
+    action: 'intent',
+    type: cond.next?.type ?? 'context',
+    intent: { botId: target.botId, id: target.id },
+  }
+}
+
+/** Tenta conectar UMA condição: slot de escolha vazio ou `next` livre. */
+function connectCondition(
+  cond: Condition, condIdx: number, target: BotIntent,
+): { ok: true; kind: 'next' | 'choice'; condIdx: number } | { ok: false; reason: string } | null {
+  if (cond.action.type === 'choice' && Array.isArray(cond.action.choices)) {
+    const slot = cond.action.choices.findIndex(c => !c)
+    if (slot !== -1) {
+      cond.action.choices[slot] = target.id
+      return { ok: true, kind: 'choice', condIdx }
+    }
+    return null // sem slot livre nesta condição de escolha
+  }
+  if (cond.action.type !== 'choice' && !hasNextRef(cond)) {
+    setNext(cond, target)
+    return { ok: true, kind: 'next', condIdx }
+  }
+  return null
+}
+
+/**
+ * Conecta a origem a um novo destino. Quando a origem é um nó-condição
+ * (`{intentId}::c{idx}`, filho de um grupo no Modelo B), preenche a vaga
+ * DAQUELA condição; quando é um nó solto (ID cru), usa a primeira vaga livre em
+ * ordem de documento. Slot de escolha vazio (botão sem destino) ou `next` de
+ * condição não-choice. O App reconstrói todas as arestas após o patch.
  */
 export function applyConnect(
   json: BotFlowJson,
   sourceId: string,
   targetId: string,
 ): { ok: true; kind: 'next' | 'choice'; condIdx: number } | { ok: false; reason: string } {
-  const source = json.list.find(i => i.id === sourceId)
+  const { intentId, condIdx } = splitSourceId(sourceId)
+  const source = json.list.find(i => i.id === intentId)
   if (!source) return { ok: false, reason: 'intenção de origem não encontrada no modelo' }
 
   const target = json.list.find(i => i.id === targetId)
   if (!target) return { ok: false, reason: 'o destino não é uma intenção deste fluxo' }
 
-  for (let condIdx = 0; condIdx < source.conditions.length; condIdx++) {
+  // Origem por condição (filho de grupo): só aquela condição pode receber.
+  if (condIdx !== null) {
     const cond = source.conditions[condIdx]
-
-    if (cond.action.type === 'choice' && Array.isArray(cond.action.choices)) {
-      const slot = cond.action.choices.findIndex(c => !c)
-      if (slot !== -1) {
-        cond.action.choices[slot] = targetId
-        return { ok: true, kind: 'choice', condIdx }
-      }
-      continue
-    }
-
-    if (cond.action.type !== 'choice' && !hasNextRef(cond)) {
-      cond.next = {
-        ...cond.next,
-        redirect: 'continueFlow',
-        action: 'intent',
-        type: cond.next?.type ?? 'context',
-        intent: { botId: target.botId, id: target.id },
-      }
-      return { ok: true, kind: 'next', condIdx }
-    }
+    if (!cond) return { ok: false, reason: 'condição de origem não encontrada no modelo' }
+    const result = connectCondition(cond, condIdx, target)
+    if (result) return result
+    return cond.action.type === 'choice'
+      ? { ok: false, reason: 'a condição de escolha não tem slot livre (adicione um botão antes)' }
+      : { ok: false, reason: 'a condição já tem destino (reconecte a aresta existente)' }
   }
 
+  // Nó solto: primeira vaga livre em ordem de documento.
+  for (let i = 0; i < source.conditions.length; i++) {
+    const result = connectCondition(source.conditions[i], i, target)
+    if (result) return result
+  }
   return { ok: false, reason: 'a origem não tem vaga livre (adicione um botão ou reconecte uma aresta existente)' }
 }
 

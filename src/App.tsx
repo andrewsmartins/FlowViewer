@@ -23,6 +23,11 @@ const SPACING_STEP = 60
 const SPACING_MIN  = 20
 const SPACING_MAX  = 600
 
+/** ID da intenção a partir do ID de um nó: filhos de grupo são `{id}::c{idx}`. */
+function intentIdOf(nodeId: string): string {
+  return nodeId.replace(/::c\d+$/, '')
+}
+
 export default function App() {
   const [isDark, setIsDark]             = useState(() => document.documentElement.classList.contains('dark'))
   const [nodes, setNodes]               = useState<Node<FlowNodeData>[]>([])
@@ -324,22 +329,29 @@ export default function App() {
   }, [])
 
   /**
-   * Pós-edição de conteúdo: refaz o view-model do nó editado e os labels das
-   * arestas (texto de botão vira label de aresta de escolha), sem relayout.
+   * Pós-edição: re-parseia o fluxo preservando as posições dos nós que já
+   * existiam. No Modelo B uma edição pode mudar a estrutura (tipo do nó-filho,
+   * número de condições, grupo↔solo), então rebuildar só um nó não basta —
+   * re-parsear é robusto e o merge de posições evita o relayout indesejado.
    */
   const handleApplyEdit = useCallback((intentId: string) => {
     const model = parsedDataRef.current
     if (!model) return
-    const intent = model.list.find(i => i.id === intentId)
-    if (!intent) return
+    if (!model.list.some(i => i.id === intentId)) return
     if (applySnapRef.current) {
       historyRef.current.push(applySnapRef.current)
       applySnapRef.current = null
     }
-    const data = intentToNodeData(intent)
-    setNodes(ns => ns.map(n => n.id === intentId ? { ...n, data } : n))
-    setEdges(buildEdges(model).edges)
-    setSelectedNode(prev => prev && prev.id === intentId ? { ...prev, data } : prev)
+    const result = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    const merged = result.nodes.map(n => {
+      const pos = posById.get(n.id)
+      return pos ? { ...n, position: pos } : n
+    })
+    setNodes(merged)
+    setEdges(result.edges)
+    // Reaponta o nó selecionado para a sua versão reconstruída (mesmo id).
+    setSelectedNode(prev => prev ? (merged.find(n => n.id === prev.id) ?? null) : prev)
     setNotice(null)
     bumpModel()
   }, [bumpModel])
@@ -431,7 +443,8 @@ export default function App() {
             {selectedNode && (
               <DetailPanel
                 node={selectedNode}
-                intent={parsedDataRef.current?.list.find(i => i.id === selectedNode.id) ?? null}
+                intent={parsedDataRef.current?.list.find(i => i.id === intentIdOf(selectedNode.id)) ?? null}
+                intents={parsedDataRef.current?.list ?? []}
                 onBeforeApply={handleBeforeApply}
                 onApply={handleApplyEdit}
                 onApplyFailed={handleApplyFailed}
