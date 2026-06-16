@@ -151,7 +151,7 @@ function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onN
   }, [nodes, onCreateNode, onAddConditionToNode, screenToFlowPosition, setMergeTarget])
 
   return (
-    <EdgeActionsContext.Provider value={{ onDeleteEdge }}>
+    <EdgeActionsContext.Provider value={{ onDeleteEdge, isDark }}>
     <div className="w-full h-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
     <ReactFlow
       nodes={nodes}
