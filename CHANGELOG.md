@@ -14,6 +14,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ## [Não lançado]
 
 ### Adicionado
+- **Guia de uso atualizado para a v0.14.0 (Fase 6 / Modelo B)** ([docs/GUIA-DE-USO.md](docs/GUIA-DE-USO.md)) — cabeçalho saiu de "v0.12.1 + push CLI" para v0.14.0; nova seção introdutória **explicando o Modelo B** (um nó por condição, nó solto vs. grupo, e os 3 tipos de aresta: fluxo/contexto/outro bot); criação de nós atualizada para os **11 tipos em 2 grupos** (Fluxo/Avançado) + o **merge por drag** (soltar sobre um nó vira condição); edição de conteúdo reescrita para os **3 modos do painel** (grupo/condição/solo) com prioridade e contexto; remoção de aresta pela **tag "×"**; nó de início **somente-leitura**; nova seção de **envio pela UI** (diálogo de push com guardrails) e **Restaurar backup**, com a CLI mantida como caminho alternativo; links cruzados para README, doc de testes e modelo de intenção
 - **Documentação dos testes automatizados** ([docs/TESTES-AUTOMATIZADOS.md](docs/TESTES-AUTOMATIZADOS.md)) — lista os **199 testes unitários** (Vitest, 9 arquivos) e os **13 scripts de smoke** (Playwright), cada um com uma breve explicação do que cobre, agrupados por arquivo/describe e por fase/marco. Inclui como rodar (suíte, arquivo único, caso único, smokes), uma tabela-resumo por arquivo e a filosofia de cobertura (caminho feliz + infeliz + invariantes de segurança). Linkado a partir do README
 
 ### Alterado
