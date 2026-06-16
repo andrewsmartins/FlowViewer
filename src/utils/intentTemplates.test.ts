@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createIntentTemplate, createStartIntent, CREATABLE_KINDS, isCreatableKind } from './intentTemplates'
 import { validateFlow } from './validateFlow'
 import { applyConnect, applyEdgeDelete, serializeFlow, parseEdgeId } from './editFlow'
+import { addButton, addButtonsMessage } from './editIntent'
 import { parseFlow, buildNextEdge } from './parseFlow'
 import type { BotFlowJson } from '../types'
 
@@ -71,6 +72,86 @@ describe('createIntentTemplate', () => {
     expect(isCreatableKind('externalBotNode')).toBe(false)
     expect(isCreatableKind('')).toBe(false)
     expect(isCreatableKind('defaultNode')).toBe(true)
+  })
+})
+
+describe('Marco D — criação dos 11 ActionTypes (Modelo B)', () => {
+  it('há exatamente 11 tipos criáveis (os 11 ActionTypes; start e externalBot não)', () => {
+    expect(CREATABLE_KINDS).toHaveLength(11)
+    expect(isCreatableKind('endNode')).toBe(true)
+    expect(isCreatableKind('apiCallNode')).toBe(true)
+    expect(isCreatableKind('orderNode')).toBe(true)
+    expect(isCreatableKind('csatNode')).toBe(true)
+    expect(isCreatableKind('storeNode')).toBe(true)
+  })
+
+  it.each(CREATABLE_KINDS)('%s: nasce como nó SOLTO (1 condição, sem grupo)', kind => {
+    const intent = createIntentTemplate(kind, BOT_ID, `solo_${kind}`)
+    expect(intent.conditions).toHaveLength(1)
+    const { nodes } = parseFlow({ list: [intent] })
+    // Um único nó-macro, tipado pela ação — nunca um intentGroupNode (sem filhos).
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].type).toBe(kind)
+    expect(nodes[0].parentId).toBeUndefined()
+  })
+
+  it('defaults embasados no spec: order → generateOrder, csat → supportRate', () => {
+    expect(createIntentTemplate('orderNode', BOT_ID, 'p').conditions[0].action.orderType).toBe('generateOrder')
+    expect(createIntentTemplate('csatNode', BOT_ID, 'c').conditions[0].action.captureDataType).toBe('supportRate')
+  })
+
+  it('store/external/end nascem sem subtipo presumido (enum desconhecido / terminal)', () => {
+    const store = createIntentTemplate('storeNode', BOT_ID, 's').conditions[0].action
+    expect(store.storeType).toBeNull()
+    const api = createIntentTemplate('apiCallNode', BOT_ID, 'a').conditions[0].action
+    expect(api.external).toEqual({ type: [], apiName: [] })
+    const end = createIntentTemplate('endNode', BOT_ID, 'e').conditions[0].action
+    expect(end.error).toBeUndefined()  // só transfer/capture têm caminho de erro
+  })
+
+  it('caminho infeliz: nó terminal (end) não introduz referência quebrada — export liberado', () => {
+    const start = createStartIntent(BOT_ID)
+    const end = createIntentTemplate('endNode', BOT_ID, 'fim')
+    const report = validateFlow({ list: [start, end] })
+    expect(report.errors).toEqual([])
+  })
+
+  it('caminho infeliz: choice recém-criado (sem botão) recusa conexão com mensagem útil', () => {
+    const choice = createIntentTemplate('choiceNode', BOT_ID, 'menu')
+    const target = createIntentTemplate('endNode', BOT_ID, 'fim')
+    const result = applyConnect({ list: [choice, target] }, choice.id, target.id)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toContain('botão')
+  })
+
+  it('caminho feliz: adicionar mensagem + botão ao choice criado e conectar preenche o slot', () => {
+    const choice = createIntentTemplate('choiceNode', BOT_ID, 'menu')
+    const target = createIntentTemplate('endNode', BOT_ID, 'fim')
+    expect(addButtonsMessage(choice, 'Escolha uma opção').ok).toBe(true)  // mensagem BUTTON canônica
+    expect(addButton(choice, 'Opção A', null).ok).toBe(true)              // cria o slot vazio
+    const json: BotFlowJson = { list: [choice, target] }
+    const result = applyConnect(json, choice.id, target.id)
+    expect(result).toEqual({ ok: true, kind: 'choice', condIdx: 0 })
+    expect(json.list[0].conditions[0].action.choices).toContain(target.id)
+  })
+
+  it('estrutura grupo+filhos: serializar fluxo agrupado NÃO vaza filhos como intenções', () => {
+    // Intenção com 2 condições (choice + capture) → vira grupo com 2 filhos no canvas.
+    const grouped = createIntentTemplate('choiceNode', BOT_ID, 'multi')
+    grouped.conditions.push(createIntentTemplate('captureNode', BOT_ID, 'multi').conditions[0])
+    const start = createStartIntent(BOT_ID)
+    const json: BotFlowJson = { list: [start, grouped] }
+
+    // No canvas: grupo (1) + 2 filhos = 3 nós para 1 intenção agrupada.
+    const { nodes } = parseFlow(json)
+    expect(nodes.filter(n => n.type === 'intentGroupNode')).toHaveLength(1)
+    expect(nodes.filter(n => n.parentId === grouped.id)).toHaveLength(2)
+
+    // No JSON: só as 2 intenções do modelo (os filhos `::c{idx}` não existem).
+    const reparsed = JSON.parse(serializeFlow(json)) as BotFlowJson
+    expect(reparsed.list).toHaveLength(2)
+    expect(reparsed.list.some(i => i.id.includes('::c'))).toBe(false)
+    expect(reparsed.list.find(i => i.id === grouped.id)?.conditions).toHaveLength(2)
   })
 })
 

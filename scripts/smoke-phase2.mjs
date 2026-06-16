@@ -26,7 +26,8 @@ try {
   // 1. Paleta visível
   const paletteItems = await page.locator('[title^="Arraste para o canvas"]').count()
   console.log(`itens na paleta: ${paletteItems}`)
-  if (paletteItems !== 6) fail(`esperava 6 itens na paleta, veio ${paletteItems}`)
+  // Fase 6 Marco D: a paleta passou a oferecer os 11 ActionTypes (6 de fluxo + 5 avançados).
+  if (paletteItems !== 11) fail(`esperava 11 itens na paleta, veio ${paletteItems}`)
 
   // 2. Criar nó via evento de drop sintético no canvas
   const nodesBefore = await page.locator('.react-flow__node').count()

@@ -8,9 +8,15 @@ import type { Action, BotIntent, Condition, ErrorAction } from '../types'
  * presentes, com null/[]/'' como defaults explícitos. Ver PLANS.md.
  */
 
-/** Tipos de nó que podem ser criados pela paleta (externalBot e start não). */
+/**
+ * Tipos de nó que podem ser criados pela paleta — um para cada um dos 11
+ * ActionTypes da plataforma (Modelo B). `externalBotNode` (redirect p/ outro bot)
+ * e `startNode` (início do fluxo) NÃO são criáveis. Os 5 últimos foram somados
+ * na Fase 6: endConversation, external (API), order, captureCsat e store.
+ */
 export const CREATABLE_KINDS = [
   'defaultNode', 'choiceNode', 'captureNode', 'transferNode', 'waitNode', 'setDataNode',
+  'endNode', 'apiCallNode', 'orderNode', 'csatNode', 'storeNode',
 ] as const
 
 export type CreatableKind = (typeof CREATABLE_KINDS)[number]
@@ -22,6 +28,11 @@ const ACTION_TYPE_BY_KIND: Record<CreatableKind, string> = {
   transferNode: 'transfer',
   waitNode:     'waitForInteraction',
   setDataNode:  'setData',
+  endNode:      'endConversation',
+  apiCallNode:  'external',          // chamada de API (≠ externalBotNode, que é outro bot)
+  orderNode:    'order',
+  csatNode:     'captureCsat',
+  storeNode:    'store',
 }
 
 function canonicalAction(type: string): Action {
@@ -97,6 +108,12 @@ export function createIntentTemplate(kind: CreatableKind, botId: string, name: s
     action.captureDataType = 'free'
     action.error = canonicalError(botId)
   }
+  // Defaults dos tipos novos da Fase 6 (mínimos embasados no spec — ver
+  // docs/MODELO-INTENCAO-OMNICHAT.md §4). `endConversation`/`external`/`store`
+  // não têm subtipo a presumir: end é terminal, external já nasce com o objeto
+  // `{ type: [], apiName: [] }` canônico e o enum de storeType é desconhecido.
+  if (kind === 'orderNode') action.orderType = 'generateOrder'
+  if (kind === 'csatNode') action.captureDataType = 'supportRate'
 
   const now = new Date().toUTCString()
   return {

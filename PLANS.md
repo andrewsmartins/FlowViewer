@@ -23,14 +23,13 @@
 > Validação manual aprovada pelo Andy (fluxo completo e só-start). Ver
 > docs/fase4-resultados.md (seção "Fase 4b") e seção "Fase 4b" abaixo.
 >
-> **Próximos passos sugeridos (próxima sessão):** (1) **Fase 6 — Modelo B**: Marcos A
-> (visualização), B (aresta de Contexto) e C (edição dois-modos) **CONCLUÍDOS** na branch
-> `feat/model-b-nodes`. Próximo é o **Marco D — Criação + polish**: a paleta cria intenção
-> nova com a ação escolhida (template em `intentTemplates`) e revalidar `pushFlow`/
-> `restoreFlow`/`exportImage`/`validateFlow` com a estrutura de grupo+filhos. Ver seção
-> "Fase 6" abaixo + spec em docs/MODELO-INTENCAO-OMNICHAT.md; (2) avaliar as "Melhorias
-> paralelas" (elkjs); (3) possível recriação de refs órfãs no restore (caveat na "Fase 4b").
-> Publicação (`POST /publish`) FORA de escopo.
+> **Próximos passos sugeridos (próxima sessão):** (1) **Fase 6 — Modelo B COMPLETA**: Marcos A
+> (visualização), B (aresta de Contexto), C (edição dois-modos) e **D (criação dos 11
+> ActionTypes + revalidação + fix de export com grupos)** **CONCLUÍDOS** na branch
+> `feat/model-b-nodes` (183 testes + 10 smokes verdes). Prontos para revisão/merge: validar
+> visualmente a criação dos 5 tipos novos, decidir o bump de versão (minor, 0.14.0) e mergear
+> a branch; (2) avaliar as "Melhorias paralelas" (elkjs); (3) possível recriação de refs órfãs
+> no restore (caveat na "Fase 4b"). Publicação (`POST /publish`) FORA de escopo.
 
 ## Contexto
 
@@ -448,7 +447,7 @@ morto. O JSON deixa de ser visível — vira só entrada (modal) e saída (expor
 Ordem: 5a → 5b → 5c, uma versão minor cada (0.10.0, 0.11.0, 0.12.0).
 Critério de pronto por fatia: tsc + vitest + smoke atualizados verdes.
 
-### Fase 6 — Nós por condição alinhados ao modelo da plataforma (Modelo B) 🔜 PLANEJADA
+### Fase 6 — Nós por condição alinhados ao modelo da plataforma (Modelo B) ✅ CONCLUÍDA (Marcos A–D)
 
 > Objetivo: aproximar os tipos de nó do que a plataforma realmente expõe.
 > Spec de referência completa (UI ↔ JSON + todos os enums): **[docs/MODELO-INTENCAO-OMNICHAT.md](docs/MODELO-INTENCAO-OMNICHAT.md)**.
@@ -560,9 +559,27 @@ dedicado. Faltam 5: `endConversation`, `external` (API), `order`, `captureCsat`,
     `scripts/smoke-phase6-edit.mjs` (dois modos no browser). Build + **152 testes** +
     10 smokes verdes. Validado visualmente (editor de condição escopado: gatilho +
     mensagens + ação do filho).
-- **Marco D — Criação + polish.** Paleta cria intenção nova com a ação escolhida
-  (template em `intentTemplates`); revalidar `pushFlow`/`restoreFlow`/`exportImage`/
-  `validateFlow` com a nova estrutura de nós.
+- **Marco D — Criação + polish. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - **Paleta dos 11 ActionTypes:** `CREATABLE_KINDS`/`ACTION_TYPE_BY_KIND` (`intentTemplates.ts`)
+    ganharam os 5 tipos da Fase 6 (`endNode`/`apiCallNode`/`orderNode`/`csatNode`/`storeNode`).
+    A `NodePalette` separa os itens em dois grupos com divisória — **Fluxo** (os 6) e
+    **Avançado** (os 5) — e espelha as cores do `FlowCanvas`. Um nó criado nasce como **nó
+    solto** (1 condição), `type: kind` consistente com `soloKind` — `handleCreateNode` não mudou.
+  - **Defaults dos templates (mínimos, embasados no spec §4):** `order` → `orderType:
+    'generateOrder'`; `captureCsat` → `captureDataType: 'supportRate'`; `endConversation`/
+    `external`/`store` sem subtipo presumido (terminal / objeto `external` canônico / enum de
+    `storeType` desconhecido — decisão: não inventar). Só `transfer`/`captureData` têm `error.next`.
+  - **Export PNG/SVG (fix real):** `getNodesBounds` sem `nodeLookup` lê a posição crua; filhos
+    de grupo têm posição relativa → bounds errado. Novo `exportImage.boundsNodes` exclui os
+    filhos (`parentId`) do cálculo (o container já os cobre). Bug latente desde o Marco A.
+  - **Revalidação SEM mudança de código:** `pushFlow`/`restoreFlow` operam sobre o modelo
+    (`flow.list`/`backupData.list`), nunca sobre os nós → filhos `{id}::c{idx}` nunca viram
+    intenções no JSON; `validateFlow` opera sobre `json.list` e os tipos novos não criam refs.
+    Confirmado por teste (serialização de fluxo agrupado mantém a contagem de `list`).
+  - **Testes:** +9 em `intentTemplates.test.ts` + novo `exportImage.test.ts` (3 do `boundsNodes`)
+    + smoke `scripts/smoke-phase6-create.mjs` (cria end + API, exporta PNG com grupos, JSON sem
+    vazamento de filhos); `smoke-phase2` atualizado (paleta 6 → 11). Build + **183 testes** +
+    10 smokes verdes.
 
 **Como testar (incl. caminho infeliz):** samples com intenção multi-condição
 (`Confirmar_nome` = choice+captureData), intenção de 1 condição (deve colapsar em nó
