@@ -69,6 +69,27 @@ interface FlowCanvasProps {
   onConnect: (connection: Connection) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onCreateNode: (kind: CreatableKind, position: XYPosition) => void
+  /** Soltar um tipo da paleta sobre um nó-intenção: adiciona como condição dele (merge). */
+  onAddConditionToNode: (intentId: string, kind: CreatableKind) => void
+}
+
+/**
+ * Nó-intenção (solo ou grupo) sob a posição do cursor no canvas, ou null. Usado
+ * para decidir entre CRIAR um nó solto e FUNDIR como condição de uma intenção
+ * existente ao soltar um tipo da paleta. Ignora filhos de grupo (o container já
+ * cobre a área), o nó de início (nunca agrupa) e bots externos (sintéticos).
+ */
+function intentNodeAt(flowPos: XYPosition, nodes: Node<FlowNodeData>[]): string | null {
+  for (const n of nodes) {
+    if (n.parentId || n.type === 'startNode' || n.type === 'externalBotNode') continue
+    const w = n.measured?.width ?? (typeof n.width === 'number' ? n.width : 240)
+    const h = n.measured?.height ?? (typeof n.height === 'number' ? n.height : 120)
+    if (flowPos.x >= n.position.x && flowPos.x <= n.position.x + w &&
+        flowPos.y >= n.position.y && flowPos.y <= n.position.y + h) {
+      return n.id
+    }
+  }
+  return null
 }
 
 export function FlowCanvas(props: FlowCanvasProps) {
@@ -79,29 +100,51 @@ export function FlowCanvas(props: FlowCanvasProps) {
   )
 }
 
-function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode }: FlowCanvasProps) {
+function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onAddConditionToNode }: FlowCanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
+  // Nó atualmente destacado como alvo de merge (manipulado via classe no DOM
+  // para não re-renderizar o array controlado de nós a cada dragover).
+  const mergeTargetRef = useRef<string | null>(null)
 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_, node) => onNodeClick(node as Node<FlowNodeData>),
     [onNodeClick]
   )
 
+  const setMergeTarget = useCallback((id: string | null) => {
+    if (mergeTargetRef.current === id) return
+    if (mergeTargetRef.current) {
+      document.querySelector(`.react-flow__node[data-id="${mergeTargetRef.current}"]`)?.classList.remove('merge-drop-target')
+    }
+    mergeTargetRef.current = id
+    if (id) document.querySelector(`.react-flow__node[data-id="${id}"]`)?.classList.add('merge-drop-target')
+  }, [])
+
   const handleDragOver = useCallback((e: DragEvent) => {
     if (!e.dataTransfer.types.includes(PALETTE_DRAG_TYPE)) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-  }, [])
+    setMergeTarget(intentNodeAt(screenToFlowPosition({ x: e.clientX, y: e.clientY }), nodes))
+  }, [nodes, screenToFlowPosition, setMergeTarget])
+
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    // Só limpa ao sair de fato do canvas (não ao cruzar entre nós internos).
+    if (!e.currentTarget.contains(e.relatedTarget as HTMLElement | null)) setMergeTarget(null)
+  }, [setMergeTarget])
 
   const handleDrop = useCallback((e: DragEvent) => {
     const kind = e.dataTransfer.getData(PALETTE_DRAG_TYPE)
     if (!isCreatableKind(kind)) return
     e.preventDefault()
-    onCreateNode(kind, screenToFlowPosition({ x: e.clientX, y: e.clientY }))
-  }, [onCreateNode, screenToFlowPosition])
+    const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+    const target = intentNodeAt(flowPos, nodes)
+    setMergeTarget(null)
+    if (target) onAddConditionToNode(target, kind)
+    else onCreateNode(kind, flowPos)
+  }, [nodes, onCreateNode, onAddConditionToNode, screenToFlowPosition, setMergeTarget])
 
   return (
-    <div className="w-full h-full" onDragOver={handleDragOver} onDrop={handleDrop}>
+    <div className="w-full h-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
     <ReactFlow
       nodes={nodes}
       edges={edges}

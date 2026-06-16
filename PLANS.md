@@ -580,6 +580,17 @@ dedicado. Faltam 5: `endConversation`, `external` (API), `order`, `captureCsat`,
     + smoke `scripts/smoke-phase6-create.mjs` (cria end + API, exporta PNG com grupos, JSON sem
     vazamento de filhos); `smoke-phase2` atualizado (paleta 6 → 11). Build + **183 testes** +
     10 smokes verdes.
+  - **Extra (pós-Marco D): condição tipada — escolher a ação ao adicionar condição + merge pela
+    paleta.** Duas entradas para criar uma condição **já tipada** (em vez de sempre `action.none`):
+    (1) **select "Ação"** no **+ Adicionar condição** do DetailPanel (os 11 tipos); (2) **arrastar
+    um tipo da paleta SOBRE um nó-intenção** adiciona-o como condição daquela intenção (vira grupo),
+    com destaque tracejado no alvo (`merge-drop-target`). Guardas: start (nunca agrupa), bot externo
+    e área vazia caem no "criar solto"; filhos de grupo ignorados. Núcleo compartilhado:
+    `buildKindAction`/`createConditionForKind` (intentTemplates), `addCondition(intent, kind?)`
+    (editIntent), `CREATABLE_KIND_LABELS` (fonte única de rótulos), `handleAddConditionToNode` (App)
+    + `intentNodeAt`/`onAddConditionToNode` (FlowCanvas). +4 testes + smoke `smoke-phase6-merge.mjs`.
+    Build + **197 testes** + 11 smokes verdes. _Escopo B (fundir dois nós EXISTENTES) ficou de fora
+    por causa da integridade de refs de entrada (id da origem some) — planejar à parte se necessário._
 
 **Como testar (incl. caminho infeliz):** samples com intenção multi-condição
 (`Confirmar_nome` = choice+captureData), intenção de 1 condição (deve colapsar em nó

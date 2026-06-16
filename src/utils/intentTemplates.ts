@@ -21,6 +21,24 @@ export const CREATABLE_KINDS = [
 
 export type CreatableKind = (typeof CREATABLE_KINDS)[number]
 
+/**
+ * Rótulos amigáveis dos tipos criáveis. Fonte única — consumido pela paleta
+ * (NodePalette) e pelo seletor de tipo ao adicionar condição (DetailPanel).
+ */
+export const CREATABLE_KIND_LABELS: Record<CreatableKind, string> = {
+  defaultNode:  'Mensagem',
+  choiceNode:   'Escolha',
+  captureNode:  'Captura',
+  transferNode: 'Transferência',
+  waitNode:     'Espera',
+  setDataNode:  'Definir dados',
+  endNode:      'Encerrar conversa',
+  apiCallNode:  'Chamada de API',
+  orderNode:    'Pedido',
+  csatNode:     'Captura CSAT',
+  storeNode:    'Loja física',
+}
+
 const ACTION_TYPE_BY_KIND: Record<CreatableKind, string> = {
   defaultNode:  'none',
   choiceNode:   'choice',
@@ -74,6 +92,42 @@ export function createConditionTemplate(actionType = 'none'): Condition {
   return canonicalCondition(canonicalAction(actionType))
 }
 
+/**
+ * Monta o `action` canônico de um NodeKind criável, com os defaults específicos
+ * do tipo (transfer → direct4group + erro p/ start; capture → free + erro; choice
+ * → choices vazio; order → generateOrder; csat → supportRate). Compartilhado pela
+ * criação de intenção (paleta) e pela criação de condição tipada (painel/merge),
+ * para os dois caminhos nascerem idênticos.
+ */
+function buildKindAction(kind: CreatableKind, botId: string): Action {
+  const action = canonicalAction(ACTION_TYPE_BY_KIND[kind])
+  if (kind === 'choiceNode') action.choices = []
+  if (kind === 'transferNode') {
+    action.transferType = 'direct4group'
+    action.error = canonicalError(botId)
+  }
+  if (kind === 'captureNode') {
+    action.captureDataType = 'free'
+    action.error = canonicalError(botId)
+  }
+  // Defaults dos tipos novos da Fase 6 (mínimos embasados no spec — ver
+  // docs/MODELO-INTENCAO-OMNICHAT.md §4). `endConversation`/`external`/`store`
+  // não têm subtipo a presumir: end é terminal, external já nasce com o objeto
+  // `{ type: [], apiName: [] }` canônico e o enum de storeType é desconhecido.
+  if (kind === 'orderNode') action.orderType = 'generateOrder'
+  if (kind === 'csatNode') action.captureDataType = 'supportRate'
+  return action
+}
+
+/**
+ * Condição canônica já TIPADA pela ação de um NodeKind criável — usada ao
+ * adicionar uma condição pelo painel ou ao arrastar um tipo da paleta sobre um
+ * nó (merge na mesma intenção). Reusa exatamente os defaults da criação de nó.
+ */
+export function createConditionForKind(kind: CreatableKind, botId: string): Condition {
+  return canonicalCondition(buildKindAction(kind, botId))
+}
+
 function canonicalCondition(action: Action): Condition {
   return {
     type: 'any',
@@ -97,24 +151,6 @@ function canonicalCondition(action: Action): Condition {
  * comum observado nos bots reais (ex.: transfer → direct4group).
  */
 export function createIntentTemplate(kind: CreatableKind, botId: string, name: string): BotIntent {
-  const action = canonicalAction(ACTION_TYPE_BY_KIND[kind])
-
-  if (kind === 'choiceNode') action.choices = []
-  if (kind === 'transferNode') {
-    action.transferType = 'direct4group'
-    action.error = canonicalError(botId)
-  }
-  if (kind === 'captureNode') {
-    action.captureDataType = 'free'
-    action.error = canonicalError(botId)
-  }
-  // Defaults dos tipos novos da Fase 6 (mínimos embasados no spec — ver
-  // docs/MODELO-INTENCAO-OMNICHAT.md §4). `endConversation`/`external`/`store`
-  // não têm subtipo a presumir: end é terminal, external já nasce com o objeto
-  // `{ type: [], apiName: [] }` canônico e o enum de storeType é desconhecido.
-  if (kind === 'orderNode') action.orderType = 'generateOrder'
-  if (kind === 'csatNode') action.captureDataType = 'supportRate'
-
   const now = new Date().toUTCString()
   return {
     id: crypto.randomUUID(),
@@ -124,7 +160,7 @@ export function createIntentTemplate(kind: CreatableKind, botId: string, name: s
     keywords: [],
     context: null,
     priority: 0,
-    conditions: [canonicalCondition(action)],
+    conditions: [canonicalCondition(buildKindAction(kind, botId))],
     createdAt: now,
     updatedAt: now,
     advanced: { active: false, endpointId: null },

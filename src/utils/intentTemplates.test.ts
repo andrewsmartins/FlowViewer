@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createIntentTemplate, createStartIntent, CREATABLE_KINDS, isCreatableKind } from './intentTemplates'
+import { createIntentTemplate, createStartIntent, createConditionForKind, CREATABLE_KINDS, isCreatableKind } from './intentTemplates'
 import { validateFlow } from './validateFlow'
 import { applyConnect, applyEdgeDelete, serializeFlow, parseEdgeId } from './editFlow'
 import { addButton, addButtonsMessage } from './editIntent'
@@ -133,6 +133,13 @@ describe('Marco D — criação dos 11 ActionTypes (Modelo B)', () => {
     const result = applyConnect(json, choice.id, target.id)
     expect(result).toEqual({ ok: true, kind: 'choice', condIdx: 0 })
     expect(json.list[0].conditions[0].action.choices).toContain(target.id)
+  })
+
+  it.each(CREATABLE_KINDS)('createConditionForKind(%s) bate com a condição da intenção criada', kind => {
+    const cond = createConditionForKind(kind, BOT_ID)
+    const fromIntent = createIntentTemplate(kind, BOT_ID, 'x').conditions[0]
+    // Mesma forma de action (defaults por tipo idênticos aos da criação de nó).
+    expect(cond.action).toEqual(fromIntent.action)
   })
 
   it('estrutura grupo+filhos: serializar fluxo agrupado NÃO vaza filhos como intenções', () => {

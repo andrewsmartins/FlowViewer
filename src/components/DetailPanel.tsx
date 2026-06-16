@@ -11,6 +11,7 @@ import {
   type EditableMessage, type MessageRef,
 } from '../utils/editIntent'
 import type { EditResult } from '../utils/editFlow'
+import { CREATABLE_KINDS, CREATABLE_KIND_LABELS, type CreatableKind } from '../utils/intentTemplates'
 
 const KIND_LABELS_LIGHT: Record<NodeKind, { label: string; color: string }> = {
   startNode:       { label: 'Início',          color: 'bg-emerald-100 text-emerald-700' },
@@ -88,7 +89,12 @@ interface DraftCondition {
   value: string
   /** Índice em intent.conditions; null = condição nova ainda não aplicada. */
   originalIdx: number | null
+  /** Tipo da AÇÃO da condição nova (só para `originalIdx === null`). */
+  kind?: CreatableKind
 }
+
+/** Opções do select de tipo de ação ao adicionar uma condição nova. */
+const KIND_OPTIONS = CREATABLE_KINDS.map(k => ({ value: k, label: CREATABLE_KIND_LABELS[k] }))
 
 interface Draft {
   // Meta da intenção (modos group/solo)
@@ -292,7 +298,7 @@ export function DetailPanel({ node, intent, intents, onBeforeApply, onApply, onA
         ...[...draft.removedCondIdxs].sort((a, b) => b - a).map(i => removeCondition(intent, i)),
       )
       for (const added of draft.conditions.filter(c => c.originalIdx === null && c.name.trim())) {
-        const addResult = addCondition(intent)
+        const addResult = addCondition(intent, added.kind)
         results.push(addResult.ok ? updateCondition(intent, intent.conditions.length - 1, added) : addResult)
       }
     }
@@ -680,12 +686,24 @@ export function DetailPanel({ node, intent, intents, onBeforeApply, onApply, onA
                           onChange={e => set('conditions', draft.conditions.map((c, j) => j === i ? { ...c, value: e.target.value } : c))}
                         />
                       </div>
-                      {cond.originalIdx === null && <p className={labelCls}>nova — aplicada ao salvar</p>}
+                      {cond.originalIdx === null && (
+                        <div className="flex items-center gap-1.5">
+                          <span className={`${labelCls} shrink-0`}>Ação:</span>
+                          <select
+                            className={inputCls}
+                            value={cond.kind ?? 'defaultNode'}
+                            onChange={e => set('conditions', draft.conditions.map((c, j) => j === i ? { ...c, kind: e.target.value as CreatableKind } : c))}
+                          >
+                            {KIND_OPTIONS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                          </select>
+                          <span className={`${labelCls} shrink-0`}>nova — aplicada ao salvar</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                   <button
                     className={dashedBtnCls}
-                    onClick={() => set('conditions', [...draft.conditions, { name: `Condição ${draft.conditions.length + 1}`, type: 'any', variable: '', value: 'any', originalIdx: null }])}
+                    onClick={() => set('conditions', [...draft.conditions, { name: `Condição ${draft.conditions.length + 1}`, type: 'any', variable: '', value: 'any', originalIdx: null, kind: 'defaultNode' }])}
                   >+ Adicionar condição</button>
                 </div>
               </Section>

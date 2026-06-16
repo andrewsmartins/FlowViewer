@@ -1,23 +1,9 @@
 import { Panel } from '@xyflow/react'
 import { useTheme } from '../contexts/ThemeContext'
-import { type CreatableKind } from '../utils/intentTemplates'
+import { CREATABLE_KIND_LABELS as KIND_LABELS, type CreatableKind } from '../utils/intentTemplates'
 
 /** MIME type interno usado no drag & drop da paleta para o canvas. */
 export const PALETTE_DRAG_TYPE = 'application/fluxo-node-kind'
-
-const KIND_LABELS: Record<CreatableKind, string> = {
-  defaultNode:  'Mensagem',
-  choiceNode:   'Escolha',
-  captureNode:  'Captura',
-  transferNode: 'Transferência',
-  waitNode:     'Espera',
-  setDataNode:  'Definir dados',
-  endNode:      'Encerrar conversa',
-  apiCallNode:  'Chamada de API',
-  orderNode:    'Pedido',
-  csatNode:     'Captura CSAT',
-  storeNode:    'Loja física',
-}
 
 // Cores espelham as do FlowCanvas (KIND_COLORS) para a bolinha da paleta bater
 // com o nó criado.

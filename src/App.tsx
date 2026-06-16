@@ -13,6 +13,7 @@ import { ThemeContext }  from './contexts/ThemeContext'
 import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
 import { createIntentTemplate, createStartIntent, type CreatableKind } from './utils/intentTemplates'
+import { addCondition } from './utils/editIntent'
 import { validateFlow } from './utils/validateFlow'
 import { exportFlowImage } from './utils/exportImage'
 import { FlowHistory, takeSnapshot, type FlowSnapshot } from './utils/history'
@@ -306,6 +307,32 @@ export default function App() {
   }, [bumpModel, takeSnap])
 
   /**
+   * Funde um tipo da paleta numa intenção existente: arrastar e soltar um tipo
+   * SOBRE um nó-intenção adiciona-o como NOVA condição daquela intenção (em vez
+   * de criar um nó solto). Uma intenção com 2+ condições vira um grupo no canvas.
+   * Re-parseia preservando posições — a intenção pode passar de solo para grupo.
+   */
+  const handleAddConditionToNode = useCallback((intentId: string, kind: CreatableKind) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const intent = model.list.find(i => i.id === intentId)
+    if (!intent || intent.category === 'start') return  // start nunca agrupa
+    const snapshot = takeSnap()
+    const result = addCondition(intent, kind)
+    if (!result.ok) {
+      fail(`Não foi possível adicionar a condição: ${result.reason}.`)
+      return
+    }
+    if (snapshot) historyRef.current.push(snapshot)
+    const parsed = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    setNodes(parsed.nodes.map(n => { const p = posById.get(n.id); return p ? { ...n, position: p } : n }))
+    setEdges(parsed.edges)
+    setNotice(null)
+    bumpModel()
+  }, [bumpModel, takeSnap, fail])
+
+  /**
    * Captura o estado pré-edição: o DetailPanel muta o intent diretamente, então
    * o snapshot precisa ser tirado antes do primeiro patch.
    */
@@ -439,6 +466,7 @@ export default function App() {
               onConnect={handleConnect}
               onEdgesChange={handleEdgesChange}
               onCreateNode={handleCreateNode}
+              onAddConditionToNode={handleAddConditionToNode}
             />
             {selectedNode && (
               <DetailPanel

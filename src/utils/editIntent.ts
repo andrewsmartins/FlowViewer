@@ -1,6 +1,6 @@
 import type { BotIntent, BotMessage, BulkUpdateItem, Condition } from '../types'
 import type { EditResult } from './editFlow'
-import { createConditionTemplate } from './intentTemplates'
+import { createConditionTemplate, createConditionForKind, type CreatableKind } from './intentTemplates'
 
 /**
  * Patches de CONTEÚDO de uma intenção (Fase 3): mensagens, botões, metadados
@@ -194,9 +194,15 @@ export function updateCondition(
   return { ok: true }
 }
 
-/** Acrescenta uma condição canônica (action none) ao final da intenção. */
-export function addCondition(intent: BotIntent): EditResult {
-  intent.conditions.push(createConditionTemplate())
+/**
+ * Acrescenta uma condição ao final da intenção. Com `kind` (Marco D), a condição
+ * já nasce TIPADA pela ação escolhida (mesmo template da criação de nó); sem ele,
+ * mantém o comportamento anterior — condição de mensagem (`action.none`).
+ */
+export function addCondition(intent: BotIntent, kind?: CreatableKind): EditResult {
+  intent.conditions.push(
+    kind ? createConditionForKind(kind, intent.botId) : createConditionTemplate(),
+  )
   touch(intent)
   return { ok: true }
 }

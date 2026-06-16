@@ -9,6 +9,7 @@ import {
 } from './editIntent'
 import { validateFlow } from './validateFlow'
 import { createIntentTemplate } from './intentTemplates'
+import { parseFlow } from './parseFlow'
 import type { BotFlowJson, BotIntent } from '../types'
 
 const samplesDir = join(dirname(fileURLToPath(import.meta.url)), '../../samples')
@@ -155,6 +156,33 @@ describe('edição escopada por condição (Modelo B, Marco C)', () => {
     addCondition(intent) // c1 sem botões
     // c0 é choice mas ainda sem mensagem de botões → updateButton(0) não acha
     expect(updateButton(intent, 0, 'X', null, 1).ok).toBe(false) // c1 não tem botões
+  })
+})
+
+describe('addCondition tipada (Marco D — escolher o tipo da condição)', () => {
+  it('sem kind: mantém o comportamento anterior (condição de mensagem, action.none)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    expect(addCondition(intent)).toEqual({ ok: true })
+    expect(intent.conditions[1].action.type).toBe('none')
+  })
+
+  it('com kind: a condição nova nasce tipada pela ação escolhida', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    addCondition(intent, 'transferNode')
+    addCondition(intent, 'endNode')
+    expect(intent.conditions[1].action.type).toBe('transfer')
+    expect(intent.conditions[1].action.transferType).toBe('direct4group')   // default do tipo
+    expect(intent.conditions[1].action.error?.next.intent).toBe(`${BOT_ID}-start`)
+    expect(intent.conditions[2].action.type).toBe('endConversation')
+  })
+
+  it('a condição tipada renderiza como o nó certo no grupo (parseFlow)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'multi')
+    addCondition(intent, 'csatNode')   // agora 2 condições → grupo + 2 filhos
+    const { nodes } = parseFlow({ list: [intent] })
+    expect(nodes.find(n => n.id === intent.id)?.type).toBe('intentGroupNode')
+    expect(nodes.find(n => n.id === `${intent.id}::c1`)?.type).toBe('csatNode')
+    expect(nodes.find(n => n.id === `${intent.id}::c1`)?.data.captureDataType).toBe('supportRate')
   })
 })
 
