@@ -13,6 +13,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+## [0.14.0] - 2026-06-15
+
 ### Adicionado
 - **Remover conexões pela tag da aresta** — toda aresta de fluxo interna (`-next` e de escolha) ganhou no meio uma **tag** (pill estilizado) que reúne o **rótulo da conexão + um botão "×"** num único elemento, **elevado acima das linhas** (zIndex + fundo opaco que cobre o traço) — antes a linha ficava por cima e dificultava o clique. Forma descobrível de desfazer a ligação, além do atalho Delete (que segue valendo). Implementado como aresta customizada `DeletableEdge` ([src/components/edges/DeletableEdge.tsx](src/components/edges/DeletableEdge.tsx)) registrada em `edgeTypes`, com a tag acompanhando o tema (claro/escuro via `EdgeActionsContext`); o clique no "×" cai no **mesmo caminho** da exclusão por teclado (`handleEdgesChange` → `applyEdgeDelete` + histórico/undo). Arestas para **outro bot** (`-ext`) e de **contexto** seguem sem tag (não são removíveis aqui). O `parseFlow` marca só as arestas internas com `type: 'deletable'`. _Remover uma conexão `-next` reseta o `next` para a forma canônica sem destino; remover uma de escolha esvazia o slot mantendo o botão._
 
