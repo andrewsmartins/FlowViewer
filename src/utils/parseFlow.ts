@@ -1,5 +1,5 @@
 import dagre from '@dagrejs/dagre'
-import type { Edge, Node } from '@xyflow/react'
+import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import type {
   BotFlowJson, BotIntent, Condition, Action,
   ButtonOption, BulkUpdateItem, FlowNodeData, NodeKind, ConditionInfo,
@@ -203,6 +203,63 @@ function edgeStyle(external: boolean) {
     labelBgPadding: [4, 6] as [number, number],
     labelBgBorderRadius: 4,
   }
+}
+
+// ─── Aresta de Contexto (Modelo B, Marco B) ─────────────────────────────────
+
+/** Violeta — distinta do fluxo (cinza `#94a3b8`) e do redirect externo (âmbar `#f59e0b`). */
+const CONTEXT_EDGE_COLOR = '#a855f7'
+
+/**
+ * Estilo da aresta de CONTEXTO: tracejada, com seta, NÃO editável e NÃO
+ * deletável nesta fase (a edição de contexto é o Marco C). O `data.kind` marca
+ * a aresta para que o `collapseEdges` a exclua do layout — contexto é uma
+ * anotação cruzada entre intenções, não a hierarquia principal do fluxo.
+ */
+function contextEdgeStyle() {
+  return {
+    type: 'smoothstep' as const,
+    animated: false,
+    reconnectable: false as const,
+    deletable: false,
+    data: { kind: 'context' as const },
+    markerEnd: { type: MarkerType.ArrowClosed, color: CONTEXT_EDGE_COLOR, width: 16, height: 16 },
+    style: { stroke: CONTEXT_EDGE_COLOR, strokeDasharray: '6 4', strokeWidth: 1.5 },
+    labelStyle: { fontSize: 10, fill: CONTEXT_EDGE_COLOR, fontWeight: 600 },
+    labelBgStyle: { fill: '#faf5ff', fillOpacity: 0.9 },
+    labelBgPadding: [3, 5] as [number, number],
+    labelBgBorderRadius: 4,
+  }
+}
+
+/**
+ * Constrói as arestas de contexto: para cada intenção com `intent.context`
+ * apontando para outra intenção EXISTENTE, uma aresta tracejada
+ * (contexto → esta intenção), indicando que esta intenção só ativa quando se
+ * chega vinda da intenção de contexto. Tanto origem quanto destino usam o ID
+ * cru da intenção (container do grupo ou nó solto), igual à entrada de fluxo.
+ *
+ * Guardas (caminhos infelizes): ignora `context` vazio, auto-referência,
+ * destino inexistente (não desenha aresta órfã) e intenção-alvo `start` (o nó
+ * de início não tem handle de entrada).
+ */
+function buildContextEdges(intents: BotIntent[], intentIds: Set<string>): Edge[] {
+  const edges: Edge[] = []
+  for (const intent of intents) {
+    const ctxId = intent.context
+    if (typeof ctxId !== 'string' || !ctxId) continue
+    if (ctxId === intent.id) continue
+    if (!intentIds.has(ctxId)) continue
+    if (intent.category === 'start') continue
+    edges.push({
+      id: `ctx-${intent.id}`,
+      source: ctxId,
+      target: intent.id,
+      label: 'contexto',
+      ...contextEdgeStyle(),
+    })
+  }
+  return edges
 }
 
 // ─── Layout ────────────────────────────────────────────────────────────────
@@ -423,6 +480,8 @@ export function buildEdges(json: BotFlowJson): { edges: Edge[]; externalNodes: N
     }
   }
 
+  edges.push(...buildContextEdges(intents, intentIds))
+
   return { edges, externalNodes: Array.from(externalNodeMap.values()) }
 }
 
@@ -494,6 +553,8 @@ function collapseEdges(edges: Edge[]): Edge[] {
   const seen = new Set<string>()
   const collapsed: Edge[] = []
   for (const e of edges) {
+    // Arestas de contexto não entram no layout (anotação cruzada, não fluxo).
+    if ((e.data as { kind?: string } | undefined)?.kind === 'context') continue
     const source = e.source.replace(/::c\d+$/, '')
     const key = `${source}->${e.target}`
     if (seen.has(key)) continue

@@ -197,6 +197,72 @@ describe('arestas no Modelo B', () => {
   })
 })
 
+// ─── Aresta de Contexto (Modelo B, Marco B) ──────────────────────────────────
+
+describe('aresta de contexto', () => {
+  it('intenção com context válido desenha aresta tracejada (contexto → esta intenção)', () => {
+    const ctx = makeIntent('menu', [makeCond({})])
+    const sub = makeIntent('sub', [makeCond({})], { context: 'menu' })
+    const { edges } = parseFlow({ list: [ctx, sub] })
+
+    const ctxEdge = edges.find(e => e.id === 'ctx-sub')
+    expect(ctxEdge).toBeDefined()
+    expect(ctxEdge!.source).toBe('menu')   // intenção-de-contexto = origem
+    expect(ctxEdge!.target).toBe('sub')    // esta intenção = destino
+    expect(ctxEdge!.label).toBe('contexto')
+    expect((ctxEdge!.data as { kind?: string }).kind).toBe('context')
+    expect(ctxEdge!.deletable).toBe(false)
+    expect(ctxEdge!.reconnectable).toBe(false)
+    expect(ctxEdge!.style?.strokeDasharray).toBeDefined() // tracejada
+  })
+
+  it('a origem pode ser uma intenção AGRUPADA (usa o ID cru do container)', () => {
+    const grupo = makeIntent('g', [makeCond({}), makeCond({})]) // 2 condições → grupo
+    const sub = makeIntent('sub', [makeCond({})], { context: 'g' })
+    const { nodes, edges } = parseFlow({ list: [grupo, sub] })
+
+    expect(nodes.find(n => n.id === 'g')?.type).toBe('intentGroupNode')
+    expect(edges.find(e => e.id === 'ctx-sub')?.source).toBe('g')
+  })
+
+  it('auto-referência (context === próprio id) não desenha aresta', () => {
+    const intent = makeIntent('x', [makeCond({})], { context: 'x' })
+    const { edges } = parseFlow({ list: [intent] })
+    expect(edges.some(e => e.id === 'ctx-x')).toBe(false)
+  })
+
+  it('intenção start com context não desenha aresta (start não tem entrada)', () => {
+    const start = makeIntent(`${BOT}-start`, [makeCond({})], { category: 'start', context: 'menu' })
+    const menu = makeIntent('menu', [makeCond({})])
+    const { edges } = parseFlow({ list: [start, menu] })
+    expect(edges.some(e => e.id?.startsWith('ctx-'))).toBe(false)
+  })
+
+  it('arestas de contexto NÃO entram no layout (não viram aresta de fluxo)', () => {
+    // Duas intenções sem fluxo entre si, só ligadas por contexto: cada uma fica
+    // no seu componente — o context não as funde no dagre.
+    const a = makeIntent('a', [makeCond({})])
+    const b = makeIntent('b', [makeCond({})], { context: 'a' })
+    const { edges } = parseFlow({ list: [a, b] })
+    // só a aresta de contexto existe; nenhuma aresta de fluxo foi inventada
+    expect(edges).toHaveLength(1)
+    expect(edges[0].id).toBe('ctx-b')
+  })
+
+  it('sample real: uma aresta de contexto por intenção com context apontando p/ intenção existente', () => {
+    const json = loadSample('sample02.json')
+    const ids = new Set(json.list.map(i => i.id))
+    const expected = json.list.filter(
+      i => typeof i.context === 'string' && i.context && ids.has(i.context)
+           && i.context !== i.id && i.category !== 'start',
+    ).length
+    const { edges } = parseFlow(json)
+    const ctxEdges = edges.filter(e => (e.data as { kind?: string } | undefined)?.kind === 'context')
+    expect(ctxEdges).toHaveLength(expected)
+    expect(expected).toBeGreaterThan(0) // sample02 tem contextos reais
+  })
+})
+
 // ─── Caminhos infelizes ──────────────────────────────────────────────────────
 
 describe('caminhos infelizes', () => {
@@ -240,7 +306,7 @@ describe('caminhos infelizes', () => {
     const intent = makeIntent('c', [makeCond({})], { context: 'nao-existe' })
     const { nodes, edges } = parseFlow({ list: [intent] })
     expect(nodes).toHaveLength(1)
-    expect(edges).toHaveLength(0) // contexto é o Marco B; nada de aresta no Marco A
+    expect(edges).toHaveLength(0) // destino do contexto não existe → sem aresta
   })
 
   it('choice apontando para destino fora do fluxo é ignorado', () => {
