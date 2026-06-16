@@ -1,6 +1,6 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
-> Última atualização: 2026-06-15. Este arquivo orienta sessões futuras do Claude Code.
+> Última atualização: 2026-06-15 (Fase 6 planejada). Este arquivo orienta sessões futuras do Claude Code.
 > Status: **Fases 1–5 concluídas, incl. 4a (push CLI) e 4b (push + restore pela
 > UI). v0.13.0, MERGEADO NA `main`.**
 > **MERGE NA MAIN CONCLUÍDO (2026-06-15):** a `feat/visual-editor` (v0.13.0) está
@@ -23,10 +23,13 @@
 > Validação manual aprovada pelo Andy (fluxo completo e só-start). Ver
 > docs/fase4-resultados.md (seção "Fase 4b") e seção "Fase 4b" abaixo.
 >
-> **Próximos passos sugeridos (próxima sessão):** (1) merge da `feat/visual-editor`
-> na `main` (abrir PR); (2) avaliar as "Melhorias paralelas" abaixo (trocar dagre,
-> avaliar elkjs); (3) possível recriação de refs órfãs no restore (caveat
-> registrado na seção "Fase 4b"). Publicação (`POST /publish`) segue FORA de escopo.
+> **Próximos passos sugeridos (próxima sessão):** (1) **Fase 6 — Modelo B COMPLETA**: Marcos A
+> (visualização), B (aresta de Contexto), C (edição dois-modos) e **D (criação dos 11
+> ActionTypes + revalidação + fix de export com grupos)** **CONCLUÍDOS** na branch
+> `feat/model-b-nodes` (183 testes + 10 smokes verdes). Prontos para revisão/merge: validar
+> visualmente a criação dos 5 tipos novos, decidir o bump de versão (minor, 0.14.0) e mergear
+> a branch; (2) avaliar as "Melhorias paralelas" (elkjs); (3) possível recriação de refs órfãs
+> no restore (caveat na "Fase 4b"). Publicação (`POST /publish`) FORA de escopo.
 
 ## Contexto
 
@@ -443,6 +446,172 @@ morto. O JSON deixa de ser visível — vira só entrada (modal) e saída (expor
 
 Ordem: 5a → 5b → 5c, uma versão minor cada (0.10.0, 0.11.0, 0.12.0).
 Critério de pronto por fatia: tsc + vitest + smoke atualizados verdes.
+
+### Fase 6 — Nós por condição alinhados ao modelo da plataforma (Modelo B) ✅ CONCLUÍDA (Marcos A–D)
+
+> Objetivo: aproximar os tipos de nó do que a plataforma realmente expõe.
+> Spec de referência completa (UI ↔ JSON + todos os enums): **[docs/MODELO-INTENCAO-OMNICHAT.md](docs/MODELO-INTENCAO-OMNICHAT.md)**.
+> Decisão de modelagem (escolhida pelo Andy): **Modelo B — um nó por CONDIÇÃO,
+> agrupado por intenção**. A relação `condição → action.type` é 1:1, então cada
+> condição vira um nó tipado pela ação. O `getNodeKind` atual "achata" intenções
+> multi-ação (ex.: `Confirmar_nome` com `[choice, captureData]` vira só `choiceNode`
+> e a captura some) — o Modelo B resolve isso.
+
+**Por que mudar.** Hoje 1 intenção = 1 nó, tipo único por prioridade
+(`parseFlow.ts:getNodeKind`). O enum oficial tem **11 ActionTypes**; só 6 viram nó
+dedicado. Faltam 5: `endConversation`, `external` (API), `order`, `captureCsat`,
+`store`. E intenções com várias condições/ações perdem informação visual.
+
+**Decisões fechadas:**
+- **Agrupamento:** `intentGroupNode` (parent React Flow) + nós-condição como filhos
+  (`parentId` + `extent: 'parent'`). Intenção com **1 condição** = **nó solto** (sem
+  container — evita poluir o caso comum). Container só com **2+ condições**.
+- **5 novos NodeKinds:** `endNode` (Terminar conversa), `apiCallNode` (Chamada externa
+  API — **≠** `externalBotNode`, que é redirect p/ outro bot), `orderNode` (Pedido),
+  `csatNode` (Captura CSAT), `storeNode` (Loja física). `action.type=none` → nó de
+  mensagem (renomear `defaultNode`→conceito "Mensagem").
+- **Header do grupo (rico):** Nome + Categoria (subtítulo) + **badge de Prioridade
+  SEMPRE visível** (Nenhuma..Muita Alta) + keywords como chips + ícones discretos para
+  Contexto e tempo de resposta (`executionDelay`).
+- **Aresta especial de Contexto:** desenhar `intent.context` como aresta **tracejada**
+  (intenção-de-contexto → esta intenção), distinta da aresta de fluxo (`next`/`choice`).
+  Fluxos Alternativos (`fallbackIntents`) **fora de escopo por ora** (decisão do Andy).
+- **Layout 2 camadas (evita dagre composto):** (1) filhos em linha dentro do grupo;
+  (2) dagre atual roda sobre os **grupos**, com arestas colapsadas intent→intent só
+  para posicionar. As arestas renderizadas saem do handle do filho → **grupo de destino**.
+- **IDs:** nó-condição = `{intentId}::c{idx}`. O ID de aresta já codifica `condIdx`
+  (`editFlow.ts`), então a origem por condição fica explícita (simplifica `applyConnect`).
+- **DetailPanel dois-modos:** clicar no **grupo** edita meta da intenção (nome, categoria,
+  prioridade, contexto, keywords, delay); clicar no **filho** edita condição + ação.
+- **Labels de gatilho:** usar os 10 rótulos do `ConditionType` (ex.: "Valor contém",
+  "Total é maior que", "Senão") em vez do label genérico atual.
+
+**Marcos (implementar nesta ordem):**
+- **Marco A — Visualização. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - `types.ts`: `NodeKind` +6 (`endNode`, `apiCallNode`, `orderNode`, `csatNode`,
+    `storeNode`, `intentGroupNode`) e campos opcionais em `FlowNodeData` (triggerLabel,
+    priority, conditionCount, hasContext, hasDelay, orderType, storeType, apiName).
+  - `src/utils/nodeMeta.ts` (NOVO): `actionToNodeKind` (11 ActionTypes), rótulos de
+    `ConditionType` e `PriorityType`, `hasExecutionDelay`. Centraliza os enums (reusado
+    por parseFlow, componentes e DetailPanel).
+  - `parseFlow.ts` reescrito: `buildIntentNodes` emite grupo+filhos (2+ cond) ou nó solto
+    (1/0 cond); dados por condição (`conditionNodeData`); `groupNodeData` p/ o cabeçalho;
+    **layout 2 camadas** (`collapseEdges` → `dagreLayout` só sobre os nós-macro; filhos
+    em linha relativos ao pai). `dagreLayout`/`layoutSingle`/`bbox` agora recebem
+    `sizeById` (grupos têm tamanho dinâmico). `buildEdges`/`buildNextEdge`: origem =
+    nó-condição (`{id}::c{idx}` no grupo, ou ID cru no solto).
+  - 6 componentes novos: `IntentGroupNode` (cabeçalho rico) + `EndNode`/`ApiCallNode`/
+    `OrderNode`/`CsatNode`/`StoreNode`. Registrados em `FlowCanvas` (nodeTypes + cores).
+  - `DetailPanel`: badges dos 6 kinds novos + guarda read-only p/ filho (`ReadOnlyCondition`).
+  - **DECISÃO DE ID (registrar p/ Marco C):** a **entrada de uma intenção** (destino das
+    arestas) é sempre o **ID cru** `{intentId}` — container do grupo OU nó solto. Só os
+    **filhos** usam `{intentId}::c{idx}`. Isso mantém `edge.target` = ID cru (casa com
+    `choices`/`next.intent.id`) e deixou `editFlow`/`parseEdgeId` e os 100 testes de edição
+    **intactos**. Os IDs de aresta seguem `{intentId}-c{condIdx}-…`.
+  - **Testes:** `parseFlow.test.ts` (35 casos, incl. caminhos infelizes) + smoke
+    `scripts/smoke-phase6.mjs`. Build + **135 testes** Vitest verdes; os 7 smokes
+    anteriores (round-trip, push, restore, fase2/3/3b/5) passam sem alteração. Validado
+    importando `samples/sample01-v2.json` no app (4 grupos + 8 filhos, 19 arestas, sem
+    erros de página).
+- **Marco B — Aresta de Contexto. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - `parseFlow.ts`: `buildContextEdges(intents, intentIds)` emite, para cada intenção
+    com `intent.context` apontando p/ intenção EXISTENTE, uma aresta tracejada violeta
+    (`#a855f7`) `contexto → esta intenção`, com ID `ctx-{intentId}`, seta, `data.kind:
+    'context'`, `deletable: false` e `reconnectable: false`. Origem/destino = **ID cru**
+    da intenção (container do grupo ou nó solto), igual à entrada de fluxo. `contextEdgeStyle()`
+    centraliza o estilo. Chamada ao fim de `buildEdges` (logo aparece também nos rebuilds
+    do App após edição). Guardas: ignora `context` vazio, auto-referência, destino
+    inexistente (sem aresta órfã) e intenção-alvo `start` (sem handle de entrada).
+  - **Layout:** arestas de contexto NÃO entram no dagre — `collapseEdges` as exclui pelo
+    `data.kind === 'context'`. Decisão: contexto é anotação cruzada, não a hierarquia do
+    fluxo; manter fora do layout deixou o posicionamento do Marco A intacto (isolado).
+  - `IntentGroupNode`: ganhou handle `source` (Bottom) — necessário porque uma
+    intenção-de-contexto pode ser agrupada (o container vira origem da aresta). Os demais
+    kinds que aparecem como contexto em dados reais (choice/capture/api/setData/default/
+    start) já tinham `source`. Usado SÓ pela aresta de contexto (fluxo sai dos filhos).
+  - **Testes:** +6 casos em `parseFlow.test.ts` (origem/destino/estilo, origem agrupada,
+    auto-ref, start, fora do layout, contagem em sample02 real) + smoke
+    `scripts/smoke-phase6-context.mjs` (fluxo sintético — aresta tracejada, órfã sem
+    aresta, origem agrupada). Build + **141 testes** verdes; os 8 smokes anteriores passam.
+    Validado visualmente (aresta violeta tracejada com rótulo "contexto", distinta do fluxo).
+- **Marco C — Edição. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - **`DetailPanel` em 3 modos** (`resolveMode` pelo nó): **group** (clicar no
+    `intentGroupNode`) edita meta da intenção — nome, categoria, keywords, **prioridade**
+    (select) e **context** (select das outras intenções) + lista de condições (add/remove);
+    **condition** (clicar num filho `{id}::c{idx}`) edita só aquela condição — gatilho
+    (10 rótulos do `ConditionType`), mensagens da condição, botões e ação (transfer/
+    capture/setData), com **Excluir condição**; **solo** (1 condição) = editor completo
+    de antes + prioridade/context. Antes do Marco C, filho era somente-leitura.
+  - **`editFlow.applyConnect`** ganhou origem por condição: `splitSourceId` parseia
+    `{id}::c{idx}` e preenche a vaga DAQUELA condição (antes falhava ao conectar a partir
+    de filhos de grupo). Reconnect/delete já eram por condição (o ID de aresta codifica
+    `condIdx` — `parseEdgeId`), então não mudaram.
+  - **`editIntent`**: `condIdx` opcional em `addTextMessage`/`addButton`/`removeButton`/
+    `addButtonsMessage`/`updateButton`/`updateActionFields`/`updateSetDataItems` (sem ele =
+    1ª condição compatível, retrocompatível); `updateIntentMeta` aceita `priority`+`context`.
+  - **App**: `intent` do filho resolvido tirando `::c{idx}` (`intentIdOf`); `intents`
+    passado ao painel p/ o seletor de context; **`handleApplyEdit` re-parseia preservando
+    posições** (robusto a mudança de tipo do filho, nº de condições, grupo↔solo).
+  - **DECISÃO:** condição é removida pelo modo grupo (lista) OU pelo "Excluir condição"
+    no modo filho (bloqueado na última). Add/remove de condição vive no grupo/solo.
+  - **Testes:** +6 em `editFlow.phase3b.test.ts` (conectar por filho), +5 em
+    `editIntent.test.ts` (escopo `condIdx`, priority/context) + smoke
+    `scripts/smoke-phase6-edit.mjs` (dois modos no browser). Build + **152 testes** +
+    10 smokes verdes. Validado visualmente (editor de condição escopado: gatilho +
+    mensagens + ação do filho).
+- **Marco D — Criação + polish. ✅ CONCLUÍDO (branch `feat/model-b-nodes`).** Implementado:
+  - **Paleta dos 11 ActionTypes:** `CREATABLE_KINDS`/`ACTION_TYPE_BY_KIND` (`intentTemplates.ts`)
+    ganharam os 5 tipos da Fase 6 (`endNode`/`apiCallNode`/`orderNode`/`csatNode`/`storeNode`).
+    A `NodePalette` separa os itens em dois grupos com divisória — **Fluxo** (os 6) e
+    **Avançado** (os 5) — e espelha as cores do `FlowCanvas`. Um nó criado nasce como **nó
+    solto** (1 condição), `type: kind` consistente com `soloKind` — `handleCreateNode` não mudou.
+  - **Defaults dos templates (mínimos, embasados no spec §4):** `order` → `orderType:
+    'generateOrder'`; `captureCsat` → `captureDataType: 'supportRate'`; `endConversation`/
+    `external`/`store` sem subtipo presumido (terminal / objeto `external` canônico / enum de
+    `storeType` desconhecido — decisão: não inventar). Só `transfer`/`captureData` têm `error.next`.
+  - **Export PNG/SVG (fix real):** `getNodesBounds` sem `nodeLookup` lê a posição crua; filhos
+    de grupo têm posição relativa → bounds errado. Novo `exportImage.boundsNodes` exclui os
+    filhos (`parentId`) do cálculo (o container já os cobre). Bug latente desde o Marco A.
+  - **Revalidação SEM mudança de código:** `pushFlow`/`restoreFlow` operam sobre o modelo
+    (`flow.list`/`backupData.list`), nunca sobre os nós → filhos `{id}::c{idx}` nunca viram
+    intenções no JSON; `validateFlow` opera sobre `json.list` e os tipos novos não criam refs.
+    Confirmado por teste (serialização de fluxo agrupado mantém a contagem de `list`).
+  - **Testes:** +9 em `intentTemplates.test.ts` + novo `exportImage.test.ts` (3 do `boundsNodes`)
+    + smoke `scripts/smoke-phase6-create.mjs` (cria end + API, exporta PNG com grupos, JSON sem
+    vazamento de filhos); `smoke-phase2` atualizado (paleta 6 → 11). Build + **183 testes** +
+    10 smokes verdes.
+  - **Extra (pós-Marco D): condição tipada — escolher a ação ao adicionar condição + merge pela
+    paleta.** Duas entradas para criar uma condição **já tipada** (em vez de sempre `action.none`):
+    (1) **select "Ação"** no **+ Adicionar condição** do DetailPanel (os 11 tipos); (2) **arrastar
+    um tipo da paleta SOBRE um nó-intenção** adiciona-o como condição daquela intenção (vira grupo),
+    com destaque tracejado no alvo (`merge-drop-target`). Guardas: start (nunca agrupa), bot externo
+    e área vazia caem no "criar solto"; filhos de grupo ignorados. Núcleo compartilhado:
+    `buildKindAction`/`createConditionForKind` (intentTemplates), `addCondition(intent, kind?)`
+    (editIntent), `CREATABLE_KIND_LABELS` (fonte única de rótulos), `handleAddConditionToNode` (App)
+    + `intentNodeAt`/`onAddConditionToNode` (FlowCanvas). +4 testes + smoke `smoke-phase6-merge.mjs`.
+    Build + **197 testes** + 11 smokes verdes. _Escopo B (fundir dois nós EXISTENTES) ficou de fora
+    por causa da integridade de refs de entrada (id da origem some) — planejar à parte se necessário._
+  - **Extra (polish): Start read-only, remover conexões, exclusão limpa.** Três ajustes:
+    (1) **Start não-editável** — `DetailPanel` ganhou o modo `startRO` (somente-leitura, espelha
+    `externalRO`); a conexão de saída do start segue editável no canvas. (2) **Remover conexões
+    pelo botão "×"** — aresta customizada `DeletableEdge` (src/components/edges/) com botão no meio,
+    registrada em `edgeTypes`; só arestas internas (`-next`/`-ch`) usam `type: 'deletable'` (externas
+    e de contexto seguem smoothstep, sem botão). O clique cai no mesmo caminho do Delete. (3) **Excluir
+    intenção remove os filhos** — `deleteNode` re-parseia preservando posições em vez de filtrar só o
+    id exato (antes os nós `{id}::c{idx}` ficavam órfãos no canvas). +2 testes (tipos de aresta) + smoke
+    `smoke-phase6-edge-delete.mjs`; smokes 2/3/3b ajustados ao novo label (EdgeLabelRenderer). Build +
+    **199 testes** + 12 smokes verdes.
+
+**Como testar (incl. caminho infeliz):** samples com intenção multi-condição
+(`Confirmar_nome` = choice+captureData), intenção de 1 condição (deve colapsar em nó
+solto), intenção com 0 mensagens, `choice` com slot de escolha vazio, `next` ausente
+(`waitInteraction`/`endConversation`), `context` apontando para intenção inexistente
+(não desenhar aresta órfã), e os 5 novos action types isolados. Build + Vitest +
+smoke Playwright devem seguir verdes.
+
+**Riscos:** maior mudança desde a Fase 5 — mexe em parse, layout, edição, criação e
+push/restore. Mitigação: faseado por Marco, cada um deixando o app funcional; `parseFlow`
+é o núcleo isolável (Marco A primeiro, com testes).
 
 ## Melhorias paralelas (independentes das fases)
 

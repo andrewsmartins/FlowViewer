@@ -3,6 +3,21 @@ import { toPng, toSvg } from 'html-to-image'
 
 const MAX_EXPORT_PX = 8000
 
+/**
+ * Nós que entram no cálculo de bounds do export.
+ *
+ * No Modelo B (Fase 6) intenções com 2+ condições viram um `intentGroupNode`
+ * (container) com os nós-condição como FILHOS (`parentId` + `extent: 'parent'`).
+ * A posição de um filho é RELATIVA ao pai; o `getNodesBounds` da `@xyflow/system`,
+ * chamado sem `nodeLookup`, lê a posição crua e trataria essa relativa como
+ * absoluta (ponto fantasma perto da origem → bounds e enquadramento errados — a
+ * própria lib avisa isso para sub flows). Como o container já cobre seus filhos,
+ * excluí-los do cálculo dá os bounds visuais corretos.
+ */
+export function boundsNodes(nodes: Node[]): Node[] {
+  return nodes.filter(n => !n.parentId)
+}
+
 function triggerDownload(dataUrl: string, format: 'png' | 'svg'): void {
   const a = document.createElement('a')
   a.download = `fluxo.${format}`
@@ -20,7 +35,7 @@ export async function exportFlowImage(nodes: Node[], format: 'png' | 'svg'): Pro
   const el = document.querySelector<HTMLElement>('.react-flow__viewport')
   if (!el) throw new Error('Viewport não encontrado')
 
-  const bounds = getNodesBounds(nodes)
+  const bounds = getNodesBounds(boundsNodes(nodes))
   let w = (bounds.width || 400) * 2
   let h = (bounds.height || 300) * 2
   if (w > MAX_EXPORT_PX || h > MAX_EXPORT_PX) {

@@ -1,19 +1,12 @@
 import { Panel } from '@xyflow/react'
 import { useTheme } from '../contexts/ThemeContext'
-import { CREATABLE_KINDS, type CreatableKind } from '../utils/intentTemplates'
+import { CREATABLE_KIND_LABELS as KIND_LABELS, type CreatableKind } from '../utils/intentTemplates'
 
 /** MIME type interno usado no drag & drop da paleta para o canvas. */
 export const PALETTE_DRAG_TYPE = 'application/fluxo-node-kind'
 
-const KIND_LABELS: Record<CreatableKind, string> = {
-  defaultNode:  'Mensagem',
-  choiceNode:   'Escolha',
-  captureNode:  'Captura',
-  transferNode: 'Transferência',
-  waitNode:     'Espera',
-  setDataNode:  'Definir dados',
-}
-
+// Cores espelham as do FlowCanvas (KIND_COLORS) para a bolinha da paleta bater
+// com o nó criado.
 const KIND_COLORS: Record<CreatableKind, string> = {
   defaultNode:  '#64748b',
   choiceNode:   '#3b82f6',
@@ -21,7 +14,21 @@ const KIND_COLORS: Record<CreatableKind, string> = {
   transferNode: '#f43f5e',
   waitNode:     '#06b6d4',
   setDataNode:  '#6366f1',
+  endNode:      '#dc2626',
+  apiCallNode:  '#0d9488',
+  orderNode:    '#ea580c',
+  csatNode:     '#db2777',
+  storeNode:    '#65a30d',
 }
+
+/**
+ * A paleta agrupa os 11 tipos em dois blocos: "Fluxo" (os 6 do dia a dia) e
+ * "Avançado" (os 5 da Fase 6). Mantém a lista navegável agora que dobrou de tamanho.
+ */
+const PALETTE_GROUPS: { title: string; kinds: CreatableKind[] }[] = [
+  { title: 'Fluxo',    kinds: ['defaultNode', 'choiceNode', 'captureNode', 'transferNode', 'waitNode', 'setDataNode'] },
+  { title: 'Avançado', kinds: ['endNode', 'apiCallNode', 'orderNode', 'csatNode', 'storeNode'] },
+]
 
 /**
  * Paleta de criação de nós: arraste um tipo para o canvas para criar uma
@@ -36,23 +43,30 @@ export function NodePalette() {
         <p className={`text-[10px] font-semibold uppercase tracking-wide px-1 pb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
           Criar nó (arraste)
         </p>
-        {CREATABLE_KINDS.map(kind => (
-          <div
-            key={kind}
-            draggable
-            onDragStart={e => {
-              e.dataTransfer.setData(PALETTE_DRAG_TYPE, kind)
-              e.dataTransfer.effectAllowed = 'move'
-            }}
-            className={`flex items-center gap-2 px-2 py-1.5 text-xs font-medium rounded-md cursor-grab active:cursor-grabbing border transition-colors ${
-              isDark
-                ? 'text-slate-300 border-slate-700 hover:bg-slate-800'
-                : 'text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-            title={`Arraste para o canvas para criar um nó de ${KIND_LABELS[kind]}`}
-          >
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: KIND_COLORS[kind] }} />
-            {KIND_LABELS[kind]}
+        {PALETTE_GROUPS.map((group, gi) => (
+          <div key={group.title} className={`flex flex-col gap-1 ${gi > 0 ? `pt-1.5 mt-0.5 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}` : ''}`}>
+            <p className={`text-[9px] font-semibold uppercase tracking-wider px-1 ${isDark ? 'text-slate-600' : 'text-slate-300'}`}>
+              {group.title}
+            </p>
+            {group.kinds.map(kind => (
+              <div
+                key={kind}
+                draggable
+                onDragStart={e => {
+                  e.dataTransfer.setData(PALETTE_DRAG_TYPE, kind)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+                className={`flex items-center gap-2 px-2 py-1.5 text-xs font-medium rounded-md cursor-grab active:cursor-grabbing border transition-colors ${
+                  isDark
+                    ? 'text-slate-300 border-slate-700 hover:bg-slate-800'
+                    : 'text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+                title={`Arraste para o canvas para criar um nó de ${KIND_LABELS[kind]}`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: KIND_COLORS[kind] }} />
+                {KIND_LABELS[kind]}
+              </div>
+            ))}
           </div>
         ))}
 

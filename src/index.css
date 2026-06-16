@@ -22,3 +22,11 @@ body { margin: 0; }
   height: 14px;
   box-shadow: 0 0 0 4px rgb(59 130 246 / 0.35);
 }
+
+/* Feedback ao arrastar um tipo da paleta SOBRE um nó: indica que soltar ali vai
+   adicionar a ação como nova condição daquela intenção (merge), não criar solto. */
+.react-flow__node.merge-drop-target {
+  outline: 2px dashed #6366f1;
+  outline-offset: 3px;
+  border-radius: 10px;
+}

@@ -26,7 +26,8 @@ try {
   // 1. Paleta visível
   const paletteItems = await page.locator('[title^="Arraste para o canvas"]').count()
   console.log(`itens na paleta: ${paletteItems}`)
-  if (paletteItems !== 6) fail(`esperava 6 itens na paleta, veio ${paletteItems}`)
+  // Fase 6 Marco D: a paleta passou a oferecer os 11 ActionTypes (6 de fluxo + 5 avançados).
+  if (paletteItems !== 11) fail(`esperava 11 itens na paleta, veio ${paletteItems}`)
 
   // 2. Criar nó via evento de drop sintético no canvas
   const nodesBefore = await page.locator('.react-flow__node').count()
@@ -96,15 +97,19 @@ try {
   })
   console.log(`aresta a deletar: ${nextEdgeId}`)
   // Clica num ponto que está DE FATO sobre o path (o centro do bounding box
-  // de um smoothstep geralmente cai fora da linha e seleciona outra coisa)
+  // de um smoothstep geralmente cai fora da linha e seleciona outra coisa).
+  // EVITA o meio (frac ~0.5): ali fica o botão "×" de remover (Fase 6) — clicar
+  // no centro acionaria a remoção em vez de só selecionar.
   let selected = false
-  for (const frac of [0.5, 0.3, 0.7, 0.15, 0.85]) {
+  for (const frac of [0.2, 0.8, 0.3, 0.7]) {
     const pt = await page.evaluate(({ id, frac }) => {
       const path = document.querySelector(`.react-flow__edge[data-id="${id}"] .react-flow__edge-path`)
+      if (!path) return null
       const p = path.getPointAtLength(path.getTotalLength() * frac)
       const sp = new DOMPoint(p.x, p.y).matrixTransform(path.getScreenCTM())
       return { x: sp.x, y: sp.y }
     }, { id: nextEdgeId, frac })
+    if (!pt) break  // aresta já removida (não deveria ocorrer aqui)
     await page.mouse.click(pt.x, pt.y)
     await page.waitForTimeout(150)
     selected = await page.evaluate(id =>

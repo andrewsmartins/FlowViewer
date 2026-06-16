@@ -13,6 +13,7 @@ import { ThemeContext }  from './contexts/ThemeContext'
 import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
 import { createIntentTemplate, createStartIntent, type CreatableKind } from './utils/intentTemplates'
+import { addCondition } from './utils/editIntent'
 import { validateFlow } from './utils/validateFlow'
 import { exportFlowImage } from './utils/exportImage'
 import { FlowHistory, takeSnapshot, type FlowSnapshot } from './utils/history'
@@ -22,6 +23,11 @@ import pkg from '../package.json'
 const SPACING_STEP = 60
 const SPACING_MIN  = 20
 const SPACING_MAX  = 600
+
+/** ID da intenção a partir do ID de um nó: filhos de grupo são `{id}::c{idx}`. */
+function intentIdOf(nodeId: string): string {
+  return nodeId.replace(/::c\d+$/, '')
+}
 
 export default function App() {
   const [isDark, setIsDark]             = useState(() => document.documentElement.classList.contains('dark'))
@@ -191,9 +197,15 @@ export default function App() {
       return false
     }
     if (snapshot) historyRef.current.push(snapshot)
-    setNodes(ns => ns.filter(n => n.id !== nodeId))
-    setEdges(buildEdges(model).edges)
-    setSelectedNode(prev => prev?.id === nodeId ? null : prev)
+    // Re-parseia preservando posições em vez de filtrar só o id exato: no Modelo B
+    // uma intenção agrupada tem nós-filhos `{id}::c{idx}` que ficariam órfãos no
+    // canvas se removêssemos apenas o container. Com a intenção fora do modelo, o
+    // parseFlow não emite o grupo nem os filhos — as condições somem junto.
+    const parsed = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    setNodes(parsed.nodes.map(n => { const p = posById.get(n.id); return p ? { ...n, position: p } : n }))
+    setEdges(parsed.edges)
+    setSelectedNode(prev => prev ? (parsed.nodes.find(n => n.id === prev.id) ?? null) : null)
     setNotice(null)
     bumpModel()
     return true
@@ -280,6 +292,11 @@ export default function App() {
     if (removed) bumpModel()
   }, [fail, bumpModel, takeSnap])
 
+  /** Remove uma conexão pelo botão "×" da aresta — mesmo caminho do Delete. */
+  const handleDeleteEdge = useCallback((edgeId: string) => {
+    handleEdgesChange([{ type: 'remove', id: edgeId }])
+  }, [handleEdgesChange])
+
   /** Cria uma intenção nova (template canônico) na posição do drop da paleta. */
   const handleCreateNode = useCallback((kind: CreatableKind, position: XYPosition) => {
     const model = parsedDataRef.current
@@ -299,6 +316,32 @@ export default function App() {
     setNotice(null)
     bumpModel()
   }, [bumpModel, takeSnap])
+
+  /**
+   * Funde um tipo da paleta numa intenção existente: arrastar e soltar um tipo
+   * SOBRE um nó-intenção adiciona-o como NOVA condição daquela intenção (em vez
+   * de criar um nó solto). Uma intenção com 2+ condições vira um grupo no canvas.
+   * Re-parseia preservando posições — a intenção pode passar de solo para grupo.
+   */
+  const handleAddConditionToNode = useCallback((intentId: string, kind: CreatableKind) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const intent = model.list.find(i => i.id === intentId)
+    if (!intent || intent.category === 'start') return  // start nunca agrupa
+    const snapshot = takeSnap()
+    const result = addCondition(intent, kind)
+    if (!result.ok) {
+      fail(`Não foi possível adicionar a condição: ${result.reason}.`)
+      return
+    }
+    if (snapshot) historyRef.current.push(snapshot)
+    const parsed = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    setNodes(parsed.nodes.map(n => { const p = posById.get(n.id); return p ? { ...n, position: p } : n }))
+    setEdges(parsed.edges)
+    setNotice(null)
+    bumpModel()
+  }, [bumpModel, takeSnap, fail])
 
   /**
    * Captura o estado pré-edição: o DetailPanel muta o intent diretamente, então
@@ -324,22 +367,29 @@ export default function App() {
   }, [])
 
   /**
-   * Pós-edição de conteúdo: refaz o view-model do nó editado e os labels das
-   * arestas (texto de botão vira label de aresta de escolha), sem relayout.
+   * Pós-edição: re-parseia o fluxo preservando as posições dos nós que já
+   * existiam. No Modelo B uma edição pode mudar a estrutura (tipo do nó-filho,
+   * número de condições, grupo↔solo), então rebuildar só um nó não basta —
+   * re-parsear é robusto e o merge de posições evita o relayout indesejado.
    */
   const handleApplyEdit = useCallback((intentId: string) => {
     const model = parsedDataRef.current
     if (!model) return
-    const intent = model.list.find(i => i.id === intentId)
-    if (!intent) return
+    if (!model.list.some(i => i.id === intentId)) return
     if (applySnapRef.current) {
       historyRef.current.push(applySnapRef.current)
       applySnapRef.current = null
     }
-    const data = intentToNodeData(intent)
-    setNodes(ns => ns.map(n => n.id === intentId ? { ...n, data } : n))
-    setEdges(buildEdges(model).edges)
-    setSelectedNode(prev => prev && prev.id === intentId ? { ...prev, data } : prev)
+    const result = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    const merged = result.nodes.map(n => {
+      const pos = posById.get(n.id)
+      return pos ? { ...n, position: pos } : n
+    })
+    setNodes(merged)
+    setEdges(result.edges)
+    // Reaponta o nó selecionado para a sua versão reconstruída (mesmo id).
+    setSelectedNode(prev => prev ? (merged.find(n => n.id === prev.id) ?? null) : prev)
     setNotice(null)
     bumpModel()
   }, [bumpModel])
@@ -427,11 +477,14 @@ export default function App() {
               onConnect={handleConnect}
               onEdgesChange={handleEdgesChange}
               onCreateNode={handleCreateNode}
+              onAddConditionToNode={handleAddConditionToNode}
+              onDeleteEdge={handleDeleteEdge}
             />
             {selectedNode && (
               <DetailPanel
                 node={selectedNode}
-                intent={parsedDataRef.current?.list.find(i => i.id === selectedNode.id) ?? null}
+                intent={parsedDataRef.current?.list.find(i => i.id === intentIdOf(selectedNode.id)) ?? null}
+                intents={parsedDataRef.current?.list ?? []}
                 onBeforeApply={handleBeforeApply}
                 onApply={handleApplyEdit}
                 onApplyFailed={handleApplyFailed}
