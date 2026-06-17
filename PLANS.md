@@ -706,6 +706,75 @@ push/restore. Mitigação: faseado por Marco, cada um deixando o app funcional; 
 `totalIsGreaterThan`, `totalIsEqual`, `else` — conferir cada um contra o builder antes de codar.
 O picker de `@` provavelmente vale para os campos Variável desses tipos também.
 
+## Fase 9 — Variável "Times" (grupo dinâmico) — EM ANDAMENTO
+
+**Objetivo:** o picker de Time deve espelhar o do Bot, mas com a lista de **times da loja**
+como 2ª coluna: `Time → [times] → Nome / Aberto Agora / Horário de Abertura/Fechamento → dias
+→ componentes`. O token só difere do Bot por um segmento de **ID**: `@team.{id}.campo[.dia]#comp`
+(amostra real: `@team.fdI9crpRsB.name#normalizeQuery`, `@team.S1Cl3fbnFG.isOpenNow`,
+`@team.UrAnEmtASL.openingTime.monday#getHourOfDate`).
+
+**Decisões (Andy, 2026-06-16):** (1) **sondar a fonte de dados antes de codar a parte dinâmica**;
+(2) **Fase 1 (estática) primeiro**.
+
+**O nó de segurança:** as duas curls que listam times usam credenciais diferentes:
+- `GET /v2/bots?status=active` → **token de sessão** + app-id, **mesmo host do push** (CORS de
+  navegador já provado). ✅ browser-safe.
+- `GET api-private2.omni.chat/.../Team` → **master key REST** (`x-parse-rest-api-key`), host
+  privado. ❌ **NUNCA no frontend** (vaza segredo + CORS). Segredo de servidor.
+  → A pergunta da Fase 2 é: existe endpoint de times por **token de sessão** com CORS?
+
+**Fase 1 — schema estático (FEITO, 233 testes verdes):**
+- `variables.ts`: `botDayItems()` → `dayItems(base)` + `entityFieldItems(base)` (parametrizados
+  pelo prefixo); grupo Bot agora usa `entityFieldItems('@bot')` (saída idêntica).
+- `variableDisplay` resolve `@team.{id}.campo[.dia]#comp` → "Time.{id}.…" reusando o schema do
+  Bot (`matchTeamVariable`). O `@team` pelado segue prefixo livre. **ID aparece cru** por ora.
+- Testes novos em `variables.test.ts` (os 4 campos da amostra, forma crua, pelado, campo inexistente).
+
+**Probe (FEITO, aguarda execução do Andy):** `scripts/probe-teams.mjs` — read-only, **só token de
+sessão** (master key nunca usada). Rodar: `$env:OMNI_TOKEN='r:...'; node scripts/probe-teams.mjs <botId>`.
+Verifica CORS+auth+shape de `/v2/bots` (traz `retailerId`/`teams`?) e sonda endpoints candidatos
+de times. **Resultado decide a Fase 2.**
+
+**Probe — RESULTADO (2026-06-16, bot de testes `2a3859ff-…786`):**
+- `/v2/bots?status=active`: **browser-safe** (CORS `*`, token de sessão OK), traz `retailerId` por
+  bot (bot de testes → `5rFc8fXg1G`).
+- Endpoints de times no execute-api (`/v2/teams`, `/v1/{bot}/teams`, `/v2/bots/{bot}/teams`): **403**
+  (não existem/não liberam).
+- **Team-class no Parse por SESSÃO** (`GET api-private2.omni.chat/parse/classes/Team?where=<retailer
+  pointer>`, headers Bearer + `x-parse-session-token` + app-id, **SEM master key**): **CORS 204 (origin
+  ecoado) + GET 200 com 14 times**. Cada time traz `objectId` e `name`. → **A master key da curl era
+  desnecessária; sessão + CORS bastam.**
+
+**Fase 2 — módulo de dados (FEITO, 242 testes verdes):**
+- `src/utils/teams.ts` (`fetch` injetável, padrão `pushFlow.ts`; token só nos headers, nunca logado):
+  - `fetchRetailerId({fetch, token, botId})` → casa o `botId` do modelo (campo `botId` da lista,
+    confirmado contra a API real) com `/v2/bots` e devolve `retailerId`.
+  - `fetchTeams({fetch, token, retailerId})` → `GET api-private2.../classes/Team?where=<pointer>`
+    → `[{objectId, name}]` ordenado por nome (fallback `name`→`objectId`).
+  - `fetchStoreTeams({fetch, token, botId})` → compõe os dois (a UI tem o botId, não o retailerId).
+- Testes: `teams.test.ts` (retailer/times + caminhos infelizes) e os casos de Time em `variables.test.ts`.
+
+**Fase 2 — UI do picker (FEITO, 243 testes + smoke real verdes):**
+- **Token GLOBAL da sessão** (decisão do Andy): elevado ao `App` (`sessionToken`), com campo único
+  na `TopBar` (botão de chave + popover, só em memória). `PushDialog`/`RestoreDialog` agora recebem
+  `token`/`onTokenChange` em vez de estado local — fonte única reaproveitada por push/restore/times.
+- **`TeamsContext`** (`src/contexts/TeamsContext.tsx`) expõe `{teams, status, error, loadTeams, byId}`;
+  o fetch real (`fetchStoreTeams`) vive no `App` (tem token+botId). Evita threadar props por
+  App → DetailPanel → VariablePicker/TextArea → VariableMenu.
+- **`VariableMenu`**: categoria **Time** abre coluna dinâmica de times (carregamento sob demanda,
+  estados idle/loading/error/vazio); escolher um time abre `entityFieldItems('@team.{id}')` (mesmo
+  schema do Bot). Trocar o token reseta os times (conta diferente).
+- **`variableDisplay(value, byId)`**: troca o ID pelo **nome do time** no rótulo ("Time.{nome}.…");
+  o `VariablePicker` passa o `byId` do contexto.
+- Validação: `scripts/smoke-phase9-teams.mjs` (toca a API real) — token global → "Carregar times"
+  → time real → campo → grava `@team.{id}.isOpenNow`. **Sem master key no bundle.**
+
+**Fase 2 — pendências menores (próxima sessão):**
+- O `variableDisplay` dos rótulos resolvidos em mensagens (`VariableTextArea` mostra token cru
+  inline — ok p/ a plataforma); avaliar se vale traduzir na exibição.
+- Considerar cache de times persistente por `retailerId` (hoje recarrega ao trocar token).
+
 ## Melhorias paralelas (independentes das fases)
 
 - ~~Trocar `dagre@0.8.5` (sem manutenção) por `@dagrejs/dagre` (fork mantido,

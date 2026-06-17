@@ -22,6 +22,9 @@ interface PushDialogProps {
   model: BotFlowJson
   /** Validação viva: erros bloqueiam o envio (o servidor não barra payload inválido). */
   report: ValidationReport
+  /** Token de sessão GLOBAL (App) — compartilhado com restore/times. Só em memória. */
+  token: string
+  onTokenChange: (token: string) => void
   onClose: () => void
 }
 
@@ -63,9 +66,8 @@ function buildReportText(result: PushReport, botId: string): string {
  * dry-run antes de enviar e backup baixado antes do primeiro POST. Só altera o
  * RASCUNHO — publicar continua manual na plataforma.
  */
-export function PushDialog({ model, report, onClose }: PushDialogProps) {
+export function PushDialog({ model, report, token, onTokenChange, onClose }: PushDialogProps) {
   const isDark = useTheme()
-  const [token, setToken] = useState('')
   const [confirmTail, setConfirmTail] = useState('')
   const [isTestBot, setIsTestBot] = useState(false)
   const [busy, setBusy] = useState<false | 'preview' | 'push'>(false)
@@ -177,8 +179,8 @@ export function PushDialog({ model, report, onClose }: PushDialogProps) {
             <input
               type="password"
               value={token}
-              onChange={e => { setToken(e.target.value); setError(null) }}
-              placeholder="r:•••••••• (só em memória — some ao fechar)"
+              onChange={e => { onTokenChange(e.target.value); setError(null) }}
+              placeholder="r:•••••••• (token global da sessão — só em memória)"
               spellCheck={false}
               autoComplete="off"
               autoFocus

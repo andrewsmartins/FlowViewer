@@ -10,6 +10,9 @@ import { DetailPanel }   from './components/DetailPanel'
 import { Toast, type Notice } from './components/Toast'
 import { ThemeToggle }   from './components/ThemeToggle'
 import { ThemeContext }  from './contexts/ThemeContext'
+import { TeamsContext, type TeamsStatus } from './contexts/TeamsContext'
+import { fetchStoreTeams, type Team } from './utils/teams'
+import type { FetchLike } from './utils/pushFlow'
 import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
 import { createIntentTemplate, createStartIntent, type CreatableKind } from './utils/intentTemplates'
@@ -32,6 +35,15 @@ function intentIdOf(nodeId: string): string {
   return nodeId.replace(/::c\d+$/, '')
 }
 
+/** O `fetch` do navegador adaptado à assinatura mínima dos módulos de API. */
+const browserFetch: FetchLike = (url, init) => fetch(url, init)
+
+/** botId do fluxo: o da intenção de início (canônico) ou o da primeira intenção. */
+function botIdOf(model: BotFlowJson | null): string {
+  if (!model) return ''
+  return model.list.find(i => i.category === 'start')?.botId ?? model.list[0]?.botId ?? ''
+}
+
 export default function App() {
   const [isDark, setIsDark]             = useState(() => document.documentElement.classList.contains('dark'))
   const [nodes, setNodes]               = useState<Node<FlowNodeData>[]>([])
@@ -48,6 +60,16 @@ export default function App() {
   // ficar disponível em outras intenções antes do push (a plataforma faz isso
   // gravando a cada save; aqui só gravamos no fim, então guardamos localmente).
   const [knownCategories, setKnownCategories] = useState<string[]>([])
+  // Token de sessão da OmniChat — GLOBAL e só em memória (nunca salvo/logado).
+  // Fonte única reaproveitada por push, restore E carregamento dos times (@team).
+  const [sessionToken, setSessionToken] = useState('')
+  // Popover do token na barra — controlado pelo App para o picker poder abri-lo
+  // (aviso "Insira o token da sessão") e fechá-lo sozinho após colar.
+  const [tokenOpen, setTokenOpen] = useState(false)
+  // Times da loja (variável @team) — carregados sob demanda pelo picker.
+  const [teams, setTeams]               = useState<Team[]>([])
+  const [teamsStatus, setTeamsStatus]   = useState<TeamsStatus>('idle')
+  const [teamsError, setTeamsError]     = useState<string | null>(null)
   // IDs de nó com destaque "duplicando / recém-duplicado" (borda esmeralda animada).
   // Estado transitório de UI — nunca entra no modelo nem no histórico.
   const [highlightIds, setHighlightIds] = useState<Set<string>>(() => new Set())
@@ -627,14 +649,66 @@ export default function App() {
 
   const handleClosePanel = useCallback(() => setSelectedNode(null), [])
 
+  // Trocar o token (outra conta) invalida os times já carregados.
+  useEffect(() => {
+    setTeams([])
+    setTeamsStatus('idle')
+    setTeamsError(null)
+  }, [sessionToken])
+
+  // Carrega os times da loja sob demanda (picker @team). Usa o token global e o
+  // botId do fluxo; o ref evita disparos concorrentes. NUNCA loga o token.
+  const teamsLoadingRef = useRef(false)
+  const loadTeams = useCallback(async () => {
+    if (teamsLoadingRef.current) return
+    const token = sessionToken.trim()
+    const botId = botIdOf(parsedDataRef.current)
+    if (!token) {
+      setTeamsStatus('error')
+      setTeamsError('Defina o token de sessão (botão de chave na barra) para carregar os times.')
+      return
+    }
+    if (!botId) {
+      setTeamsStatus('error')
+      setTeamsError('Fluxo sem botId — não dá para descobrir a loja.')
+      return
+    }
+    teamsLoadingRef.current = true
+    setTeamsStatus('loading')
+    setTeamsError(null)
+    try {
+      const list = await fetchStoreTeams({ fetch: browserFetch, token, botId })
+      setTeams(list)
+      setTeamsStatus('loaded')
+    } catch (e) {
+      setTeamsStatus('error')
+      setTeamsError(e instanceof Error ? e.message : 'Falha ao carregar os times.')
+    } finally {
+      teamsLoadingRef.current = false
+    }
+  }, [sessionToken])
+
+  const teamsById = useMemo(() => new Map(teams.map(t => [t.objectId, t.name])), [teams])
+  const requestToken = useCallback(() => setTokenOpen(true), [])
+  const hasToken = !!sessionToken.trim()
+  const teamsValue = useMemo(
+    () => ({ teams, status: teamsStatus, error: teamsError, loadTeams, hasToken, requestToken, byId: teamsById }),
+    [teams, teamsStatus, teamsError, loadTeams, hasToken, requestToken, teamsById],
+  )
+
   return (
     <ThemeContext.Provider value={isDark}>
+    <TeamsContext.Provider value={teamsValue}>
     <div className={`flex flex-col h-screen transition-colors duration-200 ${isDark ? 'bg-slate-950' : 'bg-slate-100'}`}>
       <TopBar
         version={pkg.version}
         hasFlow={hasFlow}
         report={report}
         exporting={exporting}
+        sessionToken={sessionToken}
+        onSessionTokenChange={setSessionToken}
+        tokenOpen={tokenOpen}
+        onTokenOpenChange={setTokenOpen}
         canUndo={hasFlow && historyRef.current.canUndo}
         canRedo={hasFlow && historyRef.current.canRedo}
         canPush={hasFlow && !!report && report.errors.length === 0}
@@ -734,12 +808,21 @@ export default function App() {
         <PushDialog
           model={parsedDataRef.current}
           report={report}
+          token={sessionToken}
+          onTokenChange={setSessionToken}
           onClose={() => setPushOpen(false)}
         />
       )}
 
-      {restoreOpen && <RestoreDialog onClose={() => setRestoreOpen(false)} />}
+      {restoreOpen && (
+        <RestoreDialog
+          token={sessionToken}
+          onTokenChange={setSessionToken}
+          onClose={() => setRestoreOpen(false)}
+        />
+      )}
     </div>
+    </TeamsContext.Provider>
     </ThemeContext.Provider>
   )
 }

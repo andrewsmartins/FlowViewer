@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type KeyboardEvent, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import type { Node } from '@xyflow/react'
 import type { BotIntent, BulkUpdateItem, FlowNodeData, NodeKind } from '../types'
 import { useTheme } from '../contexts/ThemeContext'
@@ -10,8 +11,9 @@ import {
   updateIntentMeta, updateActionFields, updateSetDataItems, sanitizeIntentName,
   type EditableMessage, type MessageRef,
 } from '../utils/editIntent'
-import { VARIABLE_GROUPS, variableDisplay, type VariableItem } from '../utils/variables'
+import { VARIABLE_GROUPS, variableDisplay, entityFieldItems, type VariableItem } from '../utils/variables'
 import type { VariableGroup } from '../utils/variables'
+import { useTeams } from '../contexts/TeamsContext'
 import type { EditResult } from '../utils/editFlow'
 import { CREATABLE_KINDS, CREATABLE_KIND_LABELS, type CreatableKind } from '../utils/intentTemplates'
 
@@ -354,6 +356,238 @@ function CategorySelect({ value, onChange, options, isDark, inputCls }: Category
   )
 }
 
+interface VariableMenuProps {
+  /** Campo ao qual o menu se ancora (input ou textarea). */
+  anchorRef: RefObject<HTMLElement | null>
+  isDark: boolean
+  /** Escolha de uma variável: grava o token cru (`@customer.name`). isPrefix = liberar digitação. */
+  onPick: (raw: string, isPrefix?: boolean) => void
+  onClose: () => void
+}
+
+/**
+ * Dropdown navegável de variáveis (até 4 níveis): Categoria → Item → subitem
+ * (ramo, ex.: dias) → Modificador. Reutilizado pelo `VariablePicker` (campo de
+ * condição) e pelo `VariableTextArea` (mensagens). É flutuante (`fixed` via portal),
+ * ancorado ao campo, então sobrepõe o canvas sem ser cortado pelo `overflow`/largura
+ * do painel. Sempre devolve o TOKEN CRU; a tradução para rótulo amigável fica a
+ * cargo de quem exibe (`variableDisplay`).
+ */
+function VariableMenu({ anchorRef, isDark, onPick, onClose }: VariableMenuProps) {
+  const [activeGroup, setActiveGroup] = useState<string | null>(null)
+  const [activeItem, setActiveItem] = useState<VariableItem | null>(null)
+  const [activeChild, setActiveChild] = useState<VariableItem | null>(null)
+  // Time selecionado (grupo dinâmico): abre a coluna de campos `@team.{id}.…`.
+  const [activeTeam, setActiveTeam] = useState<{ objectId: string; name: string } | null>(null)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const { teams, status: teamsStatus, error: teamsError, loadTeams, hasToken, requestToken } = useTeams()
+
+  // Mantém alinhado à direita do campo e logo abaixo dele; reposiciona ao rolar/redimensionar.
+  const updatePos = useCallback(() => {
+    const r = anchorRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
+  }, [anchorRef])
+
+  useLayoutEffect(() => {
+    updatePos()
+    window.addEventListener('resize', updatePos)
+    window.addEventListener('scroll', updatePos, true) // capture: pega o scroll interno do painel
+    return () => {
+      window.removeEventListener('resize', updatePos)
+      window.removeEventListener('scroll', updatePos, true)
+    }
+  }, [updatePos])
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      const t = e.target as globalThis.Node
+      // Menu vive em portal (fora do campo); clique no campo OU no menu não fecha.
+      if (panelRef.current?.contains(t) || anchorRef.current?.contains(t)) return
+      onClose()
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [anchorRef, onClose])
+
+  // Auto-carrega os times ao abrir a categoria Time quando há token (sem botão).
+  useEffect(() => {
+    if (activeGroup === 'team' && hasToken && teamsStatus === 'idle') loadTeams()
+  }, [activeGroup, hasToken, teamsStatus, loadTeams])
+
+  const group = VARIABLE_GROUPS.find(g => g.key === activeGroup) ?? null
+
+  const onCategoryClick = (g: VariableGroup) => {
+    setActiveItem(null); setActiveChild(null); setActiveTeam(null)
+    // Time é dinâmico: em vez de gravar "@team" pelado, abre a coluna de times.
+    if (g.key === 'team') { setActiveGroup('team'); return }
+    if (g.value !== undefined) onPick(g.value, true) // categoria-folha (namespace livre)
+    else setActiveGroup(g.key)
+  }
+  const onTeamClick = (team: { objectId: string; name: string }) => {
+    setActiveItem(null); setActiveChild(null)
+    setActiveTeam(team)
+  }
+  const onItemClick = (it: VariableItem) => {
+    setActiveChild(null)
+    if (it.children?.length || it.components?.length) setActiveItem(it) // abre próxima coluna
+    else onPick(it.value ?? '', it.prefix)                             // sem componente / prefixo
+  }
+  const onChildClick = (child: VariableItem) => {
+    if (child.components?.length) setActiveChild(child)
+    else onPick(child.value ?? '', child.prefix)
+  }
+  // Campos de um time selecionado: mesmo schema do Bot, base `@team.{id}`.
+  // Memoizado por time para manter referência estável (destaque `activeItem === it`).
+  const teamFieldItems = useMemo(
+    () => activeTeam ? entityFieldItems(`@team.${activeTeam.objectId}`) : [],
+    [activeTeam],
+  )
+
+  // Largura fixa por coluna (não encolhe): comporta o rótulo mais longo
+  // ("Apenas Horário com Minutos") sem quebrar e cresce para a esquerda sobre o canvas.
+  const panelCls = `fixed z-50 flex rounded-lg border shadow-lg ${
+    isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+  }`
+  const colCls = 'w-48 shrink-0 max-h-60 overflow-auto py-1'
+  const borderCls = isDark ? 'border-slate-700' : 'border-slate-200'
+  const headerCls = `px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`
+  const rowCls = (active: boolean) => `w-full text-left text-xs px-2.5 py-1.5 whitespace-nowrap transition-colors ${
+    active
+      ? (isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-100 text-slate-800')
+      : (isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-100')
+  }`
+
+  if (!pos) return null
+  return createPortal(
+    <div ref={panelRef} className={panelCls} style={{ top: pos.top, right: pos.right }}>
+      <ul className={colCls}>
+        {VARIABLE_GROUPS.map(g => (
+          <li key={g.key}>
+            <button
+              type="button"
+              className={rowCls(g.key === activeGroup)}
+              onMouseEnter={() => { if (g.items || g.key === 'team') { setActiveGroup(g.key); setActiveItem(null); setActiveChild(null); setActiveTeam(null) } }}
+              onClick={() => onCategoryClick(g)}
+              onDoubleClick={() => onPick(`@${g.key}`, true)} // duplo clique grava o namespace cru (@customer)
+            >{g.label}{g.items || g.key === 'team' ? ' ›' : ''}</button>
+          </li>
+        ))}
+      </ul>
+      {group?.items && (
+        <ul className={`${colCls} border-l ${borderCls}`}>
+          {group.items.map((it: VariableItem) => {
+            const branch = !!(it.children?.length || it.components?.length)
+            return (
+              <li key={it.value ?? it.label}>
+                <button
+                  type="button"
+                  className={rowCls(activeItem === it)}
+                  onClick={() => onItemClick(it)}
+                  onDoubleClick={() => { if (it.value) onPick(it.value, it.prefix) }} // grava a base, pulando componentes
+                >{it.label}{branch ? ' ›' : ''}</button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {/* Grupo dinâmico Time: coluna dos times da loja (carregados sob demanda). */}
+      {activeGroup === 'team' && (
+        <ul className={`${colCls} border-l ${borderCls}`}>
+          <li className={headerCls}>Times da loja</li>
+          {/* Sem token: aviso clicável que abre o campo de token na barra. */}
+          {!hasToken && (
+            <li className="px-2.5 py-1.5">
+              <button type="button" className="text-xs font-medium text-blue-500 hover:text-blue-600 text-left" onClick={requestToken}>
+                Insira o token da sessão
+              </button>
+            </li>
+          )}
+          {/* Com token: carrega sozinho (idle dispara o fetch via efeito). */}
+          {hasToken && (teamsStatus === 'idle' || teamsStatus === 'loading') && (
+            <li className={`px-2.5 py-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Carregando…</li>
+          )}
+          {hasToken && teamsStatus === 'error' && (
+            <li className="px-2.5 py-1.5 flex flex-col gap-1">
+              <span className={`text-[11px] leading-snug ${isDark ? 'text-rose-300' : 'text-rose-600'}`}>{teamsError}</span>
+              <button type="button" className="self-start text-xs font-medium text-blue-500 hover:text-blue-600" onClick={loadTeams}>
+                Tentar de novo
+              </button>
+            </li>
+          )}
+          {hasToken && teamsStatus === 'loaded' && teams.length === 0 && (
+            <li className={`px-2.5 py-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Nenhum time encontrado.</li>
+          )}
+          {hasToken && teamsStatus === 'loaded' && teams.map(team => (
+            <li key={team.objectId}>
+              <button
+                type="button"
+                className={rowCls(activeTeam?.objectId === team.objectId)}
+                onClick={() => onTeamClick(team)}
+              >{team.name} ›</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* Coluna de campos do time selecionado (mesmo schema do Bot). */}
+      {activeTeam && (
+        <ul className={`${colCls} border-l ${borderCls}`}>
+          {teamFieldItems.map(it => {
+            const branch = !!(it.children?.length || it.components?.length)
+            return (
+              <li key={it.value ?? it.label}>
+                <button
+                  type="button"
+                  className={rowCls(activeItem === it)}
+                  onClick={() => onItemClick(it)}
+                  onDoubleClick={() => { if (it.value) onPick(it.value, it.prefix) }}
+                >{it.label}{branch ? ' ›' : ''}</button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {/* 3ª coluna: subitens-ramo (ex.: dias) OU componentes (#) diretos do item */}
+      {activeItem?.children?.length && (
+        <ul className={`${colCls} border-l ${borderCls}`}>
+          {activeItem.children.map(child => (
+            <li key={child.value ?? child.label}>
+              <button
+                type="button"
+                className={rowCls(activeChild === child)}
+                onClick={() => onChildClick(child)}
+                onDoubleClick={() => { if (child.value) onPick(child.value, child.prefix) }} // grava a base, pulando componentes
+              >{child.label}{child.components?.length ? ' ›' : ''}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {activeItem?.components?.length && (
+        <ul className={`${colCls} border-l ${borderCls}`}>
+          <li className={headerCls}>Componentes (#)</li>
+          {activeItem.components.map(c => (
+            <li key={c.suffix}>
+              <button type="button" className={rowCls(false)} onClick={() => onPick((activeItem.value ?? '') + c.suffix)}>{c.label}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* 4ª coluna: componentes (#) do subitem (ex.: Apenas Horário / com Minutos) */}
+      {activeChild?.components?.length && (
+        <ul className={`${colCls} border-l ${borderCls}`}>
+          <li className={headerCls}>Componentes (#)</li>
+          {activeChild.components.map(c => (
+            <li key={c.suffix}>
+              <button type="button" className={rowCls(false)} onClick={() => onPick((activeChild.value ?? '') + c.suffix)}>{c.label}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>,
+    document.body,
+  )
+}
+
 interface VariablePickerProps {
   value: string
   onChange: (value: string) => void
@@ -362,116 +596,100 @@ interface VariablePickerProps {
 }
 
 /**
- * Picker de variável em até 3 níveis: ao clicar/digitar `@`, abre a lista de
- * categorias (Consumidor, Canal, …); escolhendo a categoria, abre ao lado os itens
- * com rótulos legíveis; itens com mais de uma combinação abrem uma 3ª coluna de
- * MODIFICADORES (etapa final). O campo EXIBE o rótulo amigável ("Consumidor ›
- * Nome"), mas GRAVA a variável crua. Itens/categorias com `prefix` inserem o
- * prefixo e liberam digitação para completar à mão.
+ * Campo de variável ÚNICA (condição "O valor está vazio"). Exibe o rótulo amigável
+ * dotado ("Consumidor.Nome") quando o valor bate com o catálogo, mas ao FOCAR revela
+ * o token cru e fica editável como texto (para ajuste fino à mão). Clicar/`@` abre o
+ * `VariableMenu`; a escolha SUBSTITUI o valor (campo de variável única).
  */
 function VariablePicker({ value, onChange, isDark, inputCls }: VariablePickerProps) {
   const [open, setOpen] = useState(false)
-  const [activeGroup, setActiveGroup] = useState<string | null>(null)
-  const [activeItem, setActiveItem] = useState<VariableItem | null>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const [editing, setEditing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { byId: teamNames } = useTeams()
 
-  useEffect(() => {
-    if (!open) return
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as unknown as HTMLElement)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDocMouseDown)
-    return () => document.removeEventListener('mousedown', onDocMouseDown)
-  }, [open])
+  const { label, resolved } = variableDisplay(value, teamNames)
+  const showFriendly = resolved && !editing // foco revela o cru editável
 
-  const { label, resolved } = variableDisplay(value)
-  const group = VARIABLE_GROUPS.find(g => g.key === activeGroup) ?? null
-
-  const openPicker = () => { setActiveGroup(null); setActiveItem(null); setOpen(true) }
-
-  /** Grava o valor cru; se for prefixo, foca o input para o usuário completar. */
-  const commit = (raw: string, isPrefix?: boolean) => {
+  /** Grava o valor cru; se for prefixo, mantém em edição para completar à mão. */
+  const commit = useCallback((raw: string, isPrefix?: boolean) => {
     onChange(raw)
     setOpen(false)
-    if (isPrefix) requestAnimationFrame(() => inputRef.current?.focus())
-  }
-
-  const onCategoryClick = (g: VariableGroup) => {
-    setActiveItem(null)
-    if (g.value !== undefined) commit(g.value, true) // categoria-folha (namespace livre)
-    else setActiveGroup(g.key)
-  }
-
-  const onItemClick = (it: VariableItem) => {
-    if (it.modifiers?.length) setActiveItem(it)        // abre etapa de modificador
-    else commit(it.value, it.prefix)                   // combinação única / prefixo
-  }
-
-  const panelCls = `absolute right-0 z-30 mt-1 flex min-w-[26rem] rounded-lg border shadow-lg ${
-    isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
-  }`
-  const colCls = 'flex-1 max-h-60 overflow-auto py-1'
-  const borderCls = isDark ? 'border-slate-700' : 'border-slate-200'
-  const rowCls = (active: boolean) => `w-full text-left text-xs px-2.5 py-1.5 transition-colors ${
-    active
-      ? (isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-100 text-slate-800')
-      : (isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-100')
-  }`
+    if (isPrefix) { setEditing(true); requestAnimationFrame(() => inputRef.current?.focus()) }
+  }, [onChange])
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div className="relative">
       <input
         ref={inputRef}
-        className={`${inputCls} ${resolved ? 'cursor-pointer' : 'font-mono'}`}
-        value={resolved ? label : value}
-        readOnly={resolved}
+        className={`${inputCls} ${showFriendly ? 'cursor-pointer' : 'font-mono'}`}
+        value={showFriendly ? label : value}
         onChange={e => onChange(e.target.value)}
-        onClick={() => { if (value === '' || resolved) openPicker() }}
+        onFocus={() => setEditing(true)}
+        onBlur={() => setEditing(false)}
+        onClick={() => { if (value === '' || resolved) setOpen(true) }}
         onKeyDown={e => {
           if (e.key === 'Escape') setOpen(false)
-          else if (e.key === '@') { e.preventDefault(); openPicker() }
+          else if (e.key === '@') { e.preventDefault(); setOpen(true) }
         }}
         placeholder="clique ou digite @ para escolher"
       />
       {open && (
-        <div className={panelCls}>
-          <ul className={colCls}>
-            {VARIABLE_GROUPS.map(g => (
-              <li key={g.key}>
-                <button
-                  type="button"
-                  className={rowCls(g.key === activeGroup)}
-                  onMouseEnter={() => { if (g.items) { setActiveGroup(g.key); setActiveItem(null) } }}
-                  onClick={() => onCategoryClick(g)}
-                >{g.label}{g.items ? ' ›' : ''}</button>
-              </li>
-            ))}
-          </ul>
-          {group?.items && (
-            <ul className={`${colCls} border-l ${borderCls}`}>
-              {group.items.map((it: VariableItem) => (
-                <li key={it.value}>
-                  <button
-                    type="button"
-                    className={rowCls(activeItem?.value === it.value)}
-                    onMouseEnter={() => setActiveItem(it.modifiers?.length ? it : null)}
-                    onClick={() => onItemClick(it)}
-                  >{it.label}{it.modifiers?.length ? ' ›' : ''}</button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {activeItem?.modifiers?.length && (
-            <ul className={`${colCls} border-l ${borderCls}`}>
-              {activeItem.modifiers.map(mod => (
-                <li key={mod.suffix || 'none'}>
-                  <button type="button" className={rowCls(false)} onClick={() => commit(activeItem.value + mod.suffix)}>{mod.label}</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <VariableMenu anchorRef={inputRef} isDark={isDark} onClose={() => setOpen(false)} onPick={commit} />
+      )}
+    </div>
+  )
+}
+
+interface VariableTextAreaProps {
+  value: string
+  onChange: (value: string) => void
+  isDark: boolean
+  className?: string
+  placeholder?: string
+}
+
+/**
+ * Textarea de mensagem com autocomplete de variáveis: digitar `@` abre o
+ * `VariableMenu` e a escolha INSERE o token cru (`@customer.name`) na posição do
+ * cursor — texto livre pode misturar várias variáveis ("Olá @customer.name 👋").
+ * O conteúdo é gravado/enviado verbatim, como a OmniChat espera (ver example.json).
+ */
+function VariableTextArea({ value, onChange, isDark, className, placeholder }: VariableTextAreaProps) {
+  const [open, setOpen] = useState(false)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  const triggerRef = useRef(0) // índice do '@' que abriu o menu
+
+  const insert = useCallback((raw: string) => {
+    const ta = taRef.current
+    const start = triggerRef.current
+    const caret = ta ? ta.selectionStart : start + 1
+    // Substitui do '@' (inclusive) até o cursor pelo token cru (que já inclui '@').
+    const next = value.slice(0, start) + raw + value.slice(caret)
+    onChange(next)
+    setOpen(false)
+    requestAnimationFrame(() => {
+      ta?.focus()
+      const p = start + raw.length
+      ta?.setSelectionRange(p, p)
+    })
+  }, [value, onChange])
+
+  return (
+    <div className="relative">
+      <textarea
+        ref={taRef}
+        className={className}
+        value={value}
+        placeholder={placeholder}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setOpen(false); return }
+          // Não previne: deixa o '@' ser digitado e registra a posição dele.
+          if (e.key === '@') { triggerRef.current = e.currentTarget.selectionStart; setOpen(true) }
+        }}
+      />
+      {open && (
+        <VariableMenu anchorRef={taRef} isDark={isDark} onClose={() => setOpen(false)} onPick={insert} />
       )}
     </div>
   )
@@ -497,13 +715,15 @@ interface ConditionTypeFieldsProps {
  * Campos dependentes do TIPO da condição — compartilhado pelos dois editores (a
  * condição individual no modo `condition` e a lista de condições no modo group/solo),
  * pra não divergirem:
- *  - context    → "Intenção" + "Contexto" (IDs de intenções)
- *  - lastIntent → "Intenção"
- *  - empty      → "Variável" (picker de @)
- *  - demais     → "Variável" + "Valor"
+ *  - any / else        → SEM campos (não têm operando)
+ *  - context           → "Intenção" + "Contexto" (IDs de intenções)
+ *  - lastIntent        → "Intenção"
+ *  - empty / exists     → só "Variável" (picker de @) — operam sobre uma variável, sem valor
+ *  - demais            → "Variável" + "Valor"
  */
 function ConditionTypeFields(p: ConditionTypeFieldsProps) {
   const { type, intents, isDark, inputCls, labelCls } = p
+  if (type === 'any' || type === 'else') return null // sem condição / senão: nada a preencher
   if (type === 'context') {
     return (
       <div className="flex gap-2">
@@ -526,7 +746,7 @@ function ConditionTypeFields(p: ConditionTypeFieldsProps) {
       </label>
     )
   }
-  if (type === 'empty') {
+  if (type === 'empty' || type === 'exists') {
     return (
       <label className="flex flex-col gap-1">
         <span className={labelCls}>Variável</span>
@@ -876,12 +1096,13 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
                           >remover</button>
                         )}
                       </div>
-                      <textarea
+                      <VariableTextArea
                         className={`${inputCls} resize-y min-h-[56px]`}
                         value={msg.text}
-                        onChange={e => setDraft(d => d && ({
+                        isDark={isDark}
+                        onChange={v => setDraft(d => d && ({
                           ...d,
-                          messages: d.messages.map((m, j) => j === i ? { ...m, text: e.target.value } : m),
+                          messages: d.messages.map((m, j) => j === i ? { ...m, text: v } : m),
                         }))}
                       />
                     </div>
@@ -895,11 +1116,12 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
                           onClick={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
                         >remover</button>
                       </div>
-                      <textarea
+                      <VariableTextArea
                         className={`${inputCls} resize-y min-h-[56px]`}
                         value={text}
+                        isDark={isDark}
                         placeholder="Texto da mensagem…"
-                        onChange={e => set('newMessages', draft.newMessages.map((t, j) => j === i ? e.target.value : t))}
+                        onChange={v => set('newMessages', draft.newMessages.map((t, j) => j === i ? v : t))}
                       />
                     </div>
                   ))}
@@ -956,11 +1178,12 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
                   {draft.newButtonsBody !== null && (
                     <label className="flex flex-col gap-1">
                       <span className={labelCls}>Corpo da mensagem de botões (nova)</span>
-                      <textarea
+                      <VariableTextArea
                         className={`${inputCls} resize-y min-h-[56px]`}
                         value={draft.newButtonsBody}
+                        isDark={isDark}
                         placeholder="Texto que acompanha os botões…"
-                        onChange={e => set('newButtonsBody', e.target.value)}
+                        onChange={v => set('newButtonsBody', v)}
                       />
                     </label>
                   )}

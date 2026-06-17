@@ -15,6 +15,9 @@ const CONFIRM_LEN = 6
 const browserFetch: FetchLike = (url, init) => fetch(url, init)
 
 interface RestoreDialogProps {
+  /** Token de sessão GLOBAL (App) — compartilhado com push/times. Só em memória. */
+  token: string
+  onTokenChange: (token: string) => void
   onClose: () => void
 }
 
@@ -37,11 +40,10 @@ function downloadSnapshot(data: BotFlowJson, prefix: string, botId: string) {
  * segurança do estado atual. Guardrails do push (token em memória, confirmação
  * do botId, trava de bot de testes, dry-run) + aviso destrutivo. Só rascunho.
  */
-export function RestoreDialog({ onClose }: RestoreDialogProps) {
+export function RestoreDialog({ token, onTokenChange, onClose }: RestoreDialogProps) {
   const isDark = useTheme()
   const [backup, setBackup] = useState<BotFlowJson | null>(null)
   const [backupName, setBackupName] = useState<string>('')
-  const [token, setToken] = useState('')
   const [confirmTail, setConfirmTail] = useState('')
   const [isTestBot, setIsTestBot] = useState(false)
   const [busy, setBusy] = useState<false | 'preview' | 'restore'>(false)
@@ -189,8 +191,8 @@ export function RestoreDialog({ onClose }: RestoreDialogProps) {
             <input
               type="password"
               value={token}
-              onChange={e => { setToken(e.target.value); setError(null) }}
-              placeholder="r:•••••••• (só em memória — some ao fechar)"
+              onChange={e => { onTokenChange(e.target.value); setError(null) }}
+              placeholder="r:•••••••• (token global da sessão — só em memória)"
               spellCheck={false}
               autoComplete="off"
               className={inputCls}

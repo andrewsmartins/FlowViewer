@@ -14,6 +14,12 @@ interface TopBarProps {
   canRedo: boolean
   /** Habilita "Enviar para OmniChat": fluxo carregado e sem erros de validação. */
   canPush: boolean
+  /** Token de sessão GLOBAL (só em memória) — reaproveitado por push/restore/times. */
+  sessionToken: string
+  onSessionTokenChange: (token: string) => void
+  /** Popover do token controlado pelo App (o picker pode abri-lo via aviso). */
+  tokenOpen: boolean
+  onTokenOpenChange: (open: boolean) => void
   onUndo: () => void
   onRedo: () => void
   onImport: () => void
@@ -38,12 +44,13 @@ function useClickOutside(onOutside: () => void) {
   return ref
 }
 
-export function TopBar({ version, hasFlow, report, exporting, themeToggle, canUndo, canRedo, canPush, onUndo, onRedo, onImport, onNewFlow, onExport, onPush, onRestore, onSpacingIncrease, onSpacingDecrease }: TopBarProps) {
+export function TopBar({ version, hasFlow, report, exporting, themeToggle, canUndo, canRedo, canPush, sessionToken, onSessionTokenChange, tokenOpen, onTokenOpenChange, onUndo, onRedo, onImport, onNewFlow, onExport, onPush, onRestore, onSpacingIncrease, onSpacingDecrease }: TopBarProps) {
   const isDark = useTheme()
   const [exportOpen, setExportOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const exportRef = useClickOutside(() => setExportOpen(false))
   const reportRef = useClickOutside(() => setReportOpen(false))
+  const tokenRef = useClickOutside(() => onTokenOpenChange(false))
 
   const btnCls = `flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
     isDark
@@ -168,6 +175,49 @@ export function TopBar({ version, hasFlow, report, exporting, themeToggle, canUn
           </div>
         )}
 
+        <div className="relative" ref={tokenRef}>
+          <button
+            onClick={() => onTokenOpenChange(!tokenOpen)}
+            title={sessionToken ? 'Token de sessão definido (clique para editar)' : 'Definir token de sessão (push, restore e times)'}
+            aria-label="Token de sessão"
+            className={`relative flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-colors ${
+              sessionToken
+                ? (isDark ? 'text-emerald-300 bg-emerald-950 border-emerald-800' : 'text-emerald-700 bg-emerald-50 border-emerald-200')
+                : (isDark ? 'text-slate-300 bg-slate-800 border-slate-700 hover:bg-slate-700' : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50')
+            }`}
+          >
+            <KeyIcon /> Token
+            <span className={`w-1.5 h-1.5 rounded-full ${sessionToken ? 'bg-emerald-500' : isDark ? 'bg-slate-600' : 'bg-slate-300'}`} />
+          </button>
+          {tokenOpen && (
+            <div className={`absolute right-0 top-full mt-1 z-30 w-[280px] rounded-lg border shadow-lg p-3 flex flex-col gap-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+              <span className={`text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Token de sessão</span>
+              <input
+                type="password"
+                value={sessionToken}
+                onChange={e => onSessionTokenChange(e.target.value)}
+                onPaste={() => { /* colou o token: deixa o onChange aplicar e fecha o popover */ window.setTimeout(() => onTokenOpenChange(false), 0) }}
+                placeholder="r:•••••• (só em memória)"
+                spellCheck={false}
+                autoComplete="off"
+                autoFocus
+                className={`w-full font-mono text-xs rounded-lg p-2 border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${isDark ? 'bg-slate-800 text-slate-200 border-slate-700 placeholder:text-slate-600' : 'bg-slate-50 text-slate-900 border-slate-200 placeholder:text-slate-400'}`}
+              />
+              <span className={`text-[11px] leading-snug ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                Usado por <strong>Enviar</strong>, <strong>Restaurar</strong> e pelo carregamento dos <strong>times</strong> (variável @team). Nunca é salvo, logado nem incluído em relatórios.
+              </span>
+              {sessionToken && (
+                <button
+                  onClick={() => onSessionTokenChange('')}
+                  className={`self-start text-[11px] font-medium rounded px-2 py-1 border transition-colors ${isDark ? 'text-rose-300 border-rose-800 hover:bg-rose-950' : 'text-rose-600 border-rose-200 hover:bg-rose-50'}`}
+                >
+                  Limpar token
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         <a
           href="https://github.com/andrewsmartins/Fluxo-Bot"
           target="_blank"
@@ -218,6 +268,14 @@ function SendIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  )
+}
+
+function KeyIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.778-7.778zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" />
     </svg>
   )
 }

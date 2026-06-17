@@ -21,23 +21,44 @@ describe('VARIABLE_GROUPS — catálogo de variáveis', () => {
     }
   })
 
-  it('horário do bot gera 14 itens (2 campos × 7 dias), cada um com 2 modificadores', () => {
-    const schedule = groups.bot.items!.filter(i => i.value.includes('Time.'))
-    expect(schedule).toHaveLength(14)
-    const monday = schedule.find(i => i.value === '@bot.openingTime.monday')
-    expect(monday?.modifiers?.map(m => m.suffix)).toEqual(['#getHourOfDate', '#getHoursAndMinutesOfDate'])
+  it('Bot tem 4 opções: Aberto Agora, Nome e os 2 horários (ramos)', () => {
+    expect(groups.bot.items!.map(i => i.label)).toEqual([
+      'Aberto Agora', 'Nome', 'Horário de Abertura', 'Horário de Fechamento',
+    ])
+    expect(groups.bot.items!.find(i => i.label === 'Aberto Agora')?.value).toBe('@bot.isOpenNow')
+    expect(groups.bot.items!.find(i => i.label === 'Nome')?.value).toBe('@bot.name')
   })
 
-  it('variáveis com escolha real têm modifiers; combinação única não', () => {
-    const number = groups.store.items!.find(i => i.value === '@store.number')
-    expect(number?.modifiers?.map(m => m.suffix)).toEqual(['#onlyNumbers', '#normalizeQuery'])
-    // birthDate inclui a opção "sem modificador" (suffix vazio)
-    const birth = groups.customer.items!.find(i => i.value === '@customer.birthDate')
-    expect(birth?.modifiers?.some(m => m.suffix === '')).toBe(true)
-    // Nome tem combinação única → modificador embutido, sem etapa
+  it('cada horário é um ramo com 7 dias, e cada dia tem os 2 componentes de hora', () => {
+    const opening = groups.bot.items!.find(i => i.label === 'Horário de Abertura')!
+    expect(opening.value).toBeUndefined() // item-ramo não grava valor
+    expect(opening.children).toHaveLength(7)
+    const monday = opening.children!.find(d => d.value === '@bot.openingTime.monday')
+    expect(monday?.label).toBe('segunda')
+    expect(monday?.components?.map(c => c.label)).toEqual(['Apenas Horário', 'Apenas Horário com Minutos'])
+    expect(monday?.components?.map(c => c.suffix)).toEqual(['#getHourOfDate', '#getHoursAndMinutesOfDate'])
+    // Fechamento usa o campo closingTime
+    const closing = groups.bot.items!.find(i => i.label === 'Horário de Fechamento')!
+    expect(closing.children!.find(d => d.value === '@bot.closingTime.sunday')?.label).toBe('domingo')
+  })
+
+  it('componentes (#) ficam fora do value (base crua) e listam os sufixos aplicáveis', () => {
+    // value é a base SEM componente; o # vem da coluna de componentes
     const name = groups.customer.items!.find(i => i.label === 'Nome')
-    expect(name?.value).toBe('@customer.name#normalizeQuery')
-    expect(name?.modifiers).toBeUndefined()
+    expect(name?.value).toBe('@customer.name')
+    expect(name?.components?.map(c => c.suffix)).toEqual(['#normalizeQuery'])
+    // store.number é o único com 2 componentes
+    const number = groups.store.items!.find(i => i.value === '@store.number')
+    expect(number?.components?.map(c => c.suffix)).toEqual(['#onlyNumbers', '#normalizeQuery'])
+    // CEP → #zipcode; Pedido.Total → #currency
+    expect(groups.store.items!.find(i => i.value === '@store.zip')?.components?.map(c => c.suffix)).toEqual(['#zipcode'])
+    expect(groups.order.items!.find(i => i.value === '@order.totalFetched')?.components?.map(c => c.suffix)).toEqual(['#currency'])
+  })
+
+  it('variáveis sem componente aplicável não têm a coluna', () => {
+    const gender = groups.customer.items!.find(i => i.value === '@customer.gender')
+    expect(gender?.components).toBeUndefined()
+    expect(groups.channel.items!.find(i => i.value === '@channel.id')?.components).toBeUndefined()
   })
 
   it('campo personalizado é um item prefixo (ID por-conta completado à mão)', () => {
@@ -47,22 +68,65 @@ describe('VARIABLE_GROUPS — catálogo de variáveis', () => {
 })
 
 describe('variableDisplay', () => {
-  it('resolve item de combinação única para "Categoria › Item"', () => {
-    expect(variableDisplay('@customer.name#normalizeQuery')).toEqual({ label: 'Consumidor › Nome', resolved: true })
-    expect(variableDisplay('@store.zip#zipcode')).toEqual({ label: 'Loja › CEP', resolved: true })
+  it('resolve "value + #componente" como "Categoria.Item.Componente"', () => {
+    expect(variableDisplay('@customer.name#normalizeQuery')).toEqual({ label: 'Consumidor.Nome.Texto normalizado', resolved: true })
+    expect(variableDisplay('@store.zip#zipcode')).toEqual({ label: 'Loja.CEP.CEP formatado', resolved: true })
+    expect(variableDisplay('@store.number#onlyNumbers')).toEqual({ label: 'Loja.Número.Só dígitos', resolved: true })
+    expect(variableDisplay('@order.totalFetched#currency')).toEqual({ label: 'Pedido.Total.Moeda', resolved: true })
   })
 
-  it('resolve item com modificador para "Categoria › Item (Modificador)"', () => {
-    expect(variableDisplay('@store.number#onlyNumbers')).toEqual({ label: 'Loja › Número (Só dígitos)', resolved: true })
-    expect(variableDisplay('@bot.openingTime.monday#getHourOfDate')).toEqual({ label: 'Bot › Abertura segunda (Hora)', resolved: true })
+  it('resolve componente em variável aninhada (ramo) para "Categoria.Ramo.Dia.Componente"', () => {
+    expect(variableDisplay('@bot.openingTime.monday#getHourOfDate'))
+      .toEqual({ label: 'Bot.Horário de Abertura.segunda.Apenas Horário', resolved: true })
+    expect(variableDisplay('@bot.closingTime.sunday#getHoursAndMinutesOfDate'))
+      .toEqual({ label: 'Bot.Horário de Fechamento.domingo.Apenas Horário com Minutos', resolved: true })
   })
 
-  it('modificador vazio (sem modificador) não adiciona parênteses', () => {
-    expect(variableDisplay('@customer.birthDate')).toEqual({ label: 'Consumidor › Data de nascimento', resolved: true })
+  it('resolve a forma crua sem componente (compat. com fluxos antigos)', () => {
+    expect(variableDisplay('@customer.name')).toEqual({ label: 'Consumidor.Nome', resolved: true })
+    expect(variableDisplay('@customer.birthDate')).toEqual({ label: 'Consumidor.Data de nascimento', resolved: true })
   })
 
   it('valor não-catalogado (prefixo completado/custom) cai no cru, não resolvido', () => {
     expect(variableDisplay('@customer.customFields.hBhq2eAiWX')).toEqual({ label: '@customer.customFields.hBhq2eAiWX', resolved: false })
     expect(variableDisplay('')).toEqual({ label: '', resolved: false })
+  })
+})
+
+describe('variableDisplay — Time (grupo dinâmico, @team.{id}.campo)', () => {
+  // Tokens reais da amostra do bot — o ID do time é dinâmico (vem da loja);
+  // o schema de campos é idêntico ao do Bot. Fase 1: o ID aparece cru no rótulo.
+  it('resolve os 4 campos da amostra para "Time.{id}.…"', () => {
+    expect(variableDisplay('@team.fdI9crpRsB.name#normalizeQuery'))
+      .toEqual({ label: 'Time.fdI9crpRsB.Nome.Texto normalizado', resolved: true })
+    expect(variableDisplay('@team.S1Cl3fbnFG.isOpenNow'))
+      .toEqual({ label: 'Time.S1Cl3fbnFG.Aberto Agora', resolved: true })
+    expect(variableDisplay('@team.UrAnEmtASL.openingTime.monday#getHourOfDate'))
+      .toEqual({ label: 'Time.UrAnEmtASL.Horário de Abertura.segunda.Apenas Horário', resolved: true })
+    expect(variableDisplay('@team.87GglN0JapW0.closingTime.monday#getHoursAndMinutesOfDate'))
+      .toEqual({ label: 'Time.87GglN0JapW0.Horário de Fechamento.segunda.Apenas Horário com Minutos', resolved: true })
+  })
+
+  it('resolve a forma crua sem componente (campo de Time sem #)', () => {
+    expect(variableDisplay('@team.fdI9crpRsB.name'))
+      .toEqual({ label: 'Time.fdI9crpRsB.Nome', resolved: true })
+  })
+
+  it('o @team pelado continua sendo prefixo livre (não resolvido)', () => {
+    expect(variableDisplay('@team')).toEqual({ label: '@team', resolved: false })
+    expect(variableDisplay('@team.')).toEqual({ label: '@team.', resolved: false })
+  })
+
+  it('campo inexistente de um time não resolve (cai no cru)', () => {
+    expect(variableDisplay('@team.fdI9crpRsB.naoExiste')).toEqual({ label: '@team.fdI9crpRsB.naoExiste', resolved: false })
+  })
+
+  it('troca o ID pelo NOME do time quando o mapa id→nome é fornecido', () => {
+    const names = new Map([['fdI9crpRsB', 'Loja Centro']])
+    expect(variableDisplay('@team.fdI9crpRsB.name#normalizeQuery', names))
+      .toEqual({ label: 'Time.Loja Centro.Nome.Texto normalizado', resolved: true })
+    // ID sem entrada no mapa cai no próprio ID (continua resolvido)
+    expect(variableDisplay('@team.S1Cl3fbnFG.isOpenNow', names))
+      .toEqual({ label: 'Time.S1Cl3fbnFG.Aberto Agora', resolved: true })
   })
 })
