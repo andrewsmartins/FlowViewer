@@ -1,11 +1,11 @@
 # Testes automatizados
 
-Documentação da suíte de testes do Fluxo Bot: **199 testes unitários** (Vitest, 9 arquivos) e **13 scripts de smoke** (Playwright, browser real).
+Documentação da suíte de testes do Fluxo Bot: **209 testes unitários** (Vitest, 10 arquivos) e **15 scripts de smoke** (Playwright, browser real).
 
 - **Unitários** (`npm test`) — rápidos, sem rede e sem browser; rodam sobre os módulos puros de `src/utils/`. São a rede de segurança do dia a dia.
 - **Smokes** (`node scripts/smoke-*.mjs`) — exercitam o app inteiro num browser headless contra o dev server. Os que tocam a plataforma usam um **`fetch` falso** (nunca a API real). São a prova de que a feature funciona ponta a ponta na UI.
 
-> Última execução verificada: **199 passed (9 arquivos)** em ~1.8s — `npx vitest run`.
+> Última execução verificada: **209 passed (10 arquivos)** em ~2.0s — `npx vitest run`.
 
 ---
 
@@ -28,7 +28,7 @@ Os smokes que falam com a plataforma (`smoke-phase4b*`) interceptam `window.fetc
 
 ---
 
-# Parte 1 — Testes unitários (199)
+# Parte 1 — Testes unitários (209)
 
 | Arquivo | Casos | O que cobre |
 |---|---:|---|
@@ -38,10 +38,11 @@ Os smokes que falam com a plataforma (`smoke-phase4b*`) interceptam `window.fetc
 | [`editFlow.phase3b.test.ts`](../src/utils/editFlow.phase3b.test.ts) | 16 | Escolhas (botão↔slot), condições, conectar por condição, excluir intenção |
 | [`pushFlow.test.ts`](../src/utils/pushFlow.test.ts) | 16 | Push ao rascunho: 2 passadas, remap de IDs, guardrails |
 | [`editFlow.test.ts`](../src/utils/editFlow.test.ts) | 15 | Round-trip de serialização, decodificação de IDs de aresta, reconexão |
+| [`duplicate.test.ts`](../src/utils/duplicate.test.ts) | 10 | Duplicação fiel (clone de intenção/condição, regen de IDs de botão, nomes únicos) |
 | [`restoreFlow.test.ts`](../src/utils/restoreFlow.test.ts) | 10 | Restauração de backup (deletar→recriar→sobrescrever), consistência eventual |
 | [`history.test.ts`](../src/utils/history.test.ts) | 6 | Pilha de undo/redo |
 | [`exportImage.test.ts`](../src/utils/exportImage.test.ts) | 3 | Bounds do export PNG/SVG cientes de grupos |
-| **Total** | **199** | |
+| **Total** | **209** | |
 
 ---
 
@@ -218,7 +219,7 @@ O fix de bounds do export PNG/SVG quando há nós aninhados (grupos do Modelo B)
 
 Exercitam o app num browser headless contra o dev server. Pré-requisito: `npm run dev` rodando (a URL padrão de cada script pode variar entre `5173`/`5174` — passe a URL como argumento se necessário).
 
-> A suíte rastreia **12 smokes de fase** (`smoke-phase*.mjs`). O `smoke-test.mjs` é o smoke original da **Fase 1** (round-trip), totalizando **13 scripts**.
+> A suíte rastreia **14 smokes de fase** (`smoke-phase*.mjs`). O `smoke-test.mjs` é o smoke original da **Fase 1** (round-trip), totalizando **15 scripts**.
 
 | Script | Fase / Marco | O que valida |
 |---|---|---|
@@ -235,6 +236,8 @@ Exercitam o app num browser headless contra o dev server. Pré-requisito: `npm r
 | [`smoke-phase6-create.mjs`](../scripts/smoke-phase6-create.mjs) | Fase 6 — Marco D | Paleta com os 11 ActionTypes; cria nó terminal + Chamada de API; export não vaza filhos de grupo; PNG de fluxo com grupos não quebra |
 | [`smoke-phase6-merge.mjs`](../scripts/smoke-phase6-merge.mjs) | Fase 6 — Marco D | Arrastar um tipo da paleta **sobre** um nó existente o adiciona como nova condição (a intenção vira grupo com 2 filhos) |
 | [`smoke-phase6-edge-delete.mjs`](../scripts/smoke-phase6-edge-delete.mjs) | Fase 6 | Remover conexão pelo botão "×" da aresta reflete no modelo; o nó de início abre o painel em modo somente-leitura |
+| [`smoke-phase7-duplicate.mjs`](../scripts/smoke-phase7-duplicate.mjs) | Fase 7 | As 3 formas de duplicação: botão "dentro da intenção" (+1 condição), "fora da intenção" (+1 intenção), Ctrl+arrastar (+1 intenção); IDs de botão sem colisão |
+| [`smoke-phase7-dup-highlight.mjs`](../scripts/smoke-phase7-dup-highlight.mjs) | Fase 7 | Feedback visual: cópia por botão recebe a classe `fluxo-dup` e perde ao ser clicada; Ctrl+arrastar gera +1 intenção e não deixa destaque após soltar |
 
 ---
 

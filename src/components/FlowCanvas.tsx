@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type DragEvent } from 'react'
-import { ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, useReactFlow, type Node, type Edge, type NodeMouseHandler, type MiniMapNodeProps, type NodeChange, type EdgeChange, type Connection, type XYPosition } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, useReactFlow, type Node, type Edge, type NodeMouseHandler, type OnNodeDrag, type MiniMapNodeProps, type NodeChange, type EdgeChange, type Connection, type XYPosition } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { NodePalette, PALETTE_DRAG_TYPE } from './NodePalette'
 import { isCreatableKind, type CreatableKind } from '../utils/intentTemplates'
@@ -76,6 +76,12 @@ interface FlowCanvasProps {
   onCreateNode: (kind: CreatableKind, position: XYPosition) => void
   /** Soltar um tipo da paleta sobre um nó-intenção: adiciona como condição dele (merge). */
   onAddConditionToNode: (intentId: string, kind: CreatableKind) => void
+  /** Início do Ctrl+arrastar: cria a cópia já no começo do gesto; devolve o ID dela (ou null). */
+  onDuplicateStart: (intentId: string) => string | null
+  /** Fim do Ctrl+arrastar: posiciona a cópia no drop e restaura o original. */
+  onDuplicateFinish: (originalId: string, copyId: string, dropPos: XYPosition, startPos: XYPosition) => void
+  /** Remove o destaque de duplicação de um nó (1º clique/arraste dele). */
+  onClearHighlight: (nodeId: string) => void
   /** Remover uma conexão pelo botão "×" da aresta (mesmo caminho do Delete). */
   onDeleteEdge: (edgeId: string) => void
 }
@@ -107,11 +113,15 @@ export function FlowCanvas(props: FlowCanvasProps) {
   )
 }
 
-function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onAddConditionToNode, onDeleteEdge }: FlowCanvasProps) {
+function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onAddConditionToNode, onDuplicateStart, onDuplicateFinish, onClearHighlight, onDeleteEdge }: FlowCanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
   // Nó atualmente destacado como alvo de merge (manipulado via classe no DOM
   // para não re-renderizar o array controlado de nós a cada dragover).
   const mergeTargetRef = useRef<string | null>(null)
+  // Duplicação por Ctrl+arrastar em curso: id do original, id da cópia (criada no
+  // início) e a posição inicial do original. No `dragStop` a cópia vai para o drop
+  // e o original volta para `start`.
+  const dupRef = useRef<{ originalId: string; copyId: string; start: XYPosition } | null>(null)
 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_, node) => onNodeClick(node as Node<FlowNodeData>),
@@ -150,6 +160,26 @@ function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onN
     else onCreateNode(kind, flowPos)
   }, [nodes, onCreateNode, onAddConditionToNode, screenToFlowPosition, setMergeTarget])
 
+  // Ctrl+arrastar duplica: marca o candidato no início (só nó-intenção: não
+  // filho de grupo, não início, não bot externo) e dispara a cópia no fim.
+  const handleNodeDragStart: OnNodeDrag<Node<FlowNodeData>> = useCallback((e, node) => {
+    const ctrl = 'ctrlKey' in e && (e.ctrlKey || e.metaKey)
+    const isIntentNode = !node.parentId && node.type !== 'startNode' && node.type !== 'externalBotNode'
+    if (ctrl && isIntentNode) {
+      const copyId = onDuplicateStart(node.id)
+      dupRef.current = copyId ? { originalId: node.id, copyId, start: node.position } : null
+    } else {
+      dupRef.current = null
+      onClearHighlight(node.id)  // arrastar um nó recém-duplicado limpa o destaque dele
+    }
+  }, [onDuplicateStart, onClearHighlight])
+
+  const handleNodeDragStop: OnNodeDrag<Node<FlowNodeData>> = useCallback((_, node) => {
+    const dup = dupRef.current
+    dupRef.current = null
+    if (dup && dup.originalId === node.id) onDuplicateFinish(dup.originalId, dup.copyId, node.position, dup.start)
+  }, [onDuplicateFinish])
+
   return (
     <EdgeActionsContext.Provider value={{ onDeleteEdge, isDark }}>
     <div className="w-full h-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
@@ -160,7 +190,12 @@ function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onN
       onEdgesChange={onEdgesChange}
       onReconnect={onReconnect}
       onConnect={onConnect}
+      onNodeDragStart={handleNodeDragStart}
+      onNodeDragStop={handleNodeDragStop}
       deleteKeyCode={['Backspace', 'Delete']}
+      // Ctrl/Cmd fica reservado ao gesto de duplicar (Ctrl+arrastar) — por padrão o
+      // React Flow o usa para multisseleção, o que conflitaria com o arraste-duplica.
+      multiSelectionKeyCode={null}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       onNodeClick={handleNodeClick}

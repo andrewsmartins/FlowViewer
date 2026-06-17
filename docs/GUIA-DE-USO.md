@@ -83,6 +83,18 @@ As mudanças ficam num rascunho local até clicar em **Aplicar alterações**.
 
 > O nó de **início** abre o painel em modo **somente-leitura** (mostra nome, condição e destino, sem formulário). A conexão de saída dele continua editável no canvas — é como o fluxo começa.
 
+### Duplicar nós
+
+Há três formas de duplicar, todas **cópias fiéis** — as conexões de saída (`next`, escolhas, `error.next`, contexto) são preservadas, e os **IDs dos botões são regenerados** para não colidir. O nó de **início nunca é duplicado**.
+
+- **Ctrl + arrastar** um nó-intenção (nó solto ou cabeçalho de um grupo) cria uma **intenção nova** (com todas as condições) no ponto onde você soltar — o original fica no lugar.
+- No painel, **"Duplicar dentro da intenção"** (num nó solto ou numa condição-filha) copia **aquela condição dentro da mesma intenção**; num nó solto, isso o transforma em **grupo** (2 condições).
+- No painel, **"Duplicar fora da intenção"** (numa condição-filha) extrai aquela condição para uma **intenção nova**; **"Duplicar intenção"** (no grupo ou no nó solto) copia a intenção inteira.
+
+A cópia recebe o nome do original com sufixo `_copia` (`_copia_2`, `_copia_3`… se já houver). Duplicar entra no histórico de **desfazer/refazer**.
+
+Durante o **Ctrl+arrastar**, o nó original e a cópia aparecem com uma **borda tracejada verde animada** (e as conexões também) — ao soltar, voltam ao normal. Ao duplicar **pelos botões**, a cópia nasce com esse mesmo destaque, que some assim que você **clica ou arrasta** o nó pela primeira vez.
+
 ### Excluir intenções
 
 Selecione o nó e pressione `Delete`, ou use o botão no painel. Todas as referências de entrada são limpas automaticamente (`next`, botão+escolha, `error.next`, fallbacks); num grupo, os nós-condição filhos somem junto. O nó de início não é excluível.
@@ -177,6 +189,7 @@ Toggle sol/lua na toolbar — tema aplicado a toda a interface (toolbar, nós, p
 |---|---|
 | `Ctrl+Enter` | Gerar fluxo (no modal de importação) |
 | `Delete` / `Backspace` | Excluir nó ou aresta selecionada |
+| `Ctrl` + arrastar | Duplicar a intenção (nó solto ou grupo) no ponto do drop |
 | `Ctrl+Z` | Desfazer |
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Refazer |
 

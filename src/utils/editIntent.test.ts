@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import {
   listMessages, updateMessageText, addTextMessage, removeMessage,
   updateButton, updateIntentMeta, updateActionFields, updateSetDataItems,
-  addCondition,
+  addCondition, sanitizeIntentName, collectCategories, updateCondition,
 } from './editIntent'
 import { validateFlow } from './validateFlow'
 import { createIntentTemplate } from './intentTemplates'
@@ -107,6 +107,21 @@ describe('updateIntentMeta', () => {
     expect(intent.name).toBe('x')
   })
 
+  it('rejeita nome com espaço, acento ou caractere especial (regra mixed_snake_case)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'valido_1')
+    for (const invalido of ['com espaco', 'acentuação', 'tem-traco', 'sinal!', 'arroba@']) {
+      const result = updateIntentMeta(intent, { name: invalido, category: 'c', keywords: [] })
+      expect(result.ok).toBe(false)
+      expect(intent.name).toBe('valido_1') // não alterou
+    }
+  })
+
+  it('aceita nome mixed_snake_case (letras, dígitos e underscore)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    expect(updateIntentMeta(intent, { name: 'Valida_Dados_2', category: 'c', keywords: [] }).ok).toBe(true)
+    expect(intent.name).toBe('Valida_Dados_2')
+  })
+
   it('atualiza priority e context (Modelo B); context vazio vira null', () => {
     const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
     updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [], priority: 0.75, context: ' menu-id ' })
@@ -123,6 +138,76 @@ describe('updateIntentMeta', () => {
     updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [] })
     expect(intent.priority).toBe(0.5)
     expect(intent.context).toBe('algo')
+  })
+})
+
+describe('sanitizeIntentName', () => {
+  it('converte espaço em underscore e remove acentos/caracteres especiais', () => {
+    expect(sanitizeIntentName('Pós graduação')).toBe('Ps_graduao')
+    expect(sanitizeIntentName('tem-traco!')).toBe('temtraco')
+    expect(sanitizeIntentName('a b @ c')).toBe('a_b__c')
+  })
+
+  it('preserva nomes já válidos em mixed_snake_case', () => {
+    expect(sanitizeIntentName('Valida_Dados_2')).toBe('Valida_Dados_2')
+    expect(sanitizeIntentName('')).toBe('')
+  })
+})
+
+describe('collectCategories', () => {
+  function intentWithCategory(name: string, category: string): BotIntent {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, name)
+    intent.category = category
+    return intent
+  }
+
+  it('coleta categorias distintas, ignorando vazios e duplicatas', () => {
+    const intents = [
+      intentWithCategory('a', 'Vendas'),
+      intentWithCategory('b', 'Vendas'),
+      intentWithCategory('c', 'Suporte'),
+      intentWithCategory('d', '  '),
+    ]
+    expect(collectCategories(intents).sort()).toEqual(['Suporte', 'Vendas'])
+  })
+
+  it('exclui as categorias de sistema "start" e "Sem Categoria"', () => {
+    const intents = [
+      intentWithCategory('a', 'start'),
+      intentWithCategory('b', 'Sem Categoria'),
+      intentWithCategory('c', 'Promo'),
+    ]
+    expect(collectCategories(intents)).toEqual(['Promo'])
+  })
+})
+
+describe('updateCondition — tipo "context" (Intenção/Contexto)', () => {
+  it('grava intent e context (IDs de intenções) no tipo context', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    const result = updateCondition(intent, 0, {
+      name: 'Condição Padrão', type: 'context', variable: '', value: 'any',
+      intent: 'id-da-intencao', context: 'id-do-contexto',
+    })
+    expect(result).toEqual({ ok: true })
+    expect(intent.conditions[0].type).toBe('context')
+    expect(intent.conditions[0].intent).toBe('id-da-intencao')
+    expect(intent.conditions[0].context).toBe('id-do-contexto')
+  })
+
+  it('intent/context vazios viram null', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateCondition(intent, 0, { name: 'c', type: 'context', variable: '', value: '', intent: '', context: '  ' })
+    expect(intent.conditions[0].intent).toBeNull()
+    expect(intent.conditions[0].context).toBeNull()
+  })
+
+  it('não sobrescreve intent/context quando os campos são omitidos (editor em lote)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    intent.conditions[0].intent = 'preexistente'
+    intent.conditions[0].context = 'ctx-preexistente'
+    updateCondition(intent, 0, { name: 'c', type: 'equals', variable: 'v', value: '1' })
+    expect(intent.conditions[0].intent).toBe('preexistente')
+    expect(intent.conditions[0].context).toBe('ctx-preexistente')
   })
 })
 

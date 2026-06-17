@@ -19,7 +19,9 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 ### Edição
 - **Criação de nós** — paleta no canto superior esquerdo (grupos **Fluxo** e **Avançado**): arraste um dos 11 tipos para o canvas e crie uma intenção nova com template canônico; soltar **sobre um nó existente** adiciona o tipo como **nova condição** daquela intenção (vira grupo)
 - **Edição de conexões** — arraste a ponta de destino de uma aresta para outra intenção; conecte arrastando do handle inferior; remova pela **tag "×"** da aresta ou com Delete/Backspace; o JSON subjacente é atualizado (`next.intent` ou `action.choices`)
-- **Edição de conteúdo** — o painel abre em modo conforme o nó: **grupo** (meta da intenção: nome, categoria, keywords, prioridade, contexto + lista de condições), **condição** (gatilho, mensagens, botões e ação só daquela condição) ou **nó solto** (editor completo); **Aplicar alterações** grava no modelo
+- **Edição de conteúdo** — o painel abre em modo conforme o nó: **grupo** (meta da intenção: nome, categoria, palavras-chave, prioridade, contexto + lista de condições), **condição** (gatilho, mensagens, botões e ação só daquela condição) ou **nó solto** (editor completo); **Aplicar alterações** grava no modelo. Os campos espelham o construtor da plataforma: **nome** em `mixed_snake_case` (espaço vira `_`, sem acento/símbolo), **categoria** como combobox ("Sem Categoria" por padrão, sugere as existentes e cria novas), **palavras-chave** como tags (Enter cria, "×" remove)
+- **Campos por tipo de condição** — "O contexto é igual a" abre **Intenção** + **Contexto** (seletores de intenções); "A última intenção foi" abre **Intenção**; "O valor está vazio" abre **Variável** com um **picker de `@`** em 3 níveis (Categoria → Variável → Modificador) que exibe rótulos legíveis ("Loja › Número (Só dígitos)") e grava a variável crua
+- **Duplicação de nós** — **Ctrl+arrastar** um nó-intenção (solto ou grupo) cria uma intenção nova no ponto do drop; no painel, **"Duplicar Condição"** copia a condição na mesma intenção e **"Duplicar Intenção"** gera uma intenção nova (os dois botões ficam lado a lado quando ambos se aplicam). Cópias são fiéis (conexões de saída preservadas, IDs de botão regenerados); o início nunca é duplicado
 - **Exclusão de intenções** — botão no painel ou tecla Delete; todas as referências de entrada são limpas automaticamente
 - **Undo/redo** — **Ctrl+Z** desfaz e **Ctrl+Shift+Z** / **Ctrl+Y** refazem qualquer edição (botões ↶ ↷ na toolbar); histórico de até 30 passos
 - O nó de **início** (`category: "start"`) é somente-leitura no painel; a conexão de saída dele continua editável no canvas
@@ -82,10 +84,11 @@ O servidor sobe em `http://localhost:5173`.
 3. Para **criar** um nó, arraste um tipo da paleta (canto superior esquerdo) até a posição desejada
 4. Para **conectar**, arraste do handle inferior de um nó até outro nó; para **reconectar**, arraste a ponta de destino (seta) de uma aresta — conexões para outros bots não são editáveis
 5. Para **editar conteúdo**, clique no nó e use o painel à direita (Aplicar alterações grava no modelo)
-6. Para **excluir**, selecione nó ou aresta e pressione Delete, ou use o botão no painel
-7. **Ctrl+Z** desfaz e **Ctrl+Shift+Z** refaz qualquer edição (botões ↶ ↷ na toolbar)
-8. O **indicador de validação** na toolbar mostra erros/avisos do fluxo em tempo real (clique para ver a lista)
-9. **Exportar** (toolbar) baixa o **JSON** no formato da plataforma (com todas as edições) ou imagem **PNG**/**SVG**
+6. Para **duplicar**, segure **Ctrl e arraste** um nó-intenção (cópia no ponto do drop), ou use os botões **Duplicar** no painel
+7. Para **excluir**, selecione nó ou aresta e pressione Delete, ou use o botão no painel
+8. **Ctrl+Z** desfaz e **Ctrl+Shift+Z** refaz qualquer edição (botões ↶ ↷ na toolbar)
+9. O **indicador de validação** na toolbar mostra erros/avisos do fluxo em tempo real (clique para ver a lista)
+10. **Exportar** (toolbar) baixa o **JSON** no formato da plataforma (com todas as edições) ou imagem **PNG**/**SVG**
 
 ---
 
@@ -222,6 +225,8 @@ src/
 │   ├── editFlow.ts             Reconectar/conectar/deletar arestas + serializar fluxo
 │   ├── editIntent.ts           Patches de conteúdo do intent (mensagens, botões, ação)
 │   ├── intentTemplates.ts      Templates canônicos por tipo (criação de nó/condição)
+│   ├── duplicate.ts            Duplicação de intenção/condição (clone fiel + regen de IDs)
+│   ├── variables.ts            Catálogo de variáveis da plataforma (picker de @, rótulos legíveis)
 │   ├── validateFlow.ts         Validação no export (erros bloqueiam, avisos informam)
 │   ├── exportImage.ts          Exportação PNG/SVG (bounds reais, ciente de grupos)
 │   ├── history.ts              Pilha de undo/redo (até 30 snapshots)

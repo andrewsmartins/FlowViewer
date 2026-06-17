@@ -30,3 +30,29 @@ body { margin: 0; }
   outline-offset: 3px;
   border-radius: 10px;
 }
+
+/* Destaque de duplicação (Fase 7): nó sendo duplicado por Ctrl+arrastar ou nó
+   recém-duplicado por botão. Borda tracejada esmeralda "marching ants" (animada)
+   via pseudo-elemento — 4 gradientes (topo/base/esquerda/direita) cujo
+   background-position desliza em loop. As ARESTAS animadas saem do React Flow
+   (`animated: true` → keyframes dashdraw); aqui só o nó precisa de CSS. */
+@keyframes fluxo-marching {
+  to { background-position: 16px 0, -16px 100%, 0 -16px, 100% 16px; }
+}
+.react-flow__node.fluxo-dup::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+  background-image:
+    repeating-linear-gradient(90deg, #10b981 0 8px, transparent 8px 16px),
+    repeating-linear-gradient(90deg, #10b981 0 8px, transparent 8px 16px),
+    repeating-linear-gradient(0deg,  #10b981 0 8px, transparent 8px 16px),
+    repeating-linear-gradient(0deg,  #10b981 0 8px, transparent 8px 16px);
+  background-size: 16px 2px, 16px 2px, 2px 16px, 2px 16px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  animation: fluxo-marching 0.6s linear infinite;
+}

@@ -177,11 +177,17 @@ export function addButtonsMessage(intent: BotIntent, body: string, condIdx?: num
   return { ok: true }
 }
 
-/** Atualiza os campos lógicos de uma condição (nome, tipo, variável, valor). */
+/**
+ * Atualiza os campos lógicos de uma condição (nome, tipo, variável, valor) e,
+ * para o tipo "context" ("Contexto é igual a"), as duas referências a intenções
+ * existentes: `intent` (campo "Intenção") e `context` (campo "Contexto"). Os dois
+ * vêm como ID de intenção (ou vazio). Fazem round-trip em todos os tipos — a UI só
+ * permite editá-los no tipo context, então tipos sem esses campos não são afetados.
+ */
 export function updateCondition(
   intent: BotIntent,
   condIdx: number,
-  fields: { name: string; type: string; variable: string; value: string },
+  fields: { name: string; type: string; variable: string; value: string; intent?: string; context?: string },
 ): EditResult {
   const cond = intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: 'condição não encontrada na intenção' }
@@ -190,6 +196,10 @@ export function updateCondition(
   cond.type = fields.type
   cond.variable = fields.variable.trim() || null
   cond.value = fields.value.trim() || null
+  // Só toca em intent/context quando o caller os fornece (caminho do tipo context);
+  // o editor em lote de condições não passa esses campos e não deve sobrescrevê-los.
+  if (fields.intent !== undefined) cond.intent = fields.intent.trim() || null
+  if (fields.context !== undefined) cond.context = fields.context.trim() || null
   touch(intent)
   return { ok: true }
 }
@@ -223,6 +233,42 @@ export function removeCondition(intent: BotIntent, condIdx: number): EditResult 
 }
 
 /**
+ * Regra de nome de intenção na plataforma OmniChat: mixed_snake_case — apenas
+ * letras (A-Z, a-z), dígitos e underscore. O campo no builder usa a diretiva
+ * Angular `specialcharacter`, que impede a digitação de qualquer outro caractere
+ * (espaço, acento, símbolo). Espelhamos a mesma regra aqui para não gerar nomes
+ * que a plataforma rejeitaria no push.
+ */
+const INTENT_NAME_VALID = /^[A-Za-z0-9_]+$/
+const INTENT_NAME_INVALID_CHARS = /[^A-Za-z0-9_]/g
+
+/**
+ * Normaliza `value` para a regra mixed_snake_case, usado no onChange do campo de
+ * nome para corrigir a digitação em tempo real (em vez de só acusar erro no
+ * submit). Espaço (e qualquer whitespace) vira underscore — é o separador natural
+ * em snake_case, então convertemos em vez de apagar; o resto dos caracteres fora
+ * de [A-Za-z0-9_] (acentos, símbolos) é removido.
+ */
+export function sanitizeIntentName(value: string): string {
+  return value.replace(/\s/g, '_').replace(INTENT_NAME_INVALID_CHARS, '')
+}
+
+/**
+ * Coleta as categorias distintas e não-vazias de uma lista de intenções, para
+ * alimentar o dropdown de categoria no painel. Exclui 'start' (categoria de
+ * sistema da intenção de início, não selecionável pelo usuário) e 'Sem Categoria'
+ * (o painel já a injeta como valor padrão).
+ */
+export function collectCategories(intents: BotIntent[]): string[] {
+  const found = new Set<string>()
+  for (const intent of intents) {
+    const category = intent.category?.trim()
+    if (category && category !== 'start' && category !== 'Sem Categoria') found.add(category)
+  }
+  return [...found]
+}
+
+/**
  * Atualiza a meta da intenção: nome, categoria, keywords e, no Modelo B
  * (Marco C), também `priority` e `context` (a intenção que precede esta — a
  * origem da aresta de contexto). `context` vazio limpa a referência (null).
@@ -231,8 +277,12 @@ export function updateIntentMeta(
   intent: BotIntent,
   meta: { name: string; category: string; keywords: string[]; priority?: number; context?: string | null },
 ): EditResult {
-  if (!meta.name.trim()) return { ok: false, reason: 'o nome da intenção não pode ficar vazio' }
-  intent.name = meta.name.trim()
+  const name = meta.name.trim()
+  if (!name) return { ok: false, reason: 'o nome da intenção não pode ficar vazio' }
+  if (!INTENT_NAME_VALID.test(name)) {
+    return { ok: false, reason: 'o nome da intenção só pode conter letras, números e underscore (sem espaços, acentos ou caracteres especiais)' }
+  }
+  intent.name = name
   intent.category = meta.category.trim() || 'Sem Categoria'
   intent.keywords = meta.keywords.map(k => k.trim()).filter(Boolean)
   if (meta.priority !== undefined) intent.priority = meta.priority

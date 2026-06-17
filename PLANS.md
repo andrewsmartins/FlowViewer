@@ -1,6 +1,7 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
-> Última atualização: 2026-06-15 (Fase 6 planejada). Este arquivo orienta sessões futuras do Claude Code.
+> Última atualização: 2026-06-16 (Fase 7 concluída + Fase 8 em andamento, branch `feat/duplicate-nodes`). Este arquivo orienta sessões futuras do Claude Code.
+> **Fase 7 (Duplicação de nós)** concluída e **Fase 8 (Painel de edição alinhado à plataforma)** em andamento — ambas na branch `feat/duplicate-nodes`, ainda não mergeadas. Ver as seções "Fase 7" e "Fase 8" abaixo. package.json em 0.15.0.
 > Status: **Fases 1–5 concluídas, incl. 4a (push CLI) e 4b (push + restore pela
 > UI). v0.13.0, MERGEADO NA `main`.**
 > **MERGE NA MAIN CONCLUÍDO (2026-06-15):** a `feat/visual-editor` (v0.13.0) está
@@ -612,6 +613,98 @@ smoke Playwright devem seguir verdes.
 **Riscos:** maior mudança desde a Fase 5 — mexe em parse, layout, edição, criação e
 push/restore. Mitigação: faseado por Marco, cada um deixando o app funcional; `parseFlow`
 é o núcleo isolável (Marco A primeiro, com testes).
+
+### Fase 7 — Duplicação de nós ✅ CONCLUÍDA (v0.15.0, branch `feat/duplicate-nodes`)
+
+> Objetivo: poder duplicar uma intenção/condição sem refazê-la à mão. 3 formas,
+> decididas com o Andy em 2026-06-16.
+
+**Decisões fechadas:**
+- **Ctrl+arrastar** age só em **nó-intenção** (nó solto ou container de grupo) e gera
+  uma **intenção NOVA** (cópia de TODAS as condições) no ponto do drop. Filhos-condição
+  (travados em `extent:'parent'`) ficam fora do gesto — para eles, os botões do painel.
+- **A cópia é FIEL**: preserva as conexões de saída (`next.intent`, `action.choices`,
+  `error.next`, `context`, `fallbackIntents`). Só os **IDs de botões são regerados**
+  (UUID novo). Nada aponta PARA a cópia (entrada vazia, esperado). **Start nunca é duplicado.**
+- **Botão "Duplicar Condição"** aparece em **condição-filha E nó solto**
+  (no solto, vira grupo). **Botão "Duplicar Intenção"** (condição-filha) extrai a
+  condição para intenção nova; o mesmo rótulo no grupo/solto copia a intenção inteira.
+  _(Rótulos atualizados na Fase 8; antes "Duplicar dentro/fora da intenção". Os dois
+  botões ficam lado a lado quando ambos se aplicam.)_
+
+**Implementação:**
+- **`src/utils/duplicate.ts` (NOVO, núcleo puro)** — `regenButtonIds` (choices mapeiam
+  posicionalmente p/ botões, então regerar o id do botão é seguro), `cloneCondition`,
+  `makeUniqueName` (`_copia`/`_copia_N` — `validateFlow` só barra ID duplicado, não nome),
+  `duplicateConditionInIntent` (feature 2), `cloneIntent` (features 1 e 3-grupo),
+  `intentFromCondition` (feature 3-filha; meta herdada da origem).
+- **`App.tsx`** — 3 handlers (`handleDuplicateIntent` com `newPos`/`restorePos`,
+  `handleDuplicateConditionInIntent`, `handleDuplicateConditionOutside`) seguindo o padrão
+  `takeSnap → muta modelo → parseFlow → merge de posições → bumpModel` (entram no undo/redo).
+- **`FlowCanvas.tsx`** — `onNodeDragStart`/`onNodeDragStop` com `dupRef` (id + posição
+  inicial p/ restaurar o original); **`multiSelectionKeyCode={null}`** liberou o Ctrl
+  (era usado pela multisseleção do React Flow e conflitava com o gesto).
+- **`DetailPanel.tsx`** — 3 botões (índigo) no rodapé conforme o modo; duplicação opera
+  sobre o **modelo persistido** (não sobre o rascunho não salvo), snapshot tirado pelo App.
+- **Testes:** `duplicate.test.ts` (10 casos, incl. `condIdx` inválido) + smoke
+  `scripts/smoke-phase7-duplicate.mjs` (3 formas + IDs de botão sem colisão). **209 testes**
+  Vitest + tsc verdes; smokes de regressão passam.
+- **Polish — feedback visual (esmeralda "marching ants"):** no **Ctrl+arrastar** a cópia
+  nasce **no início** do gesto (anexada via `setNodes(curr => [...curr, ...copyNodes])`, sem
+  re-parsear, para não cancelar o arraste do original) e original+cópia ficam tracejados
+  animados + arestas animadas; **ao soltar** (`handleDuplicateFinish`) a cópia vai ao drop, o
+  original volta ao início e o destaque limpa. Pelos **botões**, a cópia nasce destacada e
+  some na 1ª interação (clique/arraste). Estado `highlightIds` no App + `displayNodes`/
+  `displayEdges` derivados (nunca no modelo/histórico); arestas reusam `animated` do React
+  Flow, CSS novo só para o nó (`.fluxo-dup` + `@keyframes fluxo-marching` em `src/index.css`).
+  Smoke `scripts/smoke-phase7-dup-highlight.mjs`. _Risco do re-render cancelar o arraste
+  mitigado pelo append (objetos existentes intactos) — validado pelo smoke._
+- **Fora de escopo:** fundir DOIS nós existentes num só (a integridade de refs de entrada
+  some o id de origem — mesmo caveat do "Escopo B" da Fase 6/Marco D).
+
+### Fase 8 — Painel de edição alinhado ao construtor da plataforma ✅ EM ANDAMENTO (branch `feat/duplicate-nodes`)
+
+> Objetivo: o painel de detalhes deve se comportar como o builder real da OmniChat
+> ao editar meta da intenção e gatilho da condição. Trabalhado com o Andy em 2026-06-16,
+> tipo de condição por tipo de condição (cada um conferido contra exemplos reais da plataforma).
+
+**Decisões fechadas (todas validadas com exemplos do builder):**
+- **Nome da intenção é `mixed_snake_case`** (`[A-Za-z0-9_]`). O builder usa a diretiva
+  Angular `specialcharacter`, que **bloqueia a digitação**. Espelhamos: sanitização em tempo
+  real (espaço → `_`, remove acento/símbolo) + validação no submit (`updateIntentMeta`).
+- **Categoria** tem default **"Sem Categoria"**, dropdown das existentes e cria nova ao digitar.
+  As variáveis e categorias **não vêm do JSON do fluxo** — são dado de conta/bot. Categorias:
+  store de sessão acumulativo (`knownCategories`), coletado na importação (`collectCategories`)
+  e a cada save (a plataforma grava a cada save; nós só no push, então guardamos local).
+- **Campos por tipo de condição** (só os tipos abaixo até agora; os demais seguem Variável/Valor):
+  - `context` → **Intenção** (`condition.intent`) + **Contexto** (`condition.context`), ambos IDs.
+  - `lastIntent` → só **Intenção**.
+  - `empty` → **Variável** com picker de `@`.
+- **Variáveis: catálogo CURADO** (a plataforma NÃO expõe por API — não há request ao abrir o
+  picker; é lista estática no front). Sintaxe `@namespace.campo[.sub]#modificador`. O front
+  **exibe rótulo amigável e grava o cru**. Picker em 3 níveis (Categoria → Variável →
+  Modificador); modificador **só quando há escolha real** (2+ combinações fornecidas).
+  Combinações = só as fornecidas pelo Andy (não é produto cartesiano variável×modificador).
+
+**Implementação:**
+- **`src/utils/variables.ts` (NOVO)** — `VARIABLE_GROUPS` (grupos com `items`/`value` folha),
+  `variableDisplay(raw)` (resolve cru → "Categoria › Item (Modificador)"). Horários do bot
+  gerados (2 campos × 7 dias, 2 modificadores cada).
+- **`src/utils/editIntent.ts`** — `sanitizeIntentName`, validação em `updateIntentMeta`,
+  `collectCategories`, e `updateCondition` passou a aceitar/gravar `intent`/`context` (opcionais,
+  round-trip — não sobrescreve quem não os passa).
+- **`DetailPanel.tsx`** — componentes `CategorySelect`, `KeywordTags`, `IntentSelect`,
+  `VariablePicker` e o compartilhado **`ConditionTypeFields`** (usado no editor de condição
+  individual E na lista de condições — corrige o buraco de o nó solo não ter os campos).
+  Helper `patchCond` para a lista.
+- **`App.tsx`** — `knownCategories` (estado), `collectCategories` na `loadModel` e no
+  `handleApplyEdit`, prop `categories` pro painel.
+- **`nodeMeta.ts`** — rótulos: `empty` → "O valor está vazio", `lastIntent` → "A última intenção foi".
+- **Testes:** `variables.test.ts` (NOVO) + casos em `editIntent.test.ts`. **227 testes** verdes.
+
+**Próximos tipos a alinhar (pendentes):** `exists` ("O valor existe"), `equals`, `contains`,
+`totalIsGreaterThan`, `totalIsEqual`, `else` — conferir cada um contra o builder antes de codar.
+O picker de `@` provavelmente vale para os campos Variável desses tipos também.
 
 ## Melhorias paralelas (independentes das fases)
 

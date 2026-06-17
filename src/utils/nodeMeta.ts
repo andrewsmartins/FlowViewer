@@ -31,8 +31,8 @@ export function actionToNodeKind(action?: Action | null): NodeKind {
 export const CONDITION_TYPE_LABELS: Record<string, string> = {
   any:                'Sem condição',
   context:            'Contexto é igual a',
-  lastIntent:         'Última intenção foi',
-  empty:              'Valor está vazio',
+  lastIntent:         'A última intenção foi',
+  empty:              'O valor está vazio',
   exists:             'Valor existe',
   equals:             'Valor é igual a',
   contains:           'Valor contém',

@@ -13,7 +13,8 @@ import { ThemeContext }  from './contexts/ThemeContext'
 import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
 import { createIntentTemplate, createStartIntent, type CreatableKind } from './utils/intentTemplates'
-import { addCondition } from './utils/editIntent'
+import { addCondition, collectCategories } from './utils/editIntent'
+import { cloneIntent, duplicateConditionInIntent, intentFromCondition } from './utils/duplicate'
 import { validateFlow } from './utils/validateFlow'
 import { exportFlowImage } from './utils/exportImage'
 import { FlowHistory, takeSnapshot, type FlowSnapshot } from './utils/history'
@@ -23,6 +24,8 @@ import pkg from '../package.json'
 const SPACING_STEP = 60
 const SPACING_MIN  = 20
 const SPACING_MAX  = 600
+/** Esmeralda do destaque de duplicação (nó + arestas). Cor de "novo" do app. */
+const HIGHLIGHT_COLOR = '#10b981'
 
 /** ID da intenção a partir do ID de um nó: filhos de grupo são `{id}::c{idx}`. */
 function intentIdOf(nodeId: string): string {
@@ -41,6 +44,13 @@ export default function App() {
   const [restoreOpen, setRestoreOpen]   = useState(false)
   const [exporting, setExporting]       = useState(false)
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null)
+  // Categorias conhecidas na sessão. Acumula toda categoria criada/editada para
+  // ficar disponível em outras intenções antes do push (a plataforma faz isso
+  // gravando a cada save; aqui só gravamos no fim, então guardamos localmente).
+  const [knownCategories, setKnownCategories] = useState<string[]>([])
+  // IDs de nó com destaque "duplicando / recém-duplicado" (borda esmeralda animada).
+  // Estado transitório de UI — nunca entra no modelo nem no histórico.
+  const [highlightIds, setHighlightIds] = useState<Set<string>>(() => new Set())
   const [layoutVersion, setLayoutVersion] = useState(0)
   const [modelVersion, setModelVersion]   = useState(0)
   const parsedDataRef                   = useRef<BotFlowJson | null>(null)
@@ -79,6 +89,7 @@ export default function App() {
     setNodes(snapshot.nodes)
     setEdges(snapshot.edges)
     setSelectedNode(null)
+    setHighlightIds(new Set())
     setNotice(null)
     setModelVersion(v => v + 1)
   }, [])
@@ -123,6 +134,28 @@ export default function App() {
     [hasFlow, modelVersion],
   )
 
+  /**
+   * Nós/arestas exibidos com o destaque de duplicação aplicado. Derivados (não
+   * mutam o estado real): nós destacados ganham a classe `fluxo-dup` (marching
+   * ants esmeralda) e as arestas das intenções destacadas ficam animadas/esmeralda.
+   * Caso comum (nada destacado) retorna os arrays originais — custo zero.
+   */
+  const displayNodes = useMemo(() => {
+    if (highlightIds.size === 0) return nodes
+    return nodes.map(n => highlightIds.has(n.id)
+      ? { ...n, className: `${n.className ?? ''} fluxo-dup`.trim() }
+      : n)
+  }, [nodes, highlightIds])
+
+  const displayEdges = useMemo(() => {
+    if (highlightIds.size === 0) return edges
+    const intentIds = new Set([...highlightIds].map(intentIdOf))
+    return edges.map(e =>
+      intentIds.has(intentIdOf(e.source)) || intentIds.has(intentIdOf(e.target))
+        ? { ...e, animated: true, style: { ...e.style, stroke: HIGHLIGHT_COLOR } }
+        : e)
+  }, [edges, highlightIds])
+
   const fail = useCallback((text: string) => setNotice({ level: 'error', text }), [])
 
   /**
@@ -154,12 +187,14 @@ export default function App() {
   function loadModel(data: BotFlowJson) {
     historyRef.current.clear()
     parsedDataRef.current = data
+    setKnownCategories(collectCategories(data.list))
     const result = parseFlow(data, spacingRef.current)
     setNodes(result.nodes)
     setEdges(result.edges)
     setNotice(null)
     setHasFlow(true)
     setSelectedNode(null)
+    setHighlightIds(new Set())
     setImportOpen(false)
     setNewFlowOpen(false)
     setLayoutVersion(v => v + 1)
@@ -344,6 +379,151 @@ export default function App() {
   }, [bumpModel, takeSnap, fail])
 
   /**
+   * Duplica uma intenção inteira pelo botão "Duplicar intenção" do painel. A cópia
+   * nasce com offset a partir do original e já **destacada** (perde o destaque na 1ª
+   * interação). O nó de início nunca é duplicado.
+   */
+  const handleDuplicateIntent = useCallback((intentId: string) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const intent = model.list.find(i => i.id === intentId)
+    if (!intent || intent.category === 'start') return
+    const snapshot = takeSnap()
+    const copy = cloneIntent(intent, model.list)
+    if (snapshot) historyRef.current.push(snapshot)
+    model.list.push(copy)
+    const parsed = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    const base = posById.get(intentId) ?? { x: 0, y: 0 }
+    const target = { x: base.x + 40, y: base.y + 40 }
+    setNodes(parsed.nodes.map(n => {
+      if (n.id === copy.id) return { ...n, position: target }
+      const p = posById.get(n.id)
+      return p ? { ...n, position: p } : n
+    }))
+    setEdges(parsed.edges)
+    setHighlightIds(new Set([copy.id]))
+    setNotice(null)
+    bumpModel()
+  }, [bumpModel, takeSnap])
+
+  /**
+   * Início do Ctrl+arrastar: a cópia nasce JÁ no começo do gesto, para aparecer e
+   * se mover junto. Em vez de re-parsear tudo (trocaria os objetos dos nós e poderia
+   * cancelar o arraste do original em curso), **anexa** apenas os nós/arestas da
+   * cópia, posicionando-a sobre o original. Destaca os dois (esmeralda animado).
+   * Devolve o ID da cópia para o FlowCanvas finalizar no `dragStop`, ou null.
+   */
+  const handleDuplicateStart = useCallback((intentId: string): string | null => {
+    const model = parsedDataRef.current
+    if (!model) return null
+    const intent = model.list.find(i => i.id === intentId)
+    if (!intent || intent.category === 'start') return null
+    const snapshot = takeSnap()
+    const copy = cloneIntent(intent, model.list)
+    if (snapshot) historyRef.current.push(snapshot)
+    model.list.push(copy)
+    const parsed = parseFlow(model, spacingRef.current)
+    const originPos = nodesRef.current.find(n => n.id === intentId)?.position ?? { x: 0, y: 0 }
+    const copyNodes = parsed.nodes
+      .filter(n => intentIdOf(n.id) === copy.id)
+      .map(n => n.id === copy.id ? { ...n, position: originPos } : n)
+    const copyEdges = parsed.edges.filter(e => intentIdOf(e.source) === copy.id || intentIdOf(e.target) === copy.id)
+    setNodes(curr => [...curr, ...copyNodes])
+    setEdges(curr => [...curr, ...copyEdges])
+    setHighlightIds(new Set([intentId, copy.id]))
+    setNotice(null)
+    bumpModel()
+    return copy.id
+  }, [bumpModel, takeSnap])
+
+  /**
+   * Fim do Ctrl+arrastar: a cópia vai para onde foi solta e o original volta ao
+   * ponto inicial (as arestas de ENTRADA pertencem ao original, então quem foi
+   * solto no destino é a cópia, sem entradas). Limpa o destaque. Sem novo snapshot
+   * (já empilhado no start) nem re-parse.
+   */
+  const handleDuplicateFinish = useCallback((originalId: string, copyId: string, dropPos: XYPosition, startPos: XYPosition) => {
+    setNodes(curr => curr.map(n => {
+      if (n.id === copyId) return { ...n, position: dropPos }
+      if (n.id === originalId) return { ...n, position: startPos }
+      return n
+    }))
+    setHighlightIds(new Set())
+  }, [])
+
+  /** Remove o destaque de duplicação de um nó (1º clique/arraste dele). */
+  const handleClearHighlight = useCallback((nodeId: string) => {
+    setHighlightIds(prev => {
+      if (!prev.has(nodeId)) return prev
+      const next = new Set(prev)
+      next.delete(nodeId)
+      return next
+    })
+  }, [])
+
+  /**
+   * Duplica UMA condição dentro da MESMA intenção (botão "Duplicar dentro da
+   * intenção"). Numa intenção de 1 condição (nó solto), isso a transforma em grupo.
+   * Re-parseia preservando posições (a estrutura solto↔grupo pode mudar).
+   */
+  const handleDuplicateConditionInIntent = useCallback((intentId: string, condIdx: number) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const intent = model.list.find(i => i.id === intentId)
+    if (!intent || intent.category === 'start') return
+    const snapshot = takeSnap()
+    const result = duplicateConditionInIntent(intent, condIdx)
+    if (!result.ok) {
+      fail(`Não foi possível duplicar: ${result.reason}.`)
+      return
+    }
+    if (snapshot) historyRef.current.push(snapshot)
+    const newCondIdx = intent.conditions.length - 1
+    const parsed = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    setNodes(parsed.nodes.map(n => { const p = posById.get(n.id); return p ? { ...n, position: p } : n }))
+    setEdges(parsed.edges)
+    setSelectedNode(prev => prev ? (parsed.nodes.find(n => n.id === prev.id) ?? null) : prev)
+    setHighlightIds(new Set([`${intentId}::c${newCondIdx}`]))
+    setNotice(null)
+    bumpModel()
+  }, [bumpModel, takeSnap, fail])
+
+  /**
+   * Extrai UMA condição-filha para uma intenção NOVA (botão "Duplicar fora da
+   * intenção"). A meta é herdada da intenção de origem; a cópia ganha ID/nome novos
+   * e é posicionada com offset a partir do grupo de origem.
+   */
+  const handleDuplicateConditionOutside = useCallback((intentId: string, condIdx: number) => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const intent = model.list.find(i => i.id === intentId)
+    if (!intent || intent.category === 'start') return
+    const copy = intentFromCondition(intent, condIdx, model.list)
+    if (!copy) {
+      fail('Não foi possível duplicar: condição não encontrada.')
+      return
+    }
+    const snapshot = takeSnap()
+    if (snapshot) historyRef.current.push(snapshot)
+    model.list.push(copy)
+    const parsed = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    const base = posById.get(intentId) ?? { x: 0, y: 0 }
+    const target = { x: base.x + 40, y: base.y + 80 }
+    setNodes(parsed.nodes.map(n => {
+      if (n.id === copy.id) return { ...n, position: target }
+      const p = posById.get(n.id)
+      return p ? { ...n, position: p } : n
+    }))
+    setEdges(parsed.edges)
+    setHighlightIds(new Set([copy.id]))
+    setNotice(null)
+    bumpModel()
+  }, [bumpModel, takeSnap, fail])
+
+  /**
    * Captura o estado pré-edição: o DetailPanel muta o intent diretamente, então
    * o snapshot precisa ser tirado antes do primeiro patch.
    */
@@ -391,6 +571,12 @@ export default function App() {
     // Reaponta o nó selecionado para a sua versão reconstruída (mesmo id).
     setSelectedNode(prev => prev ? (merged.find(n => n.id === prev.id) ?? null) : prev)
     setNotice(null)
+    // Acumula categorias recém-criadas/editadas para reuso nas demais intenções.
+    setKnownCategories(prev => {
+      const merged = new Set(prev)
+      for (const category of collectCategories(model.list)) merged.add(category)
+      return merged.size === prev.length ? prev : [...merged]
+    })
     bumpModel()
   }, [bumpModel])
 
@@ -435,8 +621,9 @@ export default function App() {
   }
 
   const handleNodeClick = useCallback((node: Node<FlowNodeData>) => {
+    handleClearHighlight(node.id)
     setSelectedNode(prev => prev?.id === node.id ? null : node)
-  }, [])
+  }, [handleClearHighlight])
 
   const handleClosePanel = useCallback(() => setSelectedNode(null), [])
 
@@ -467,8 +654,8 @@ export default function App() {
         {hasFlow ? (
           <>
             <FlowCanvas
-              nodes={nodes}
-              edges={edges}
+              nodes={displayNodes}
+              edges={displayEdges}
               layoutVersion={layoutVersion}
               isDark={isDark}
               onNodeClick={handleNodeClick}
@@ -478,6 +665,9 @@ export default function App() {
               onEdgesChange={handleEdgesChange}
               onCreateNode={handleCreateNode}
               onAddConditionToNode={handleAddConditionToNode}
+              onDuplicateStart={handleDuplicateStart}
+              onDuplicateFinish={handleDuplicateFinish}
+              onClearHighlight={handleClearHighlight}
               onDeleteEdge={handleDeleteEdge}
             />
             {selectedNode && (
@@ -485,10 +675,14 @@ export default function App() {
                 node={selectedNode}
                 intent={parsedDataRef.current?.list.find(i => i.id === intentIdOf(selectedNode.id)) ?? null}
                 intents={parsedDataRef.current?.list ?? []}
+                categories={knownCategories}
                 onBeforeApply={handleBeforeApply}
                 onApply={handleApplyEdit}
                 onApplyFailed={handleApplyFailed}
                 onDelete={deleteNode}
+                onDuplicateIntent={handleDuplicateIntent}
+                onDuplicateConditionInIntent={handleDuplicateConditionInIntent}
+                onDuplicateConditionOutside={handleDuplicateConditionOutside}
                 onClose={handleClosePanel}
               />
             )}
