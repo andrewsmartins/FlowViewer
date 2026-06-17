@@ -20,7 +20,7 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 - **Criação de nós** — paleta no canto superior esquerdo (grupos **Fluxo** e **Avançado**): arraste um dos 11 tipos para o canvas e crie uma intenção nova com template canônico; soltar **sobre um nó existente** adiciona o tipo como **nova condição** daquela intenção (vira grupo)
 - **Edição de conexões** — arraste a ponta de destino de uma aresta para outra intenção; conecte arrastando do handle inferior; remova pela **tag "×"** da aresta ou com Delete/Backspace; o JSON subjacente é atualizado (`next.intent` ou `action.choices`)
 - **Edição de conteúdo** — o painel abre em modo conforme o nó: **grupo** (meta da intenção: nome, categoria, palavras-chave, prioridade, contexto + lista de condições), **condição** (gatilho, mensagens, botões e ação só daquela condição) ou **nó solto** (editor completo); **Aplicar alterações** grava no modelo. Os campos espelham o construtor da plataforma: **nome** em `mixed_snake_case` (espaço vira `_`, sem acento/símbolo), **categoria** como combobox ("Sem Categoria" por padrão, sugere as existentes e cria novas), **palavras-chave** como tags (Enter cria, "×" remove)
-- **Campos por tipo de condição** — "O contexto é igual a" abre **Intenção** + **Contexto** (seletores de intenções); "A última intenção foi" abre **Intenção**; "O valor está vazio" abre **Variável** com um **picker de `@`** em 3 níveis (Categoria → Variável → Modificador) que exibe rótulos legíveis ("Loja › Número (Só dígitos)") e grava a variável crua
+- **Campos por tipo de condição** — "O contexto é igual a" abre **Intenção** + **Contexto** (seletores de intenções); "A última intenção foi" abre **Intenção**; "O valor está vazio"/"O valor existe", "Valor é igual a", "O valor contém", "Total é maior que" e "Total é igual a" abrem o campo **Variável** com um **picker de `@`** em 3 níveis (Categoria → Variável → Modificador) que exibe rótulos legíveis ("Loja › Número (Só dígitos)") e grava a variável crua. O operando varia: "Valor é igual a" tem **Valor** (texto livre); "O valor contém" tem **Valores** (lista de tags, igual às palavras-chave, gravada em `values`); "Total é maior que"/"Total é igual a" têm **Total** (campo numérico com −/+, começa em 0 e aceita negativos, gravado em `valueNumber`)
 - **Duplicação de nós** — **Ctrl+arrastar** um nó-intenção (solto ou grupo) cria uma intenção nova no ponto do drop; no painel, **"Duplicar Condição"** copia a condição na mesma intenção e **"Duplicar Intenção"** gera uma intenção nova (os dois botões ficam lado a lado quando ambos se aplicam). Cópias são fiéis (conexões de saída preservadas, IDs de botão regenerados); o início nunca é duplicado
 - **Exclusão de intenções** — botão no painel ou tecla Delete; todas as referências de entrada são limpas automaticamente
 - **Undo/redo** — **Ctrl+Z** desfaz e **Ctrl+Shift+Z** / **Ctrl+Y** refazem qualquer edição (botões ↶ ↷ na toolbar); histórico de até 30 passos
@@ -72,7 +72,7 @@ npm test
 
 O servidor sobe em `http://localhost:5173`.
 
-> 🧪 **[Testes automatizados](docs/TESTES-AUTOMATIZADOS.md)** — os 199 testes unitários e os 13 smokes documentados, com o que cada um cobre.
+> 🧪 **[Testes automatizados](docs/TESTES-AUTOMATIZADOS.md)** — os 251 testes unitários e os 15 smokes documentados, com o que cada um cobre.
 
 ---
 

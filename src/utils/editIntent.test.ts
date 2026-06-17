@@ -211,6 +211,69 @@ describe('updateCondition — tipo "context" (Intenção/Contexto)', () => {
   })
 })
 
+describe('updateCondition — tipo "contains" (Valores como TAGs)', () => {
+  it('grava a lista de termos em `values` e mantém `value` como placeholder "any"', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateCondition(intent, 0, {
+      name: 'Contém', type: 'contains', variable: '@chat.lastMessage', value: 'boleto, pix , cartão',
+    })
+    expect(intent.conditions[0].type).toBe('contains')
+    expect(intent.conditions[0].values).toEqual(['boleto', 'pix', 'cartão'])
+    expect(intent.conditions[0].value).toBe('any')
+  })
+
+  it('lista vazia vira values null', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateCondition(intent, 0, { name: 'c', type: 'contains', variable: 'v', value: '  ,  ' })
+    expect(intent.conditions[0].values).toBeNull()
+  })
+
+  it('ignora duplicatas implícitas não — mantém os termos na ordem digitada', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateCondition(intent, 0, { name: 'c', type: 'contains', variable: 'v', value: 'a, b, a' })
+    // updateCondition não deduplica (o editor de TAGs já evita duplicar na UI).
+    expect(intent.conditions[0].values).toEqual(['a', 'b', 'a'])
+  })
+
+  it('trocar de "contains" para outro tipo limpa `values` órfão', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateCondition(intent, 0, { name: 'c', type: 'contains', variable: 'v', value: 'x, y' })
+    expect(intent.conditions[0].values).toEqual(['x', 'y'])
+    updateCondition(intent, 0, { name: 'c', type: 'equals', variable: 'v', value: 'z' })
+    expect(intent.conditions[0].values).toBeNull()
+    expect(intent.conditions[0].value).toBe('z')
+  })
+})
+
+describe('updateCondition — tipos "Total é..." (número em valueNumber)', () => {
+  it.each(['totalIsGreaterThan', 'totalIsEqual'])(
+    'grava o número (string) em `valueNumber` e `value` placeholder "any" — %s',
+    (type) => {
+      const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+      updateCondition(intent, 0, { name: 'c', type, variable: '@entity.abc', value: '3' })
+      expect(intent.conditions[0].type).toBe(type)
+      expect(intent.conditions[0].valueNumber).toBe('3')
+      expect(intent.conditions[0].value).toBe('any')
+      expect(intent.conditions[0].values).toBeNull()
+    },
+  )
+
+  it('valor vazio vira valueNumber null', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateCondition(intent, 0, { name: 'c', type: 'totalIsEqual', variable: 'v', value: '   ' })
+    expect(intent.conditions[0].valueNumber).toBeNull()
+  })
+
+  it('trocar de "Total é..." para outro tipo limpa `valueNumber` órfão', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateCondition(intent, 0, { name: 'c', type: 'totalIsGreaterThan', variable: 'v', value: '5' })
+    expect(intent.conditions[0].valueNumber).toBe('5')
+    updateCondition(intent, 0, { name: 'c', type: 'equals', variable: 'v', value: 'abc' })
+    expect(intent.conditions[0].valueNumber).toBeNull()
+    expect(intent.conditions[0].value).toBe('abc')
+  })
+})
+
 describe('edição escopada por condição (Modelo B, Marco C)', () => {
   // Intenção com 2 condições: c0 = transfer, c1 = captureData.
   function twoActionCond(): BotIntent {

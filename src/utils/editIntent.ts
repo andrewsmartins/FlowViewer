@@ -195,7 +195,28 @@ export function updateCondition(
   cond.name = fields.name.trim()
   cond.type = fields.type
   cond.variable = fields.variable.trim() || null
-  cond.value = fields.value.trim() || null
+  // Cada gatilho usa um campo diferente como operando; mantemos só o relevante
+  // preenchido e limpamos os outros para não deixar dado órfão ao trocar o tipo.
+  // A plataforma guarda `value = "any"` como placeholder quando o operando vive em
+  // outro campo (confirmado nas amostras):
+  //  - "Valor contém"            → lista de termos (TAGs) em `values`
+  //  - "Total é maior que / igual" → número (string) em `valueNumber`
+  //  - demais (equals…)          → escalar em `value`
+  if (fields.type === 'contains') {
+    const terms = fields.value.split(',').map(v => v.trim()).filter(Boolean)
+    cond.values = terms.length ? terms : null
+    cond.valueNumber = null
+    cond.value = 'any'
+  } else if (fields.type === 'totalIsGreaterThan' || fields.type === 'totalIsEqual') {
+    const num = fields.value.trim()
+    cond.valueNumber = num || null
+    cond.values = null
+    cond.value = 'any'
+  } else {
+    cond.value = fields.value.trim() || null
+    cond.values = null
+    cond.valueNumber = null
+  }
   // Só toca em intent/context quando o caller os fornece (caminho do tipo context);
   // o editor em lote de condições não passa esses campos e não deve sobrescrevê-los.
   if (fields.intent !== undefined) cond.intent = fields.intent.trim() || null

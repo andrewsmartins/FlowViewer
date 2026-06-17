@@ -679,7 +679,17 @@ push/restore. Mitigação: faseado por Marco, cada um deixando o app funcional; 
 - **Campos por tipo de condição** (só os tipos abaixo até agora; os demais seguem Variável/Valor):
   - `context` → **Intenção** (`condition.intent`) + **Contexto** (`condition.context`), ambos IDs.
   - `lastIntent` → só **Intenção**.
-  - `empty` → **Variável** com picker de `@`.
+  - `empty` / `exists` → **Variável** com picker de `@`.
+  - `equals` / `contains` / `totalIsGreaterThan` / `totalIsEqual` → campo **Variável** usa o
+    `VariablePicker` (busca de `@`), não mais texto livre.
+  - `contains` → **Variável** + **"Valores"** (lista de TAGs, mesmo `KeywordTags` das palavras-chave).
+    Fonte de verdade = array `condition.values` (confirmado em `samples/sample03.json`), com
+    `condition.value` mantido como placeholder `"any"`. Ao trocar o gatilho para outro tipo,
+    `updateCondition` **limpa `values`** (sem lista órfã). `Condition.values: string[] | null`.
+  - `totalIsGreaterThan` / `totalIsEqual` → **Variável** + **"Total"** (stepper numérico
+    `NumberStepper`: botões −/+, começa em 0, aceita negativo). Fonte de verdade = `condition.valueNumber`
+    como **string** (confirmado nas amostras, ex.: `"1"`), com `condition.value` placeholder `"any"`.
+    `updateCondition` limpa `valueNumber` ao trocar de tipo. `Condition.valueNumber: string | null`.
 - **Variáveis: catálogo CURADO** (a plataforma NÃO expõe por API — não há request ao abrir o
   picker; é lista estática no front). Sintaxe `@namespace.campo[.sub]#modificador`. O front
   **exibe rótulo amigável e grava o cru**. Picker em 3 níveis (Categoria → Variável →
@@ -700,11 +710,11 @@ push/restore. Mitigação: faseado por Marco, cada um deixando o app funcional; 
 - **`App.tsx`** — `knownCategories` (estado), `collectCategories` na `loadModel` e no
   `handleApplyEdit`, prop `categories` pro painel.
 - **`nodeMeta.ts`** — rótulos: `empty` → "O valor está vazio", `lastIntent` → "A última intenção foi".
-- **Testes:** `variables.test.ts` (NOVO) + casos em `editIntent.test.ts`. **227 testes** verdes.
+- **Testes:** `variables.test.ts` (NOVO) + casos em `editIntent.test.ts`. **251 testes** verdes.
 
-**Próximos tipos a alinhar (pendentes):** `exists` ("O valor existe"), `equals`, `contains`,
-`totalIsGreaterThan`, `totalIsEqual`, `else` — conferir cada um contra o builder antes de codar.
-O picker de `@` provavelmente vale para os campos Variável desses tipos também.
+**Próximos tipos a alinhar (pendentes):** `else` (sem operando, já coberto). Os campos de
+operando dos 10 tipos estão alinhados; resta conferir labels finais e o campo "Valor" do
+`equals` contra o builder (hoje texto livre).
 
 ## Fase 9 — Variável "Times" (grupo dinâmico) — EM ANDAMENTO
 

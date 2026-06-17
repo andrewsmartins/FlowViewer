@@ -23,9 +23,20 @@ export interface Condition {
   variable: string | null
   intent: string | null
   value: string | null
-  valueNumber: unknown
+  /**
+   * Operando numérico dos gatilhos "Total é maior que" / "Total é igual a"
+   * (`totalIsGreaterThan` / `totalIsEqual`). A plataforma guarda o número como
+   * STRING aqui (ex.: `"1"`), mantendo `value` como placeholder (`"any"`). `null`
+   * (ou `""` em fluxos legados) para os demais tipos.
+   */
+  valueNumber: string | null
   fallbackIntents: string[]
-  values: unknown
+  /**
+   * Lista de termos do gatilho "Valor contém" (`type === 'contains'`). A
+   * plataforma guarda o conjunto de valores a casar AQUI (array), mantendo
+   * `value` como placeholder (`"any"`). Para os demais tipos é `null`.
+   */
+  values: string[] | null
   context: unknown
   action: Action
   assistant_says: AssistantSay[]

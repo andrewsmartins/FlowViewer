@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type KeyboardEvent, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { Node } from '@xyflow/react'
-import type { BotIntent, BulkUpdateItem, FlowNodeData, NodeKind } from '../types'
+import type { BotIntent, Condition, BulkUpdateItem, FlowNodeData, NodeKind } from '../types'
 import { useTheme } from '../contexts/ThemeContext'
 import { PRIORITY_LABELS, CONDITION_TYPE_LABELS } from '../utils/nodeMeta'
 import {
@@ -160,6 +160,21 @@ function hasButtonsMessage(intent: BotIntent, condIdx: number, mode: PanelMode):
     c.assistant_says.some(s => s.messages.some(m => (m.type === 'BUTTON' || m.type === 'LIST') && m.messageConfig)))
 }
 
+/**
+ * Valor da condição no formato do draft (string). A fonte de verdade depende do
+ * tipo: "contém" usa o array `values` (esquema de TAGs), "Total é..." usa o número
+ * em `valueNumber`, e os demais o campo escalar `value`.
+ */
+function condValueForDraft(cond: Condition | undefined): string {
+  if (!cond) return ''
+  if (cond.type === 'contains' && Array.isArray(cond.values)) return cond.values.join(', ')
+  if (cond.type === 'totalIsGreaterThan' || cond.type === 'totalIsEqual') {
+    const n = cond.valueNumber
+    return typeof n === 'number' || (typeof n === 'string' && n.trim()) ? String(n) : '0'
+  }
+  return cond.value ?? ''
+}
+
 function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft {
   const scopedCond = intent.conditions[condIdx]
   const allMessages = listMessages(intent)
@@ -187,7 +202,7 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
     condName: scopedCond?.name ?? '',
     condType: scopedCond?.type ?? 'any',
     condVariable: scopedCond?.variable ?? '',
-    condValue: scopedCond?.value ?? '',
+    condValue: condValueForDraft(scopedCond),
     condIntent: scopedCond?.intent ?? '',
     condContext: typeof scopedCond?.context === 'string' ? scopedCond.context : '',
     messages,
@@ -203,7 +218,7 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
     setDataItems: (Array.isArray(setDataCond?.action.bulkUpdate) ? setDataCond.action.bulkUpdate : [])
       .map(i => ({ ...i })),
     conditions: intent.conditions.map((c, i) => ({
-      name: c.name, type: c.type, variable: c.variable ?? '', value: c.value ?? '',
+      name: c.name, type: c.type, variable: c.variable ?? '', value: condValueForDraft(c),
       intent: c.intent ?? '', context: typeof c.context === 'string' ? c.context : '', originalIdx: i,
     })),
     removedCondIdxs: [],
@@ -215,6 +230,8 @@ interface KeywordTagsProps {
   value: string
   onChange: (value: string) => void
   isDark: boolean
+  /** Texto-guia do campo vazio (default: exemplo de palavras-chave). */
+  placeholder?: string
 }
 
 /**
@@ -224,7 +241,7 @@ interface KeywordTagsProps {
  * no campo vazio remove o último; blur confirma o pendente (evita perder texto
  * que o usuário digitou mas não deu Enter). Ignora duplicatas.
  */
-function KeywordTags({ value, onChange, isDark }: KeywordTagsProps) {
+function KeywordTags({ value, onChange, isDark, placeholder = 'ex: oi, olá, menu' }: KeywordTagsProps) {
   const [text, setText] = useState('')
   const tags = value.split(',').map(k => k.trim()).filter(Boolean)
 
@@ -273,7 +290,7 @@ function KeywordTags({ value, onChange, isDark }: KeywordTagsProps) {
         onChange={e => setText(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={() => commit(text)}
-        placeholder={tags.length ? '' : 'ex: oi, olá, menu'}
+        placeholder={tags.length ? '' : placeholder}
       />
     </div>
   )
@@ -711,15 +728,60 @@ interface ConditionTypeFieldsProps {
   labelCls: string
 }
 
+interface NumberStepperProps {
+  /** Valor numérico como string (formato do draft/`valueNumber`); '' = vazio. */
+  value: string
+  onChange: (value: string) => void
+  isDark: boolean
+  inputCls: string
+}
+
+/**
+ * Campo numérico inteiro com botões −/+ (gatilhos "Total é maior que" / "Total é
+ * igual a"). Começa em 0 e aceita valores negativos; apagar ou digitar lixo volta
+ * a 0. Mantém o valor como string (a plataforma guarda o número como string em
+ * `condition.valueNumber`).
+ */
+function NumberStepper({ value, onChange, isDark, inputCls }: NumberStepperProps) {
+  const parsed = Number.parseInt(value, 10)
+  const current = Number.isFinite(parsed) ? parsed : 0
+  const commit = (n: number) => onChange(String(n))
+
+  const btnCls = `shrink-0 w-7 grid place-items-center rounded-lg border text-sm transition-colors ${
+    isDark
+      ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+  }`
+
+  return (
+    <div className="flex items-stretch gap-1">
+      <button type="button" className={btnCls} onClick={() => commit(current - 1)} aria-label="Diminuir">−</button>
+      <input
+        type="number"
+        inputMode="numeric"
+        className={`${inputCls} text-center`}
+        value={current}
+        onChange={e => {
+          const n = Number.parseInt(e.target.value, 10)
+          commit(Number.isFinite(n) ? n : 0)
+        }}
+      />
+      <button type="button" className={btnCls} onClick={() => commit(current + 1)} aria-label="Aumentar">+</button>
+    </div>
+  )
+}
+
 /**
  * Campos dependentes do TIPO da condição — compartilhado pelos dois editores (a
  * condição individual no modo `condition` e a lista de condições no modo group/solo),
  * pra não divergirem:
- *  - any / else        → SEM campos (não têm operando)
- *  - context           → "Intenção" + "Contexto" (IDs de intenções)
- *  - lastIntent        → "Intenção"
- *  - empty / exists     → só "Variável" (picker de @) — operam sobre uma variável, sem valor
- *  - demais            → "Variável" + "Valor"
+ *  - any / else                          → SEM campos (não têm operando)
+ *  - context                             → "Intenção" + "Contexto" (IDs de intenções)
+ *  - lastIntent                          → "Intenção"
+ *  - empty / exists                       → só "Variável" (picker de @) — sem valor
+ *  - contains                            → "Variável" (picker) + "Valores" (TAGs em `values`)
+ *  - totalIsGreaterThan / totalIsEqual    → "Variável" (picker) + "Total" (stepper em `valueNumber`)
+ *  - equals / demais                     → "Variável" (picker) + "Valor" (texto livre)
  */
 function ConditionTypeFields(p: ConditionTypeFieldsProps) {
   const { type, intents, isDark, inputCls, labelCls } = p
@@ -754,11 +816,45 @@ function ConditionTypeFields(p: ConditionTypeFieldsProps) {
       </label>
     )
   }
+  if (type === 'contains') {
+    // "Valor contém" casa contra uma LISTA de termos — mesmo esquema de TAGs das
+    // palavras-chave. Empilha (variável em cima, valores embaixo) porque a lista
+    // de chips precisa da largura toda.
+    return (
+      <div className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1">
+          <span className={labelCls}>Variável</span>
+          <VariablePicker value={p.variable} onChange={p.onVariable} isDark={isDark} inputCls={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelCls}>Valores</span>
+          <KeywordTags value={p.value} onChange={p.onValue} isDark={isDark} placeholder="ex: boleto, pix, cartão" />
+        </label>
+      </div>
+    )
+  }
+  if (type === 'totalIsGreaterThan' || type === 'totalIsEqual') {
+    // "Total é maior que" / "Total é igual a" comparam um número (guardado em
+    // `valueNumber`); inteiro (aceita negativo) com stepper (+/−), começando em 0.
+    return (
+      <div className="flex gap-2">
+        <label className="flex flex-col gap-1 flex-1">
+          <span className={labelCls}>Variável</span>
+          <VariablePicker value={p.variable} onChange={p.onVariable} isDark={isDark} inputCls={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 flex-1">
+          <span className={labelCls}>Total</span>
+          <NumberStepper value={p.value} onChange={p.onValue} isDark={isDark} inputCls={inputCls} />
+        </label>
+      </div>
+    )
+  }
+  // equals e demais tipos com operando escalar: Variável (picker de @) + Valor livre.
   return (
     <div className="flex gap-2">
       <label className="flex flex-col gap-1 flex-1">
         <span className={labelCls}>Variável</span>
-        <input className={`${inputCls} font-mono`} value={p.variable} onChange={e => p.onVariable(e.target.value)} placeholder="ex: customer.cpf" />
+        <VariablePicker value={p.variable} onChange={p.onVariable} isDark={isDark} inputCls={inputCls} />
       </label>
       <label className="flex flex-col gap-1 flex-1">
         <span className={labelCls}>Valor</span>

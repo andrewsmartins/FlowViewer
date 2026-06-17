@@ -1,6 +1,6 @@
 # Testes automatizados
 
-Documentação da suíte de testes do Fluxo Bot: **209 testes unitários** (Vitest, 10 arquivos) e **15 scripts de smoke** (Playwright, browser real).
+Documentação da suíte de testes do Fluxo Bot: **251 testes unitários** (Vitest, 12 arquivos) e **15 scripts de smoke** (Playwright, browser real).
 
 - **Unitários** (`npm test`) — rápidos, sem rede e sem browser; rodam sobre os módulos puros de `src/utils/`. São a rede de segurança do dia a dia.
 - **Smokes** (`node scripts/smoke-*.mjs`) — exercitam o app inteiro num browser headless contra o dev server. Os que tocam a plataforma usam um **`fetch` falso** (nunca a API real). São a prova de que a feature funciona ponta a ponta na UI.
@@ -28,21 +28,23 @@ Os smokes que falam com a plataforma (`smoke-phase4b*`) interceptam `window.fetc
 
 ---
 
-# Parte 1 — Testes unitários (209)
+# Parte 1 — Testes unitários (251)
 
 | Arquivo | Casos | O que cobre |
 |---|---:|---|
-| [`parseFlow.test.ts`](../src/utils/parseFlow.test.ts) | 43 | JSON → nós + arestas (Modelo B), agrupamento, contexto, caminhos infelizes |
 | [`intentTemplates.test.ts`](../src/utils/intentTemplates.test.ts) | 63 | Templates canônicos dos 11 tipos, criação de nó/condição, conectar/deletar |
-| [`editIntent.test.ts`](../src/utils/editIntent.test.ts) | 27 | Patches de conteúdo do intent + validação no export |
+| [`editIntent.test.ts`](../src/utils/editIntent.test.ts) | 44 | Patches de conteúdo do intent, validação no export e campos por tipo de condição (`context`/`intent`, `contains`→`values`, `total*`→`valueNumber`) |
+| [`parseFlow.test.ts`](../src/utils/parseFlow.test.ts) | 43 | JSON → nós + arestas (Modelo B), agrupamento, contexto, caminhos infelizes |
 | [`editFlow.phase3b.test.ts`](../src/utils/editFlow.phase3b.test.ts) | 16 | Escolhas (botão↔slot), condições, conectar por condição, excluir intenção |
 | [`pushFlow.test.ts`](../src/utils/pushFlow.test.ts) | 16 | Push ao rascunho: 2 passadas, remap de IDs, guardrails |
+| [`variables.test.ts`](../src/utils/variables.test.ts) | 16 | Catálogo de variáveis (picker de `@`), modificadores, `variableDisplay`, tokens de Time |
 | [`editFlow.test.ts`](../src/utils/editFlow.test.ts) | 15 | Round-trip de serialização, decodificação de IDs de aresta, reconexão |
 | [`duplicate.test.ts`](../src/utils/duplicate.test.ts) | 10 | Duplicação fiel (clone de intenção/condição, regen de IDs de botão, nomes únicos) |
 | [`restoreFlow.test.ts`](../src/utils/restoreFlow.test.ts) | 10 | Restauração de backup (deletar→recriar→sobrescrever), consistência eventual |
+| [`teams.test.ts`](../src/utils/teams.test.ts) | 9 | Variável "Times": `fetchRetailerId`/`fetchTeams`/`fetchStoreTeams` + caminhos infelizes |
 | [`history.test.ts`](../src/utils/history.test.ts) | 6 | Pilha de undo/redo |
 | [`exportImage.test.ts`](../src/utils/exportImage.test.ts) | 3 | Bounds do export PNG/SVG cientes de grupos |
-| **Total** | **209** | |
+| **Total** | **251** | |
 
 ---
 
@@ -114,7 +116,7 @@ Templates canônicos de intenção — a forma exata que a tela oficial envia no
 
 ---
 
-## `editIntent.test.ts` (27)
+## `editIntent.test.ts` (44)
 
 Patches pequenos e validados sobre o intent cru (endereçamento estável por `{condIdx, sayIdx, msgIdx}`).
 
@@ -133,6 +135,12 @@ Patches pequenos e validados sobre o intent cru (endereçamento estável por `{c
 **`updateActionFields` / `updateSetDataItems` (4)** — atualiza `transferType`/`value` em transfer; `captureDataType`/`variable` em captureData; rejeita tipo de ação que a intenção não tem; substitui `bulkUpdate` filtrando variáveis vazias.
 
 **`validateFlow` (6)** — sample01 passa sem erros; ID duplicado é erro; intenção sem nome/condições é erro; **referência interna quebrada vira erro bloqueante**; fluxo sem start gera aviso; lista vazia não quebra.
+
+**`updateCondition` — tipo `context` (3)** — grava `intent`/`context` (IDs) no tipo context; vazios viram `null`; **não** sobrescreve esses campos quando o editor em lote os omite.
+
+**`updateCondition` — tipo `contains` (4)** — grava a lista de termos em `values` (esquema de TAGs) mantendo `value="any"`; lista vazia vira `values: null`; preserva a ordem digitada; trocar para outro tipo **limpa `values`** órfão.
+
+**`updateCondition` — tipos `total*` (4)** — `totalIsGreaterThan`/`totalIsEqual` gravam o número como string em `valueNumber` com `value="any"`; valor vazio vira `null`; trocar de tipo **limpa `valueNumber`** órfão.
 
 ---
 

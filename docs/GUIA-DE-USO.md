@@ -75,6 +75,20 @@ Clique num nó para abrir o painel à direita. **O painel se adapta ao que você
 - **Condição** (um filho dentro do grupo) → edita **só aquela condição**: gatilho (nome, tipo, variável, valor), mensagens, botões/escolhas e os campos da ação (transferência/captura/setData). Tem botão **Excluir condição** (some quando é a última).
 - **Nó solto** (intenção com 1 condição) → editor completo: meta + conteúdo numa tela só.
 
+**Os campos do gatilho mudam conforme o tipo de condição** (espelhando o construtor da plataforma):
+
+| Tipo | Campos |
+|---|---|
+| Sem condição / Senão | — (sem operando) |
+| O contexto é igual a | **Intenção** + **Contexto** (seletores de intenções existentes) |
+| A última intenção foi | **Intenção** |
+| O valor está vazio / O valor existe | **Variável** (busca de `@`) |
+| Valor é igual a | **Variável** (busca de `@`) + **Valor** (texto livre) |
+| O valor contém | **Variável** (busca de `@`) + **Valores** (lista de tags, igual às palavras-chave) |
+| Total é maior que / Total é igual a | **Variável** (busca de `@`) + **Total** (campo numérico com −/+, começa em 0 e aceita negativos) |
+
+> O campo **Variável** usa o mesmo **picker de `@`** das mensagens: clique (ou digite `@`) para navegar Categoria → Variável → Modificador; mostra o rótulo legível e grava a variável crua.
+
 As mudanças ficam num rascunho local até clicar em **Aplicar alterações**.
 
 - Adicionar botão cria um slot vazio de escolha — conecte no canvas para preenchê-lo.
