@@ -1,7 +1,8 @@
 # PLANS.md — Fluxo: de visualizador a editor de fluxos OmniChat
 
-> Última atualização: 2026-06-16 (Fase 7 concluída + Fase 8 em andamento, branch `feat/duplicate-nodes`). Este arquivo orienta sessões futuras do Claude Code.
+> Última atualização: 2026-06-17 (Fase 7 concluída + Fase 8 em andamento, branch `feat/duplicate-nodes`). Este arquivo orienta sessões futuras do Claude Code.
 > **Fase 7 (Duplicação de nós)** concluída e **Fase 8 (Painel de edição alinhado à plataforma)** em andamento — ambas na branch `feat/duplicate-nodes`, ainda não mergeadas. Ver as seções "Fase 7" e "Fase 8" abaixo. package.json em 0.15.0.
+> **Fase 8 — progresso 2026-06-17:** tipos de mensagem IMAGE/FILE/VIDEO implementados no painel de edição. Botão "+ Adicionar Resposta" com dropdown, editor por tipo (aba Link + aba Upload via API presigned URL OmniChat), renderização de mensagens existentes de mídia (ícone + fileName + remover). Utilitário `uploadMedia.ts` + `uploadFile` no TeamsContext. 251 testes + tsc verdes. **ATENÇÃO:** os campos da resposta presigned URL (`uploadUrl` e `url`) são supostos — validar na primeira testada com upload real e ajustar `uploadMedia.ts:PresignedUrlResponse` se necessário.
 > Status: **Fases 1–5 concluídas, incl. 4a (push CLI) e 4b (push + restore pela
 > UI). v0.13.0, MERGEADO NA `main`.**
 > **MERGE NA MAIN CONCLUÍDO (2026-06-15):** a `feat/visual-editor` (v0.13.0) está
@@ -784,6 +785,179 @@ de times. **Resultado decide a Fase 2.**
 - O `variableDisplay` dos rótulos resolvidos em mensagens (`VariableTextArea` mostra token cru
   inline — ok p/ a plataforma); avaliar se vale traduzir na exibição.
 - Considerar cache de times persistente por `retailerId` (hoje recarrega ao trocar token).
+
+## Fase 10 — Mensagem Botão/Lista no "Adicionar Resposta" — ✅ IMPLEMENTADA (núcleo + UI; falta validação manual)
+
+> Objetivo: o menu "+ Adicionar Resposta" ganha o tipo **Botão/Lista**, que cria uma
+> mensagem interativa (moldura + itens) em `assistant_says`, como Texto/Imagem.
+> Trabalhado com o Andy em 2026-06-17. **Escopo desta fase: variante "sem descrição",
+> SÓ EXIBIÇÃO** (a "lista com descrição" e a ramificação ficam para depois).
+>
+> **Status:** `addButtonListMessage` + `ButtonListEditor` implementados, 262 testes + tsc
+> verdes. **Pendente:** validação manual na UI (criar → exportar → conferir contra amostra
+> → push no bot de testes `2a3859ff-…786`).
+
+**Decisões fechadas (validadas contra 2 capturas reais do builder):**
+- **Só exibição (action `none`)** nesta fase. O editor autora APENAS o `messageConfig`;
+  NÃO mexe em `action.choices` nem cria arestas. A ramificação (combinar com action
+  `choice`) fica para etapa futura — ver "Fato descoberto" abaixo.
+- **`type` da mensagem alterna pela contagem de itens:** **2–3 itens → `"BUTTON"`**,
+  **4–10 itens → `"LIST"`** (espelha o limite do WhatsApp: botões de resposta ≤ 3;
+  lista até 10). É o que explica "Título botão opções" só aparecer com 4+ itens.
+- **Obrigatórios para salvar:** `body` (Corpo) preenchido + **1 a 10 itens** com texto.
+  `header`/`footer`/`title` ("Título botão opções") são **sempre opcionais** (vazio → `""`).
+  (A UI abre com 1 campo de item; mínimo válido é 1, máximo 10.)
+
+**Mapeamento de campos (CONTRA-INTUITIVO — fixar):**
+
+| Rótulo na UI            | Limite | Campo no JSON            |
+|-------------------------|--------|--------------------------|
+| Título                  | 60     | `messageConfig.header`   |
+| Corpo do texto          | 80     | `messageConfig.body`     |
+| Rodapé                  | 60     | `messageConfig.footer`   |
+| Título botão opções     | 20     | `messageConfig.title`    |
+| Item N                  | 20     | `buttons[N].text`        |
+
+- Cada item → `{ id: crypto.randomUUID(), text, description: "" }`.
+- Campos vazios saem como **`""`** (string vazia), não `null` — é o que as capturas
+  mostram para este tipo de mensagem (diverge do `addButtonsMessage` legado, que usa `null`).
+- `messageConfig.type` = `"text"` fixo; `content` e `fileName` = `""`.
+
+**Fato descoberto (impacto da combinação com Escolha — para a etapa futura):**
+- O `messageConfig` é **idêntico** em exibição (action `none`) e em escolha (action `choice`);
+  só o `action` muda. Logo, este editor serve aos dois — a ramificação é decisão do `action`.
+- A captura com escolha tinha **10 botões e 2 `choices`** apenas porque o Andy conectou só 2
+  no exemplo — `buttons` e `choices` **podem** ser paralelos (10 botões → 10 choices). O
+  mapeamento posicional `buttons[i] ↔ choices[i]` do código atual **continua válido**. Resta
+  só confirmar, na etapa de ramificação, como a plataforma representa o **caso parcial**
+  (alguns botões sem destino: choices mais curto vs. slots `''`).
+
+**Implementação planejada:**
+- **`src/types.ts`** — `ButtonMessageConfig`/`ButtonOption` já existem e bastam.
+- **`src/utils/editIntent.ts` — `addButtonListMessage(intent, cfg, condIdx = 0)`** (NOVA):
+  - `cfg = { header, body, footer, title, items: { text, description }[] }`.
+  - Valida: `1 ≤ items.length ≤ 10`, `body` não-vazio, cada `item.text` não-vazio; se
+    `items.length ≥ 4` exige `title`. Retorna `EditResult` com `reason` claro em cada falha.
+  - `const type = items.length >= 4 ? 'LIST' : 'BUTTON'`; `title` só quando LIST (senão `""`).
+  - Empurra a mensagem em `assistant_says[0].messages` (cria o say se faltar). `touch(intent)`.
+  - **Não toca em `action`** (fica `none`/o que já era) nem em `choices`.
+- **`removeMessage`** — hoje recusa BUTTON/LIST ("mapeiam para escolhas"). Ajustar para
+  **permitir remover** quando a condição **não** for `action.type === 'choice'` (mensagem de
+  exibição não tem choices para órfãos). Mantém o bloqueio nas de escolha.
+- **`DetailPanel.tsx`:**
+  - `NewDraftMessage` vira união discriminada: além de TEXT/IMAGE/FILE/VIDEO, a variante
+    `{ type: 'BUTTONLIST', variant: 'plain', header, body, footer, title, items: {text,description}[] }`
+    (`variant: 'plain'` = "sem descrição"; `'described'` virá depois).
+  - `ADD_MESSAGE_OPTIONS` ganha `{ type: 'BUTTONLIST', label: 'Botão/Lista' }`. O `onAdd`
+    cria o draft com 2 itens vazios.
+  - Novo componente **`ButtonListEditor`** (render quando `msg.type === 'BUTTONLIST'`):
+    - 3 campos de moldura com `maxLength` + contador "(x/limite)": Título(60), Corpo(80), Rodapé(60).
+    - Seletor "botão/lista sem descrição" | "lista com descrição" (a 2ª **desabilitada/"em breve"** nesta fase).
+    - Lista de itens: input `maxLength=20` cada + "remover" (trava em **mín. 1**; inicia com 1).
+    - "+ Adicionar Item" (trava em **máx. 10**).
+    - "Título botão opções" (`maxLength=20`): **só visível quando `items.length ≥ 4`**.
+    - Dica visual do tipo resultante (ex.: "Botões (até 3)" vs "Lista (4+)").
+  - No submit (`handleApply`): para cada `newMessages` BUTTONLIST chamar `addButtonListMessage`.
+    Erros de validação entram no mesmo fluxo de `EditResult` já usado.
+
+**Como vai ser testado (antes de codar a UI):**
+- **Unit (`editIntent.test.ts`)** sobre `addButtonListMessage`:
+  - 1, 2 e 3 itens → `type: 'BUTTON'`; 4 e 10 itens → `type: 'LIST'`.
+  - Mapeamento: header/body/footer/title nas chaves certas; itens viram `buttons` com UUID e `description: ""`.
+  - LIST mantém `title`; BUTTON força `title: ""`.
+  - Caminho infeliz: `0` itens, `> 10` itens, `body` vazio, item vazio, LIST sem `title` → `ok: false` com `reason`.
+  - **Round-trip:** exportar e comparar a forma com as 2 amostras coladas pelo Andy.
+- **Manual:** criar via UI no bot de testes `2a3859ff-…786`, preencher, exportar JSON,
+  conferir contra as amostras e (opcional) push + render na plataforma.
+
+### Fase 10b — variante "lista com descrição" — ✅ IMPLEMENTADA (núcleo + UI; falta validação manual)
+
+> Objetivo: habilitar a 2ª opção do seletor. Decisões com o Andy em 2026-06-17;
+> exemplo real analisado (LIST de 10 itens, alguns com `description`, outros vazios).
+
+**Regras (confirmadas):**
+- **"com descrição" é SEMPRE `type: "LIST"`** (1-10 itens) — descrição só existe em linha
+  de lista, não em botão de resposta. Por isso o **"Título botão opções" fica sempre
+  visível** nessa variante (não depende dos 4+) — mas é **opcional** (vazio → `""`).
+- **"sem descrição" inalterada:** 1-3 → BUTTON, 4-10 → LIST.
+- **Cada item ganha um campo "Descrição"** (limite **72**, padrão WhatsApp — ver
+  [[reference-omnichat-whatsapp-limits]]). Descrição é **opcional** por item (o exemplo
+  tem itens com `description: ""`).
+- **Troca de variante PRESERVA os itens digitados.** Exceção: se todos os itens estão
+  vazios (estado pristine), trocar reinicia para o padrão da variante — **"com descrição"
+  começa com 1 item**, "sem descrição" com 2. (Satisfaz "vir com 1 por padrão na 1ª vez"
+  sem perder dados digitados.)
+- **`description` só vai pro JSON quando `type === 'LIST'`** (BUTTON força `""`), garantindo
+  que botões de resposta nunca carreguem descrição.
+
+**Implementação:**
+- **`editIntent.ts` — `ButtonListConfig` ganha `variant: 'plain' | 'described'`.**
+  `addButtonListMessage`: `type = variant === 'described' || items.length >= 4 ? 'LIST' : 'BUTTON'`;
+  título **sempre opcional**; `description: type === 'LIST' ? it.description : ''`.
+- **`DetailPanel.tsx`:**
+  - `NewButtonListMessage.variant` passa a aceitar `'described'`; **habilitar o 2º botão** do seletor.
+  - Handler de troca de variante: preserva itens; se pristine, reinicia ao padrão (1/2).
+  - `isList = variant === 'described' || items.length >= 4` → controla rótulo, título e tipo.
+  - Quando `described`: cada item mostra um `CharField` extra **Descrição** (max 72).
+  - `BL_LIMITS.desc = 72`. Submit passa `variant` ao `addButtonListMessage`.
+  - **`ButtonListSummary`** (mensagem salva): recebe o `type` real (rótulo Lista/Botões correto)
+    e mostra a descrição ao lado de cada item quando houver.
+- **Testes (`editIntent.test.ts`):** described com 1-3 itens → ainda `LIST`; `description`
+  serializada nos itens; título opcional (LIST sem título → `ok`, `title:""`); BUTTON força
+  `description:""`; round-trip contra a amostra "com descrição".
+
+**Fora de escopo desta fase (explícito):** ramificação
+(action `choice` + conectar itens a destinos no canvas); editar Botão/Lista **já existentes**
+(esta fase só CRIA novas via draft — remover/editar persistidas vem depois).
+
+### Fase 10c — Nó de Escolha: separar Menu (itens) de Escolhas (destinos) — ✅ IMPLEMENTADA (núcleo + UI; falta validação manual)
+
+> **Status:** núcleo (`addChoice`/`removeChoice`/`setChoiceDestination`/`setChoices`/
+> `replaceButtonListMessage` + builder compartilhado) e UI (seções "Menu" + "Escolhas",
+> preview `MenuPreview`, restrição ao choiceNode) implementados. 277 testes + tsc verdes.
+> **Pendente:** validação manual na UI (criar menu → adicionar escolhas com destino →
+> ver conexão no canvas → editar menu salvo → exportar e conferir contra a amostra).
+>
+> **Conectar opção livre pelo canvas (Andy, 2026-06-18):** handle ÚNICO — arrastar do
+> nó conecta a próxima opção livre na ordem, criando o slot da Escolha automaticamente
+> (`connectCondition` cria slot enquanto `choices.length < nº de itens do menu`).
+> Desconectar = esvaziar o slot (mantém a Escolha). Implementado em `editFlow.ts` + testes.
+
+> Decisão do Andy (2026-06-17): a opção **Botão/Lista fica restrita ao nó de Escolha** e a
+> edição do nó passa a ter duas partes: **menu** (em cima) e **escolhas/destinos** (embaixo),
+> ligados pela ORDEM. Exemplo real analisado: LIST com 10 itens + `action.choices` com 2 IDs.
+
+**Modelo conceitual (confirmado pelo Andy):**
+- **Topo = MENU:** o editor Botão/Lista (moldura Título/Corpo/Rodapé/Título botão opções + itens
+  com texto e, em "com descrição", descrição). Os itens são `messageConfig.buttons[]`.
+- **Baixo = ESCOLHAS:** seção renomeada de "Opções (botões ↔ escolhas)" para **"Escolhas"**.
+  Lista de **destinos** (`action.choices[]`), cada um um **dropdown de intenção** (`IntentSelect`).
+- **Ligação por ORDEM:** `choices[i]` é o destino do item de menu `i` (`buttons[i]`).
+- **`choices` pode ser menor que `buttons`** — nem todo item tem destino (transição por
+  palavra-chave cobre o resto). `choices` continua posicional com `''` para slots vazios.
+- Botão **"Criar mensagem de botões"/"Adicionar botão" → "Adicionar Escolha"**, começa com **zero**;
+  ao adicionar, abre o dropdown de destino.
+- **"Botão/Lista" só aparece no menu "Adicionar Resposta" em `choiceNode`** (some nos demais).
+
+**Decisões CONFIRMADAS (Andy, 2026-06-17):**
+1. **Duas vias pro mesmo dado.** O dropdown grava `choices[i] = intentId` e o **canvas atualiza o
+   desenho da conexão** (App reconstrói as arestas do modelo). Arraste no canvas continua valendo.
+2. **Slots parciais OK.** "Adicionar Escolha" anexa um slot (`''`) ligado ao próximo item por ordem;
+   destino vazio é válido (`''`); vazios no fim aparados na serialização (amostra: 10 itens, 2 choices).
+3. **Editar menu salvo SIM.** Inclui editar itens (texto/descrição) e a moldura da Botão/Lista
+   persistida. Além disso: exibir um **PREVIEW do menu legível e agradável** (não só os campos).
+
+**Implementação prevista (alto nível):**
+- `editIntent.ts`: `addChoice`/`removeChoice`/`setChoiceDestination(intent, condIdx, idx, intentId)`
+  (gravam `action.choices` sem acoplar a `buttons`). Desacoplar `addButton` (parar de empurrar `''`
+  em choices) — itens do menu e choices passam a crescer separados.
+- `DetailPanel.tsx`: seção "Escolhas" com `IntentSelect` por slot rotulado pelo item correspondente
+  (por ordem); "Adicionar Escolha"; o editor Botão/Lista no topo vira o autor do menu do choiceNode.
+- Restringir `BUTTONLIST` no `ADD_MESSAGE_OPTIONS`/menu a `kind === 'choiceNode'`.
+- Sincronia com `parseFlow`/`editFlow` (arestas `…-ch{idx}`) preservada — `choices` segue posicional.
+
+**Testes:** `choices` posicional com `''`; `setChoiceDestination` grava o ID certo; menos choices
+que itens; round-trip contra a amostra (10 itens / 2 choices); arestas batem com os índices.
 
 ## Melhorias paralelas (independentes das fases)
 

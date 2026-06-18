@@ -6,6 +6,8 @@ import {
   listMessages, updateMessageText, addTextMessage, removeMessage,
   updateButton, updateIntentMeta, updateActionFields, updateSetDataItems,
   addCondition, sanitizeIntentName, collectCategories, updateCondition,
+  addButtonListMessage, addChoice, removeChoice, setChoiceDestination, setChoices,
+  replaceButtonListMessage,
 } from './editIntent'
 import { validateFlow } from './validateFlow'
 import { createIntentTemplate } from './intentTemplates'
@@ -274,6 +276,106 @@ describe('updateCondition — tipos "Total é..." (número em valueNumber)', () 
   })
 })
 
+describe('escolhas/destinos (Fase 10c — addChoice/removeChoice/setChoiceDestination)', () => {
+  const choiceIntent = () => createIntentTemplate('choiceNode', BOT_ID, 'menu')
+
+  it('addChoice acrescenta slot vazio em condição de escolha', () => {
+    const intent = choiceIntent()
+    expect(addChoice(intent, 0)).toEqual({ ok: true })
+    expect(addChoice(intent, 0)).toEqual({ ok: true })
+    expect(intent.conditions[0].action.choices).toEqual(['', ''])
+  })
+
+  it('addChoice rejeita condição que não é de escolha', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    expect(addChoice(intent, 0).ok).toBe(false)
+  })
+
+  it('setChoiceDestination grava o ID e preenche slots intermediários com ""', () => {
+    const intent = choiceIntent()
+    expect(setChoiceDestination(intent, 0, 2, 'dest-c').ok).toBe(true) // pula 0 e 1
+    expect(intent.conditions[0].action.choices).toEqual(['', '', 'dest-c'])
+  })
+
+  it('setChoiceDestination vazio limpa o slot', () => {
+    const intent = choiceIntent()
+    setChoiceDestination(intent, 0, 0, 'dest-a')
+    setChoiceDestination(intent, 0, 0, '  ')
+    expect((intent.conditions[0].action.choices as string[])[0]).toBe('')
+  })
+
+  it('removeChoice remove o slot no índice', () => {
+    const intent = choiceIntent()
+    setChoiceDestination(intent, 0, 0, 'a')
+    setChoiceDestination(intent, 0, 1, 'b')
+    setChoiceDestination(intent, 0, 2, 'c')
+    expect(removeChoice(intent, 0, 1).ok).toBe(true)
+    expect(intent.conditions[0].action.choices).toEqual(['a', 'c'])
+  })
+
+  it('removeChoice rejeita índice fora do alcance', () => {
+    const intent = choiceIntent()
+    expect(removeChoice(intent, 0, 5).ok).toBe(false)
+  })
+
+  it('setChoices substitui a lista e apara vazios do fim (mantém os do meio)', () => {
+    const intent = choiceIntent()
+    expect(setChoices(intent, 0, ['a', '', 'c', '', '']).ok).toBe(true)
+    expect(intent.conditions[0].action.choices).toEqual(['a', '', 'c'])
+  })
+
+  it('setChoices com tudo vazio → []', () => {
+    const intent = choiceIntent()
+    setChoices(intent, 0, ['', '  ', ''])
+    expect(intent.conditions[0].action.choices).toEqual([])
+  })
+})
+
+describe('replaceButtonListMessage (editar menu salvo — Fase 10c)', () => {
+  function intentWithMenu() {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    addButtonListMessage(intent, {
+      header: 'H', body: 'B', footer: 'F', title: '', variant: 'plain',
+      items: [{ text: '1', description: '' }, { text: '2', description: '' }],
+    })
+    return intent
+  }
+  const ref = { condIdx: 0, sayIdx: 0, msgIdx: 0 }
+
+  it('reescreve moldura e itens, preservando os IDs por posição', () => {
+    const intent = intentWithMenu()
+    const idsBefore = intent.conditions[0].assistant_says[0].messages[0].messageConfig!.buttons.map(b => b.id)
+    const r = replaceButtonListMessage(intent, ref, {
+      header: 'novo', body: 'corpo2', footer: '', title: 'Menu', variant: 'plain',
+      items: [{ text: 'a', description: '' }, { text: 'b', description: '' }, { text: 'c', description: '' }, { text: 'd', description: '' }],
+    })
+    expect(r.ok).toBe(true)
+    const msg = intent.conditions[0].assistant_says[0].messages[0]
+    expect(msg.type).toBe('LIST') // 4 itens → LIST
+    expect(msg.messageConfig!.header).toBe('novo')
+    expect(msg.messageConfig!.buttons.map(b => b.text)).toEqual(['a', 'b', 'c', 'd'])
+    // os 2 primeiros IDs preservados; os novos (3º/4º) gerados
+    expect(msg.messageConfig!.buttons.slice(0, 2).map(b => b.id)).toEqual(idsBefore)
+    expect(msg.messageConfig!.buttons[2].id).not.toBe(idsBefore[0])
+  })
+
+  it('rejeita corpo vazio sem alterar a mensagem', () => {
+    const intent = intentWithMenu()
+    expect(replaceButtonListMessage(intent, ref, {
+      header: '', body: '  ', footer: '', title: '', variant: 'plain', items: [{ text: 'x', description: '' }],
+    }).ok).toBe(false)
+    expect(intent.conditions[0].assistant_says[0].messages[0].messageConfig!.body).toBe('B')
+  })
+
+  it('rejeita ref que não aponta para BUTTON/LIST', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    addTextMessage(intent, 'oi')
+    expect(replaceButtonListMessage(intent, ref, {
+      header: '', body: 'b', footer: '', title: '', variant: 'plain', items: [{ text: 'x', description: '' }],
+    }).ok).toBe(false)
+  })
+})
+
 describe('edição escopada por condição (Modelo B, Marco C)', () => {
   // Intenção com 2 condições: c0 = transfer, c1 = captureData.
   function twoActionCond(): BotIntent {
@@ -304,6 +406,146 @@ describe('edição escopada por condição (Modelo B, Marco C)', () => {
     addCondition(intent) // c1 sem botões
     // c0 é choice mas ainda sem mensagem de botões → updateButton(0) não acha
     expect(updateButton(intent, 0, 'X', null, 1).ok).toBe(false) // c1 não tem botões
+  })
+})
+
+describe('addButtonListMessage (Botão/Lista de exibição — Fase 10)', () => {
+  /** Helper: monta um config válido a partir de textos de item, com overrides. */
+  function cfg(itemTexts: string[], over: Partial<Parameters<typeof addButtonListMessage>[1]> = {}) {
+    return {
+      header: 'Título', body: 'Corpo', footer: 'Rodapé', title: 'Menu', variant: 'plain' as const,
+      items: itemTexts.map(t => ({ text: t, description: '' })),
+      ...over,
+    }
+  }
+  const fresh = () => createIntentTemplate('defaultNode', BOT_ID, 'x')
+  const rawMsg = (i: BotIntent) => i.conditions[0].assistant_says[0].messages[0]
+  const seq = (n: number) => Array.from({ length: n }, (_, k) => String(k + 1))
+
+  it('1-3 itens → type BUTTON e title forçado a ""', () => {
+    for (const n of [1, 2, 3]) {
+      const intent = fresh()
+      expect(addButtonListMessage(intent, cfg(seq(n))).ok).toBe(true)
+      expect(rawMsg(intent).type).toBe('BUTTON')
+      expect(rawMsg(intent).messageConfig!.title).toBe('')
+      expect(rawMsg(intent).messageConfig!.buttons).toHaveLength(n)
+    }
+  })
+
+  it('4-10 itens → type LIST e mantém o title', () => {
+    for (const n of [4, 10]) {
+      const intent = fresh()
+      expect(addButtonListMessage(intent, cfg(seq(n))).ok).toBe(true)
+      expect(rawMsg(intent).type).toBe('LIST')
+      expect(rawMsg(intent).messageConfig!.title).toBe('Menu')
+      expect(rawMsg(intent).messageConfig!.buttons).toHaveLength(n)
+    }
+  })
+
+  it('mapeia header/body/footer e itens viram buttons com UUID único e description ""', () => {
+    const intent = fresh()
+    addButtonListMessage(intent, cfg(['Sim', 'Não']))
+    const mc = rawMsg(intent).messageConfig!
+    expect(mc).toMatchObject({ header: 'Título', body: 'Corpo', footer: 'Rodapé', type: 'text' })
+    expect(mc.buttons[0]).toMatchObject({ text: 'Sim', description: '' })
+    expect(mc.buttons[0].id).toMatch(/^[0-9a-f-]{36}$/i)
+    expect(mc.buttons[1].id).not.toBe(mc.buttons[0].id)
+  })
+
+  it('action permanece "none" e a mensagem é de exibição (removível)', () => {
+    const intent = fresh()
+    addButtonListMessage(intent, cfg(['a', 'b']))
+    expect(intent.conditions[0].action.type).toBe('none')
+    const ref = listMessages(intent).find(m => m.type === 'BUTTON')!.ref
+    expect(removeMessage(intent, ref).ok).toBe(true)
+    expect(listMessages(intent)).toHaveLength(0)
+  })
+
+  it('campos de moldura vazios saem como "" (não null)', () => {
+    const intent = fresh()
+    addButtonListMessage(intent, { header: '', body: 'Corpo', footer: '', title: '', variant: 'plain', items: [{ text: 'a', description: '' }] })
+    const mc = rawMsg(intent).messageConfig!
+    expect(mc.header).toBe('')
+    expect(mc.footer).toBe('')
+    expect(mc.title).toBe('')
+  })
+
+  describe('caminhos infelizes (não criam mensagem)', () => {
+    it('0 itens', () => {
+      const intent = fresh()
+      expect(addButtonListMessage(intent, cfg([])).ok).toBe(false)
+      expect(listMessages(intent)).toHaveLength(0)
+    })
+    it('mais de 10 itens', () => {
+      expect(addButtonListMessage(fresh(), cfg(seq(11))).ok).toBe(false)
+    })
+    it('corpo vazio', () => {
+      expect(addButtonListMessage(fresh(), cfg(['a'], { body: '   ' })).ok).toBe(false)
+    })
+    it('item sem texto', () => {
+      expect(addButtonListMessage(fresh(), cfg(['  '])).ok).toBe(false)
+    })
+  })
+
+  it('título do botão de opções é OPCIONAL (LIST sem título → ok, title "")', () => {
+    const intent = fresh()
+    expect(addButtonListMessage(intent, cfg(seq(4), { title: '  ' })).ok).toBe(true)
+    expect(rawMsg(intent).type).toBe('LIST')
+    expect(rawMsg(intent).messageConfig!.title).toBe('')
+  })
+
+  describe('variante "com descrição" (sempre LIST)', () => {
+    it('1-3 itens em described → ainda type LIST (não BUTTON)', () => {
+      for (const n of [1, 2, 3]) {
+        const intent = fresh()
+        expect(addButtonListMessage(intent, cfg(seq(n), { variant: 'described' })).ok).toBe(true)
+        expect(rawMsg(intent).type).toBe('LIST')
+      }
+    })
+
+    it('serializa a descrição de cada item', () => {
+      const intent = fresh()
+      addButtonListMessage(intent, {
+        header: '', body: 'Corpo', footer: '', title: 'Menu', variant: 'described',
+        items: [{ text: '1', description: 'desc 1' }, { text: '2', description: '' }],
+      })
+      const buttons = rawMsg(intent).messageConfig!.buttons
+      expect(buttons[0]).toMatchObject({ text: '1', description: 'desc 1' })
+      expect(buttons[1]).toMatchObject({ text: '2', description: '' })
+    })
+
+    it('described sem título → ainda ok (título é opcional)', () => {
+      const intent = fresh()
+      expect(addButtonListMessage(intent, cfg(['a'], { variant: 'described', title: '  ' })).ok).toBe(true)
+      expect(rawMsg(intent).type).toBe('LIST')
+      expect(rawMsg(intent).messageConfig!.title).toBe('')
+    })
+
+    it('BUTTON (plain 1-3) força description "" mesmo se vier preenchida', () => {
+      const intent = fresh()
+      addButtonListMessage(intent, {
+        header: '', body: 'Corpo', footer: '', title: '', variant: 'plain',
+        items: [{ text: '1', description: 'não deveria aparecer' }, { text: '2', description: 'x' }],
+      })
+      expect(rawMsg(intent).type).toBe('BUTTON')
+      expect(rawMsg(intent).messageConfig!.buttons.every(b => b.description === '')).toBe(true)
+    })
+  })
+
+  it('round-trip: a forma bate com a amostra real (LIST de 10)', () => {
+    const intent = fresh()
+    const items = seq(10)
+    addButtonListMessage(intent, {
+      header: 'Título', body: 'Corpo do texto', footer: 'Rodapé', title: 'Título botão opções', variant: 'plain',
+      items: items.map(t => ({ text: t, description: '' })),
+    })
+    const msg = rawMsg(intent)
+    expect(msg).toMatchObject({
+      type: 'LIST', content: '', fileName: '',
+      messageConfig: { title: 'Título botão opções', type: 'text', header: 'Título', body: 'Corpo do texto', footer: 'Rodapé' },
+    })
+    expect(msg.messageConfig!.buttons.map(b => b.text)).toEqual(items)
+    expect(msg.messageConfig!.buttons.every(b => b.description === '' && /^[0-9a-f-]{36}$/i.test(b.id!))).toBe(true)
   })
 })
 

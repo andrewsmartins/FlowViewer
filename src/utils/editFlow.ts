@@ -121,19 +121,42 @@ function setNext(cond: Condition, target: BotIntent): void {
   }
 }
 
-/** Tenta conectar UMA condição: slot de escolha vazio ou `next` livre. */
+/** Nº de itens do menu (botões da 1ª mensagem BUTTON/LIST) de uma condição. */
+function menuItemCount(cond: Condition): number {
+  for (const say of cond.assistant_says) {
+    for (const m of say.messages) {
+      if ((m.type === 'BUTTON' || m.type === 'LIST') && m.messageConfig?.buttons) {
+        return m.messageConfig.buttons.length
+      }
+    }
+  }
+  return 0
+}
+
+/**
+ * Tenta conectar UMA condição: slot de escolha (vazio ou opção livre) ou `next` livre.
+ * Em escolha: (1) preenche o 1º slot `''`; (2) senão, se há ITEM LIVRE no menu
+ * (`choices` mais curto que os itens), cria um slot novo apontando para o alvo —
+ * é o que permite conectar uma opção livre pelo canvas (Fase 10c).
+ */
 function connectCondition(
   cond: Condition, condIdx: number, target: BotIntent,
 ): { ok: true; kind: 'next' | 'choice'; condIdx: number } | { ok: false; reason: string } | null {
-  if (cond.action.type === 'choice' && Array.isArray(cond.action.choices)) {
-    const slot = cond.action.choices.findIndex(c => !c)
+  if (cond.action.type === 'choice') {
+    if (!Array.isArray(cond.action.choices)) cond.action.choices = []
+    const choices = cond.action.choices
+    const slot = choices.findIndex(c => !c)
     if (slot !== -1) {
-      cond.action.choices[slot] = target.id
+      choices[slot] = target.id
       return { ok: true, kind: 'choice', condIdx }
     }
-    return null // sem slot livre nesta condição de escolha
+    if (choices.length < menuItemCount(cond)) {
+      choices.push(target.id) // cria a escolha da próxima opção livre
+      return { ok: true, kind: 'choice', condIdx }
+    }
+    return null // todas as opções do menu já têm destino
   }
-  if (cond.action.type !== 'choice' && !hasNextRef(cond)) {
+  if (!hasNextRef(cond)) {
     setNext(cond, target)
     return { ok: true, kind: 'next', condIdx }
   }
@@ -166,7 +189,7 @@ export function applyConnect(
     const result = connectCondition(cond, condIdx, target)
     if (result) return result
     return cond.action.type === 'choice'
-      ? { ok: false, reason: 'a condição de escolha não tem slot livre (adicione um botão antes)' }
+      ? { ok: false, reason: 'todas as opções do menu já têm destino (ou o menu está vazio — crie itens antes)' }
       : { ok: false, reason: 'a condição já tem destino (reconecte a aresta existente)' }
   }
 

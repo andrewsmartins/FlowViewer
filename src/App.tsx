@@ -12,6 +12,7 @@ import { ThemeToggle }   from './components/ThemeToggle'
 import { ThemeContext }  from './contexts/ThemeContext'
 import { TeamsContext, type TeamsStatus } from './contexts/TeamsContext'
 import { fetchStoreTeams, type Team } from './utils/teams'
+import { uploadMedia, type UploadMediaType } from './utils/uploadMedia'
 import type { FetchLike } from './utils/pushFlow'
 import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
@@ -691,9 +692,14 @@ export default function App() {
   const teamsById = useMemo(() => new Map(teams.map(t => [t.objectId, t.name])), [teams])
   const requestToken = useCallback(() => setTokenOpen(true), [])
   const hasToken = !!sessionToken.trim()
+  const uploadFile = useCallback(async (file: File, type: UploadMediaType) => {
+    const token = sessionToken.trim()
+    if (!token) throw new Error('Sem token de sessão — defina o token de sessão para fazer upload.')
+    return uploadMedia(file, type, token)
+  }, [sessionToken])
   const teamsValue = useMemo(
-    () => ({ teams, status: teamsStatus, error: teamsError, loadTeams, hasToken, requestToken, byId: teamsById }),
-    [teams, teamsStatus, teamsError, loadTeams, hasToken, requestToken, teamsById],
+    () => ({ teams, status: teamsStatus, error: teamsError, loadTeams, hasToken, requestToken, byId: teamsById, uploadFile }),
+    [teams, teamsStatus, teamsError, loadTeams, hasToken, requestToken, teamsById, uploadFile],
   )
 
   return (

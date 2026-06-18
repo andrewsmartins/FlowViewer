@@ -1,16 +1,17 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type KeyboardEvent, type RefObject } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type KeyboardEvent, type RefObject, type ChangeEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { Node } from '@xyflow/react'
-import type { BotIntent, Condition, BulkUpdateItem, FlowNodeData, NodeKind } from '../types'
+import type { BotIntent, Condition, BulkUpdateItem, FlowNodeData, NodeKind, ButtonMessageConfig } from '../types'
 import { useTheme } from '../contexts/ThemeContext'
 import { PRIORITY_LABELS, CONDITION_TYPE_LABELS } from '../utils/nodeMeta'
 import {
-  listMessages, updateMessageText, addTextMessage, removeMessage,
-  updateButton, addButton, removeButton, addButtonsMessage,
+  listMessages, updateMessageText, addTextMessage, addMediaMessage, removeMessage,
+  addButtonListMessage, replaceButtonListMessage, setChoices,
   updateCondition, addCondition, removeCondition,
   updateIntentMeta, updateActionFields, updateSetDataItems, sanitizeIntentName,
   type EditableMessage, type MessageRef,
 } from '../utils/editIntent'
+import { acceptFor, type UploadMediaType } from '../utils/uploadMedia'
 import { VARIABLE_GROUPS, variableDisplay, entityFieldItems, type VariableItem } from '../utils/variables'
 import type { VariableGroup } from '../utils/variables'
 import { useTeams } from '../contexts/TeamsContext'
@@ -106,6 +107,46 @@ interface DraftCondition {
 /** Opções do select de tipo de ação ao adicionar uma condição nova. */
 const KIND_OPTIONS = CREATABLE_KINDS.map(k => ({ value: k, label: CREATABLE_KIND_LABELS[k] }))
 
+/** Mensagem nova ainda não persistida, criada via "+ Adicionar Resposta". */
+type NewDraftMessage = NewMediaMessage | NewButtonListMessage
+
+/** Variantes de conteúdo simples (texto/mídia) — `content` é o texto ou a URL. */
+interface NewMediaMessage {
+  type: 'TEXT' | 'IMAGE' | 'FILE' | 'VIDEO'
+  content: string
+  fileName: string
+}
+
+/**
+ * Variante Botão/Lista de EXIBIÇÃO (Fase 10). `variant: 'plain'` = "sem descrição"
+ * (itens só com texto). O `type` final (BUTTON/LIST) é decidido no submit pela
+ * contagem de itens — ver `addButtonListMessage`.
+ */
+interface NewButtonListMessage {
+  type: 'BUTTONLIST'
+  variant: 'plain' | 'described'
+  header: string
+  body: string
+  footer: string
+  title: string
+  items: { text: string; description: string }[]
+}
+
+/**
+ * Menu Botão/Lista de UMA condição de escolha (Fase 10c). `editRef` aponta para a
+ * mensagem salva (edição in-place via `replaceButtonListMessage`); `null` = menu novo
+ * ainda não persistido (`addButtonListMessage`). Os campos espelham o `messageConfig`.
+ */
+interface MenuDraft {
+  editRef: MessageRef | null
+  variant: 'plain' | 'described'
+  header: string
+  body: string
+  footer: string
+  title: string
+  items: { text: string; description: string }[]
+}
+
 interface Draft {
   // Meta da intenção (modos group/solo)
   name: string
@@ -123,11 +164,15 @@ interface Draft {
   condContext: string
   // Conteúdo (mensagens/botões/ação) do escopo editado (modos condition/solo)
   messages: EditableMessage[]
-  newMessages: string[]
+  newMessages: NewDraftMessage[]
   removedRefs: MessageRef[]
-  buttons: { text: string; description: string; originalIdx: number | null }[]
-  removedButtonIdxs: number[]
-  newButtonsBody: string | null
+  // Nó de Escolha (Fase 10c): menu (em cima) + destinos (embaixo), ligados pela ordem.
+  /** Índice da condição de escolha em escopo (-1 se não há). Menu/escolhas miram nela. */
+  choiceCondIdx: number
+  /** Menu Botão/Lista da condição de escolha (null = ainda não criado). */
+  menu: MenuDraft | null
+  /** Destinos (`action.choices`), posicionais aos itens do menu. */
+  choices: string[]
   transferType: string
   transferValue: string
   captureDataType: string
@@ -138,26 +183,52 @@ interface Draft {
   removedCondIdxs: number[]
 }
 
-/** Botões (BUTTON/LIST) de UMA condição específica. */
-function buttonsOfCondition(intent: BotIntent, condIdx: number) {
-  return intent.conditions[condIdx]?.assistant_says
-    .flatMap(s => s.messages)
-    .find(m => (m.type === 'BUTTON' || m.type === 'LIST') && m.messageConfig?.buttons?.length)
-    ?.messageConfig?.buttons ?? []
+/**
+ * Índice da condição de ESCOLHA em escopo (a que o menu/escolhas editam), ou -1.
+ * No modo condição é a própria (se for choice); no solo/grupo, a 1ª condição choice.
+ */
+function choiceCondIdxOf(intent: BotIntent, mode: PanelMode, condIdx: number): number {
+  if (mode === 'condition') return intent.conditions[condIdx]?.action.type === 'choice' ? condIdx : -1
+  return intent.conditions.findIndex(c => c.action.type === 'choice')
 }
 
-/** Botões da intenção inteira (1ª mensagem de botões encontrada) — modo solo. */
-function buttonsOfIntent(intent: BotIntent) {
-  return intent.conditions
-    .flatMap(c => c.assistant_says).flatMap(s => s.messages)
-    .find(m => (m.type === 'BUTTON' || m.type === 'LIST') && m.messageConfig?.buttons?.length)
-    ?.messageConfig?.buttons ?? []
+/**
+ * Carrega o menu Botão/Lista (1ª mensagem BUTTON/LIST) de uma condição como `MenuDraft`,
+ * com `editRef` para edição in-place. `variant` é inferido: LIST com alguma descrição
+ * preenchida → 'described'; senão 'plain'. Devolve null se a condição não tem menu.
+ */
+function menuOfCondition(intent: BotIntent, condIdx: number): MenuDraft | null {
+  const cond = intent.conditions[condIdx]
+  if (!cond) return null
+  for (let sayIdx = 0; sayIdx < cond.assistant_says.length; sayIdx++) {
+    const messages = cond.assistant_says[sayIdx].messages
+    for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
+      const m = messages[msgIdx]
+      if ((m.type === 'BUTTON' || m.type === 'LIST') && m.messageConfig) {
+        const mc = m.messageConfig
+        const buttons = mc.buttons ?? []
+        const described = m.type === 'LIST' && buttons.some(b => (b.description ?? '').trim())
+        return {
+          editRef: { condIdx, sayIdx, msgIdx },
+          variant: described ? 'described' : 'plain',
+          header: mc.header ?? '', body: mc.body ?? '', footer: mc.footer ?? '', title: mc.title ?? '',
+          items: buttons.map(b => ({ text: b.text ?? '', description: b.description ?? '' })),
+        }
+      }
+    }
+  }
+  return null
 }
 
-function hasButtonsMessage(intent: BotIntent, condIdx: number, mode: PanelMode): boolean {
-  const conds = mode === 'condition' ? [intent.conditions[condIdx]].filter(Boolean) : intent.conditions
-  return conds.some(c =>
-    c.assistant_says.some(s => s.messages.some(m => (m.type === 'BUTTON' || m.type === 'LIST') && m.messageConfig)))
+/** Destinos (`action.choices`) de uma condição, como string[] (vazio se não houver). */
+function choicesOfCondition(intent: BotIntent, condIdx: number): string[] {
+  const choices = intent.conditions[condIdx]?.action.choices
+  return Array.isArray(choices) ? choices.map(c => c ?? '') : []
+}
+
+/** A mensagem (BUTTON/LIST) nesta ref é de EXIBIÇÃO (condição sem ação de escolha)? */
+function isDisplayButtonList(intent: BotIntent | null, ref: MessageRef, type: string): boolean {
+  return !!intent && (type === 'BUTTON' || type === 'LIST') && intent.conditions[ref.condIdx]?.action.type !== 'choice'
 }
 
 /**
@@ -178,7 +249,17 @@ function condValueForDraft(cond: Condition | undefined): string {
 function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft {
   const scopedCond = intent.conditions[condIdx]
   const allMessages = listMessages(intent)
-  const messages = mode === 'condition' ? allMessages.filter(m => m.ref.condIdx === condIdx) : allMessages
+  const scoped = mode === 'condition' ? allMessages.filter(m => m.ref.condIdx === condIdx) : allMessages
+
+  // Nó de Escolha: o menu (Botão/Lista) é extraído para `menu` e some da lista de
+  // mensagens (é editado em bloco no topo); os destinos vão para `choices`.
+  const choiceCondIdx = choiceCondIdxOf(intent, mode, condIdx)
+  const menu = choiceCondIdx >= 0 ? menuOfCondition(intent, choiceCondIdx) : null
+  const choices = choiceCondIdx >= 0 ? choicesOfCondition(intent, choiceCondIdx) : []
+  const menuRef = menu?.editRef
+  const messages = menuRef
+    ? scoped.filter(m => !(m.ref.condIdx === menuRef.condIdx && m.ref.sayIdx === menuRef.sayIdx && m.ref.msgIdx === menuRef.msgIdx))
+    : scoped
 
   // Condição-fonte de cada ação: no modo condition é a própria; no solo, a 1ª do tipo.
   const transferCond = mode === 'condition'
@@ -190,8 +271,6 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
   const setDataCond = mode === 'condition'
     ? (scopedCond?.action.type === 'setData' ? scopedCond : undefined)
     : intent.conditions.find(c => c.action.type === 'setData')
-
-  const buttons = mode === 'condition' ? buttonsOfCondition(intent, condIdx) : buttonsOfIntent(intent)
 
   return {
     name: intent.name,
@@ -208,9 +287,9 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
     messages,
     newMessages: [],
     removedRefs: [],
-    buttons: buttons.map((b, i) => ({ text: b.text, description: b.description ?? '', originalIdx: i })),
-    removedButtonIdxs: [],
-    newButtonsBody: null,
+    choiceCondIdx,
+    menu,
+    choices,
     transferType: transferCond?.action.transferType ?? '',
     transferValue: transferCond?.action.value ?? '',
     captureDataType: captureCond?.action.captureDataType ?? '',
@@ -605,6 +684,405 @@ function VariableMenu({ anchorRef, isDark, onPick, onClose }: VariableMenuProps)
   )
 }
 
+const MEDIA_LABELS: Record<string, string> = { IMAGE: 'Imagem', FILE: 'PDF', VIDEO: 'Vídeo' }
+const MEDIA_ICONS:  Record<string, string> = { IMAGE: '🖼️', FILE: '📄', VIDEO: '🎬' }
+
+interface MediaMessageEditorProps {
+  msg: NewMediaMessage
+  index: number
+  isDark: boolean
+  inputCls: string
+  labelCls: string
+  ghostBtnCls: string
+  onChange: (content: string, fileName: string) => void
+  onRemove: () => void
+}
+
+/**
+ * Editor de mensagem de mídia (IMAGE/FILE/VIDEO) no rascunho.
+ * Duas abas: Link (URL manual) e Upload (via API presigned URL da OmniChat).
+ * A aba Upload fica bloqueada sem token de sessão.
+ */
+function MediaMessageEditor({ msg, isDark, inputCls, labelCls, ghostBtnCls, onChange, onRemove }: MediaMessageEditorProps) {
+  const [tab, setTab] = useState<'url' | 'upload'>('url')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const { hasToken, requestToken, uploadFile } = useTeams()
+
+  const tabBase = `text-[10px] font-medium px-2 py-0.5 rounded transition-colors`
+  const tabActive = isDark ? `${tabBase} bg-slate-700 text-slate-200` : `${tabBase} bg-white text-slate-700 shadow-sm`
+  const tabInactive = isDark ? `${tabBase} text-slate-500 hover:text-slate-300` : `${tabBase} text-slate-400 hover:text-slate-600`
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const result = await uploadFile(file, msg.type as UploadMediaType)
+      onChange(result.content, result.fileName)
+      setTab('url')
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Erro ao fazer upload.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className={labelCls}>{MEDIA_LABELS[msg.type] ?? msg.type} (nova)</span>
+        <button className={ghostBtnCls} onClick={onRemove}>remover</button>
+      </div>
+
+      {/* Seletor de aba */}
+      <div className={`flex gap-1 p-0.5 rounded-md w-fit ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+        <button type="button" className={tab === 'url' ? tabActive : tabInactive} onClick={() => setTab('url')}>Link</button>
+        <button type="button" className={tab === 'upload' ? tabActive : tabInactive} onClick={() => setTab('upload')}>Upload ↑</button>
+      </div>
+
+      {tab === 'url' && (
+        <div className="flex flex-col gap-1">
+          <input
+            className={inputCls}
+            value={msg.content}
+            placeholder="URL do arquivo (https://…)"
+            onChange={e => onChange(e.target.value, msg.fileName)}
+          />
+          <input
+            className={inputCls}
+            value={msg.fileName}
+            placeholder="Nome do arquivo (opcional)"
+            onChange={e => onChange(msg.content, e.target.value)}
+          />
+        </div>
+      )}
+
+      {tab === 'upload' && (
+        <div className="flex flex-col gap-1">
+          {!hasToken ? (
+            <div className={`text-[11px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <button
+                type="button"
+                className="font-medium text-blue-500 hover:text-blue-600 text-left"
+                onClick={requestToken}
+              >
+                Insira o token de sessão
+              </button>
+              {' '}para habilitar o upload.
+            </div>
+          ) : uploading ? (
+            <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Enviando…</p>
+          ) : (
+            <label className={`cursor-pointer text-xs font-medium rounded-lg border border-dashed px-2 py-2 text-center transition-colors ${
+              isDark ? 'text-slate-400 border-slate-700 hover:bg-slate-800' : 'text-slate-500 border-slate-300 hover:bg-slate-50'
+            }`}>
+              Escolher arquivo
+              <input
+                type="file"
+                className="hidden"
+                accept={acceptFor(msg.type as UploadMediaType)}
+                onChange={handleFileChange}
+              />
+            </label>
+          )}
+          {uploadError && (
+            <p className={`text-[11px] leading-snug ${isDark ? 'text-rose-400' : 'text-rose-600'}`}>{uploadError}</p>
+          )}
+          {msg.content && (
+            <p className={`text-[10px] truncate ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+              ✓ {msg.fileName || msg.content.split('/').pop()}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const ADD_MESSAGE_OPTIONS: { type: NewDraftMessage['type']; label: string }[] = [
+  { type: 'TEXT',  label: 'Texto' },
+  { type: 'IMAGE', label: 'Imagem' },
+  { type: 'FILE',  label: 'PDF' },
+  { type: 'VIDEO', label: 'Vídeo' },
+  // Botão/Lista NÃO entra aqui: vira o "Menu" do nó de Escolha (seção própria, Fase 10c).
+]
+
+/** Ícones do menu "Adicionar Resposta" (mídia + texto + botão/lista). */
+const ADD_MESSAGE_ICONS: Record<string, string> = { ...MEDIA_ICONS, TEXT: '✏️', BUTTONLIST: '🔘' }
+
+/** Limites de caracteres do Botão/Lista, espelhando o construtor da plataforma (padrão WhatsApp). */
+const BL_LIMITS = { header: 60, body: 80, footer: 60, title: 20, item: 20, desc: 72 } as const
+const BL_MAX_ITEMS = 10
+/** 4+ itens viram LIST (menu com título); 1-3, BUTTON (botões de resposta). */
+const BL_LIST_THRESHOLD = 4
+
+interface CharFieldProps {
+  label: string
+  value: string
+  max: number
+  placeholder?: string
+  isDark: boolean
+  inputCls: string
+  labelCls: string
+  onChange: (value: string) => void
+}
+
+/** Campo de texto com `maxLength` e contador "x/limite" (fica vermelho ao estourar). */
+function CharField({ label, value, max, placeholder, isDark, inputCls, labelCls, onChange }: CharFieldProps) {
+  const atLimit = value.length >= max
+  const counterCls = atLimit
+    ? (isDark ? 'text-rose-400' : 'text-rose-500')
+    : (isDark ? 'text-slate-600' : 'text-slate-300')
+  return (
+    <label className="flex flex-col gap-0.5">
+      <span className="flex items-center justify-between">
+        <span className={labelCls}>{label}</span>
+        <span className={`text-[10px] ${counterCls}`}>{value.length}/{max}</span>
+      </span>
+      <input className={inputCls} value={value} maxLength={max} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
+    </label>
+  )
+}
+
+interface ButtonListEditorProps {
+  msg: NewButtonListMessage
+  isDark: boolean
+  inputCls: string
+  labelCls: string
+  ghostBtnCls: string
+  dashedBtnCls: string
+  onChange: (next: NewButtonListMessage) => void
+  onRemove: () => void
+}
+
+/**
+ * Editor de mensagem Botão/Lista de EXIBIÇÃO (Fase 10, variante "sem descrição").
+ * 1-3 itens viram botões de resposta; 4-10 viram lista — e aí o "Título botão
+ * opções" aparece e passa a ser obrigatório (validado no submit). A variante
+ * "lista com descrição" virá em fase futura (botão desabilitado por ora).
+ */
+function ButtonListEditor({ msg, isDark, inputCls, labelCls, ghostBtnCls, dashedBtnCls, onChange, onRemove }: ButtonListEditorProps) {
+  // "com descrição" é sempre lista; "sem descrição" vira lista só com 4+ itens.
+  const isDescribed = msg.variant === 'described'
+  const isList = isDescribed || msg.items.length >= BL_LIST_THRESHOLD
+  const patch = (p: Partial<NewButtonListMessage>) => onChange({ ...msg, ...p })
+  const setItem = (i: number, field: 'text' | 'description', value: string) =>
+    patch({ items: msg.items.map((it, j) => j === i ? { ...it, [field]: value } : it) })
+  const addItem = () => patch({ items: [...msg.items, { text: '', description: '' }] })
+  const removeItem = (i: number) => patch({ items: msg.items.filter((_, j) => j !== i) })
+  // Trocar de variante preserva os itens digitados; se estão todos vazios (pristine),
+  // reinicia para 1 item (não há mínimo de 2).
+  const changeVariant = (next: NewButtonListMessage['variant']) => {
+    if (next === msg.variant) return
+    const pristine = msg.items.every(it => !it.text.trim() && !it.description.trim())
+    patch({ variant: next, items: pristine ? [{ text: '', description: '' }] : msg.items })
+  }
+
+  const segBase = 'text-[10px] font-medium px-2 py-0.5 rounded transition-colors'
+  const segActive = isDark ? `${segBase} bg-slate-700 text-slate-200` : `${segBase} bg-white text-slate-700 shadow-sm`
+  const segIdle = isDark ? `${segBase} text-slate-500 hover:text-slate-300` : `${segBase} text-slate-400 hover:text-slate-600`
+  const canRemoveItem = msg.items.length > 1
+  const canAddItem = msg.items.length < BL_MAX_ITEMS
+
+  return (
+    <div className={`flex flex-col gap-2 border rounded-lg p-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+      <div className="flex items-center justify-between">
+        <span className={labelCls}>🔘 Botão/Lista (nova) — {isList ? 'Lista (menu)' : 'Botões de resposta'}</span>
+        <button className={ghostBtnCls} onClick={onRemove}>remover</button>
+      </div>
+
+      <CharField label="Título" value={msg.header} max={BL_LIMITS.header} placeholder="Cabeçalho (opcional)"
+        isDark={isDark} inputCls={inputCls} labelCls={labelCls} onChange={v => patch({ header: v })} />
+      <CharField label="Corpo do texto" value={msg.body} max={BL_LIMITS.body} placeholder="Mensagem principal (obrigatório)"
+        isDark={isDark} inputCls={inputCls} labelCls={labelCls} onChange={v => patch({ body: v })} />
+      <CharField label="Rodapé" value={msg.footer} max={BL_LIMITS.footer} placeholder="Rodapé (opcional)"
+        isDark={isDark} inputCls={inputCls} labelCls={labelCls} onChange={v => patch({ footer: v })} />
+
+      {/* Seletor de variante: sem descrição (botões/lista) ou com descrição (sempre lista) */}
+      <div className={`flex gap-1 p-0.5 rounded-md w-fit ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+        <button type="button" className={msg.variant === 'plain' ? segActive : segIdle} onClick={() => changeVariant('plain')}>
+          botão/lista sem descrição
+        </button>
+        <button type="button" className={msg.variant === 'described' ? segActive : segIdle} onClick={() => changeVariant('described')}>
+          lista com descrição
+        </button>
+      </div>
+
+      {/* Título do botão de opções — abaixo do seletor; sempre em "com descrição", senão só com 4+ itens */}
+      {isList && (
+        <CharField label="Título botão opções" value={msg.title} max={BL_LIMITS.title} placeholder="Rótulo do menu (opcional)"
+          isDark={isDark} inputCls={inputCls} labelCls={labelCls} onChange={v => patch({ title: v })} />
+      )}
+
+      {/* Itens (1 a 10) */}
+      <div className="flex flex-col gap-1.5">
+        {msg.items.map((it, i) => (
+          <div key={i} className={`flex flex-col gap-1 ${isDescribed ? `border rounded-lg p-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}` : ''}`}>
+            <div className="flex items-end gap-1.5">
+              <div className="flex-1">
+                <CharField label={`Item ${i + 1}`} value={it.text} max={BL_LIMITS.item} placeholder="Texto do item"
+                  isDark={isDark} inputCls={inputCls} labelCls={labelCls} onChange={v => setItem(i, 'text', v)} />
+              </div>
+              <button
+                className={`${ghostBtnCls} mb-1 ${canRemoveItem ? '' : 'opacity-30 cursor-not-allowed'}`}
+                disabled={!canRemoveItem}
+                onClick={() => removeItem(i)}
+              >remover</button>
+            </div>
+            {isDescribed && (
+              <CharField label="Descrição" value={it.description} max={BL_LIMITS.desc} placeholder="Descrição do item (opcional)"
+                isDark={isDark} inputCls={inputCls} labelCls={labelCls} onChange={v => setItem(i, 'description', v)} />
+            )}
+          </div>
+        ))}
+        <button
+          className={`${dashedBtnCls} ${canAddItem ? '' : 'opacity-40 cursor-not-allowed'}`}
+          disabled={!canAddItem}
+          onClick={addItem}
+        >+ Adicionar Item{canAddItem ? '' : ' (máx. 10)'}</button>
+      </div>
+
+    </div>
+  )
+}
+
+interface ButtonListSummaryProps {
+  config: ButtonMessageConfig
+  /** Tipo real da mensagem (LIST/BUTTON) — define o rótulo com precisão. */
+  msgType: string
+  isDark: boolean
+  labelCls: string
+  ghostBtnCls: string
+  onRemove: () => void
+}
+
+/**
+ * Resumo (read-only) de uma mensagem Botão/Lista de EXIBIÇÃO já salva: moldura +
+ * itens juntos, num único bloco, com um único "remover" que tira a mensagem inteira
+ * (os botões vivem dentro do messageConfig, então saem junto). Editar uma mensagem
+ * salva ainda não é suportado nesta fase — remover e recriar.
+ */
+function ButtonListSummary({ config, msgType, isDark, labelCls, ghostBtnCls, onRemove }: ButtonListSummaryProps) {
+  const items = config.buttons ?? []
+  const subCls = `text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`
+  const chipCls = `text-[10px] px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`
+  return (
+    <div className={`flex flex-col gap-1 border rounded-lg p-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+      <div className="flex items-center justify-between">
+        <span className={labelCls}>🔘 {msgType === 'LIST' ? 'Lista' : 'Botões'}{config.header ? ` · ${config.header}` : ''}</span>
+        <button className={ghostBtnCls} onClick={onRemove}>remover</button>
+      </div>
+      {config.body && <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{config.body}</p>}
+      {config.footer && <p className={subCls}>{config.footer}</p>}
+      {msgType === 'LIST' && config.title && <p className={subCls}>Menu: {config.title}</p>}
+      <div className="flex flex-col gap-0.5">
+        {items.map((b, j) => (
+          <div key={b.id ?? j} className="flex items-baseline gap-1.5">
+            <span className={chipCls}>{j + 1}. {b.text}</span>
+            {b.description && <span className={subCls}>{b.description}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Pré-visualização legível do menu (estilo "bolha" do WhatsApp): cabeçalho, corpo,
+ * rodapé e os itens — botões de resposta (1-3, sem descrição) ou linhas de lista
+ * (com o botão "ver opções" e a descrição de cada linha). Só leitura.
+ */
+function MenuPreview({ menu, isDark }: { menu: MenuDraft; isDark: boolean }) {
+  const items = menu.items.filter(it => it.text.trim())
+  const isList = menu.variant === 'described' || items.length >= BL_LIST_THRESHOLD
+  const cardCls = isDark ? 'bg-slate-800/60 border-slate-700' : 'bg-white border-slate-200'
+  const subCls = `text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`
+  const linkCls = isDark ? 'text-sky-400' : 'text-sky-600'
+  return (
+    <div className={`rounded-xl border p-3 flex flex-col gap-1.5 shadow-sm ${cardCls}`}>
+      {menu.header.trim() && <p className={`text-xs font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{menu.header}</p>}
+      {menu.body.trim() && <p className={`text-xs whitespace-pre-wrap ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>{menu.body}</p>}
+      {menu.footer.trim() && <p className={subCls}>{menu.footer}</p>}
+      {isList ? (
+        <>
+          <div className={`mt-1 rounded-lg border text-[11px] text-center py-1.5 font-medium ${linkCls} ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+            ☰ {menu.title.trim() || 'Ver opções'}
+          </div>
+          {items.length > 0 && (
+            <div className={`mt-1 flex flex-col gap-1 pl-2 border-l-2 border-dashed ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+              {items.map((it, i) => (
+                <div key={i} className="flex flex-col">
+                  <span className={`text-[11px] font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>{i + 1}. {it.text}</span>
+                  {it.description.trim() && <span className={subCls}>{it.description}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="mt-1 flex flex-col gap-1">
+          {items.map((it, i) => (
+            <div key={i} className={`text-[11px] text-center py-1.5 rounded-lg border font-medium ${linkCls} ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>{it.text}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface AddMessageMenuProps {
+  isDark: boolean
+  dashedBtnCls: string
+  onAdd: (type: NewDraftMessage['type']) => void
+}
+
+/** Botão "+ Adicionar Resposta" com dropdown de tipos de mensagem. */
+function AddMessageMenu({ isDark, dashedBtnCls, onAdd }: AddMessageMenuProps) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement | null
+      if (wrapRef.current && !wrapRef.current.contains(target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [open])
+
+  const menuCls = `absolute bottom-full left-0 mb-1 z-50 rounded-lg shadow-lg border overflow-hidden ${
+    isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+  }`
+  const itemCls = `w-full text-left text-xs px-3 py-2 transition-colors ${
+    isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-50'
+  }`
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button className={dashedBtnCls} onClick={() => setOpen(o => !o)}>
+        + Adicionar Resposta
+      </button>
+      {open && (
+        <div className={menuCls}>
+          {ADD_MESSAGE_OPTIONS.map(opt => (
+            <button
+              key={opt.type}
+              className={itemCls}
+              onClick={() => { onAdd(opt.type); setOpen(false) }}
+            >
+              {ADD_MESSAGE_ICONS[opt.type] ?? '✏️'} {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface VariablePickerProps {
   value: string
   onChange: (value: string) => void
@@ -979,24 +1457,35 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
     }
 
     if (showContent) {
+      // Menu Botão/Lista da condição de escolha (in-place ANTES das remoções, para o
+      // ref não deslocar) + destinos. Menu novo é adicionado; salvo é substituído.
+      if (draft.choiceCondIdx >= 0) {
+        const m = draft.menu
+        if (m) {
+          const cfg = { header: m.header, body: m.body, footer: m.footer, title: m.title, items: m.items, variant: m.variant }
+          if (m.editRef) {
+            results.push(replaceButtonListMessage(intent, m.editRef, cfg))
+          } else if (m.body.trim() || m.items.some(it => it.text.trim())) {
+            results.push(addButtonListMessage(intent, cfg, draft.choiceCondIdx))
+          }
+        }
+        results.push(setChoices(intent, draft.choiceCondIdx, draft.choices))
+      }
       results.push(
-        ...draft.messages.map(m => updateMessageText(intent, m.ref, m.text)),
+        // Apenas TEXT é editável em mensagens existentes; IMAGE/FILE/VIDEO são display-only.
+        ...draft.messages.filter(m => m.type === 'TEXT').map(m => updateMessageText(intent, m.ref, m.text)),
         ...[...draft.removedRefs]
           .sort((a, b) => b.condIdx - a.condIdx || b.sayIdx - a.sayIdx || b.msgIdx - a.msgIdx)
           .map(ref => removeMessage(intent, ref)),
-        ...draft.newMessages.filter(t => t.trim()).map(t => addTextMessage(intent, t.trim(), ci ?? 0)),
-      )
-      if (draft.newButtonsBody !== null && draft.newButtonsBody.trim()) {
-        results.push(addButtonsMessage(intent, draft.newButtonsBody.trim(), ci))
-      }
-      results.push(
-        ...draft.buttons
-          .filter(b => b.originalIdx !== null)
-          .map(b => updateButton(intent, b.originalIdx as number, b.text, b.description || null, ci)),
-        ...[...draft.removedButtonIdxs].sort((a, b) => b - a).map(i => removeButton(intent, i, ci)),
-        ...draft.buttons
-          .filter(b => b.originalIdx === null && b.text.trim())
-          .map(b => addButton(intent, b.text.trim(), b.description || null, ci)),
+        ...draft.newMessages
+          // Botão/Lista só conta se tiver corpo ou algum item digitado (evita erro em rascunho vazio).
+          .filter(m => m.type === 'BUTTONLIST' ? (m.body.trim() || m.items.some(it => it.text.trim())) : m.content.trim())
+          .map(m =>
+            m.type === 'TEXT' ? addTextMessage(intent, m.content.trim(), ci ?? 0)
+            : m.type === 'BUTTONLIST'
+              ? addButtonListMessage(intent, { header: m.header, body: m.body, footer: m.footer, title: m.title, items: m.items, variant: m.variant }, ci ?? 0)
+              : addMediaMessage(intent, m.type, m.content.trim(), m.fileName.trim(), ci ?? 0)
+          ),
       )
       if (kind === 'transferNode') {
         results.push(updateActionFields(intent, 'transfer', { transferType: draft.transferType, value: draft.transferValue }, ci))
@@ -1177,11 +1666,53 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
             {showContent && draft && (
               <Section title="Mensagens" isDark={isDark}>
                 <div className="flex flex-col gap-2">
+                  {/* Mensagens existentes */}
                   {draft.messages.map((msg, i) => (
                     <div key={`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`} className="flex flex-col gap-0.5">
-                      <div className="flex items-center justify-between">
-                        <span className={labelCls}>{msg.type}</span>
-                        {msg.type === 'TEXT' && (
+                      {msg.type === 'TEXT' ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className={labelCls}>Texto</span>
+                            <button
+                              className={ghostBtnCls}
+                              onClick={() => setDraft(d => d && ({
+                                ...d,
+                                messages: d.messages.filter((_, j) => j !== i),
+                                removedRefs: [...d.removedRefs, msg.ref],
+                              }))}
+                            >remover</button>
+                          </div>
+                          <VariableTextArea
+                            className={`${inputCls} resize-y min-h-[56px]`}
+                            value={msg.text}
+                            isDark={isDark}
+                            onChange={v => setDraft(d => d && ({
+                              ...d,
+                              messages: d.messages.map((m, j) => j === i ? { ...m, text: v } : m),
+                            }))}
+                          />
+                        </>
+                      ) : isDisplayButtonList(intent, msg.ref, msg.type) ? (
+                        <ButtonListSummary
+                          config={intent!.conditions[msg.ref.condIdx].assistant_says[msg.ref.sayIdx].messages[msg.ref.msgIdx].messageConfig!}
+                          msgType={msg.type}
+                          isDark={isDark}
+                          labelCls={labelCls}
+                          ghostBtnCls={ghostBtnCls}
+                          onRemove={() => setDraft(d => d && ({
+                            ...d,
+                            messages: d.messages.filter((_, j) => j !== i),
+                            removedRefs: [...d.removedRefs, msg.ref],
+                          }))}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span>{MEDIA_ICONS[msg.type] ?? '📎'}</span>
+                            <span className={`${labelCls} truncate`} title={msg.fileName || msg.text}>
+                              {msg.fileName || msg.text.split('/').pop() || msg.type}
+                            </span>
+                          </div>
                           <button
                             className={ghostBtnCls}
                             onClick={() => setDraft(d => d && ({
@@ -1190,105 +1721,125 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
                               removedRefs: [...d.removedRefs, msg.ref],
                             }))}
                           >remover</button>
-                        )}
-                      </div>
-                      <VariableTextArea
-                        className={`${inputCls} resize-y min-h-[56px]`}
-                        value={msg.text}
-                        isDark={isDark}
-                        onChange={v => setDraft(d => d && ({
-                          ...d,
-                          messages: d.messages.map((m, j) => j === i ? { ...m, text: v } : m),
-                        }))}
-                      />
-                    </div>
-                  ))}
-                  {draft.newMessages.map((text, i) => (
-                    <div key={`new-${i}`} className="flex flex-col gap-0.5">
-                      <div className="flex items-center justify-between">
-                        <span className={labelCls}>TEXT (nova)</span>
-                        <button
-                          className={ghostBtnCls}
-                          onClick={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
-                        >remover</button>
-                      </div>
-                      <VariableTextArea
-                        className={`${inputCls} resize-y min-h-[56px]`}
-                        value={text}
-                        isDark={isDark}
-                        placeholder="Texto da mensagem…"
-                        onChange={v => set('newMessages', draft.newMessages.map((t, j) => j === i ? v : t))}
-                      />
-                    </div>
-                  ))}
-                  <button className={dashedBtnCls} onClick={() => set('newMessages', [...draft.newMessages, ''])}>
-                    + Adicionar mensagem de texto
-                  </button>
-                </div>
-              </Section>
-            )}
-
-            {showContent && draft && (draft.buttons.length > 0 || kind === 'choiceNode') && (
-              <Section title="Opções (botões ↔ escolhas)" isDark={isDark}>
-                <div className="flex flex-col gap-2">
-                  {draft.buttons.map((btn, i) => (
-                    <div key={i} className={`flex flex-col gap-1 border rounded-lg p-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          className={inputCls}
-                          value={btn.text}
-                          placeholder="Texto do botão"
-                          onChange={e => set('buttons', draft.buttons.map((b, j) => j === i ? { ...b, text: e.target.value } : b))}
-                        />
-                        {kind === 'choiceNode' && (
-                          <button
-                            className={ghostBtnCls}
-                            title="Remover botão e a escolha correspondente"
-                            onClick={() => setDraft(d => d && ({
-                              ...d,
-                              buttons: d.buttons.filter((_, j) => j !== i),
-                              removedButtonIdxs: btn.originalIdx !== null
-                                ? [...d.removedButtonIdxs, btn.originalIdx]
-                                : d.removedButtonIdxs,
-                            }))}
-                          >×</button>
-                        )}
-                      </div>
-                      <input
-                        className={inputCls}
-                        value={btn.description}
-                        placeholder="Descrição (opcional)"
-                        onChange={e => set('buttons', draft.buttons.map((b, j) => j === i ? { ...b, description: e.target.value } : b))}
-                      />
-                      {btn.originalIdx === null && (
-                        <p className={labelCls}>novo — conecte no canvas após aplicar</p>
+                        </div>
                       )}
                     </div>
                   ))}
 
-                  {kind === 'choiceNode' && !hasButtonsMessage(intent!, condIdx, mode) && draft.newButtonsBody === null && (
-                    <button className={dashedBtnCls} onClick={() => set('newButtonsBody', '')}>
-                      + Criar mensagem de botões
-                    </button>
-                  )}
-                  {draft.newButtonsBody !== null && (
-                    <label className="flex flex-col gap-1">
-                      <span className={labelCls}>Corpo da mensagem de botões (nova)</span>
-                      <VariableTextArea
-                        className={`${inputCls} resize-y min-h-[56px]`}
-                        value={draft.newButtonsBody}
+                  {/* Novas mensagens ainda não aplicadas */}
+                  {draft.newMessages.map((msg, i) => (
+                    <div key={`new-${i}`}>
+                      {msg.type === 'TEXT' ? (
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center justify-between">
+                            <span className={labelCls}>Texto (nova)</span>
+                            <button
+                              className={ghostBtnCls}
+                              onClick={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
+                            >remover</button>
+                          </div>
+                          <VariableTextArea
+                            className={`${inputCls} resize-y min-h-[56px]`}
+                            value={msg.content}
+                            isDark={isDark}
+                            placeholder="Texto da mensagem…"
+                            onChange={v => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, content: v } : m))}
+                          />
+                        </div>
+                      ) : msg.type === 'BUTTONLIST' ? (
+                        <ButtonListEditor
+                          msg={msg}
+                          isDark={isDark}
+                          inputCls={inputCls}
+                          labelCls={labelCls}
+                          ghostBtnCls={ghostBtnCls}
+                          dashedBtnCls={dashedBtnCls}
+                          onChange={next => set('newMessages', draft.newMessages.map((m, j) => j === i ? next : m))}
+                          onRemove={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
+                        />
+                      ) : (
+                        <MediaMessageEditor
+                          msg={msg}
+                          index={i}
+                          isDark={isDark}
+                          inputCls={inputCls}
+                          labelCls={labelCls}
+                          ghostBtnCls={ghostBtnCls}
+                          onChange={(content, fileName) => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, content, fileName } : m))}
+                          onRemove={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
+                        />
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Botão "+ Adicionar Resposta" com dropdown de tipos */}
+                  <AddMessageMenu
+                    isDark={isDark}
+                    dashedBtnCls={dashedBtnCls}
+                    onAdd={type => set('newMessages', [...draft.newMessages, type === 'BUTTONLIST'
+                      ? { type, variant: 'plain', header: '', body: '', footer: '', title: '', items: [{ text: '', description: '' }] }
+                      : { type, content: '', fileName: '' }])}
+                  />
+                </div>
+              </Section>
+            )}
+
+            {showContent && draft && kind === 'choiceNode' && (
+              <Section title="Menu (Botão/Lista)" isDark={isDark}>
+                <div className="flex flex-col gap-2">
+                  {draft.menu ? (
+                    <>
+                      <ButtonListEditor
+                        msg={{ type: 'BUTTONLIST', variant: draft.menu.variant, header: draft.menu.header, body: draft.menu.body, footer: draft.menu.footer, title: draft.menu.title, items: draft.menu.items }}
                         isDark={isDark}
-                        placeholder="Texto que acompanha os botões…"
-                        onChange={v => set('newButtonsBody', v)}
+                        inputCls={inputCls}
+                        labelCls={labelCls}
+                        ghostBtnCls={ghostBtnCls}
+                        dashedBtnCls={dashedBtnCls}
+                        onChange={next => setDraft(d => (d && d.menu) ? { ...d, menu: { ...d.menu, variant: next.variant, header: next.header, body: next.body, footer: next.footer, title: next.title, items: next.items } } : d)}
+                        onRemove={() => setDraft(d => d && ({ ...d, menu: null, removedRefs: d.menu?.editRef ? [...d.removedRefs, d.menu.editRef] : d.removedRefs }))}
                       />
-                    </label>
-                  )}
-                  {kind === 'choiceNode' && (hasButtonsMessage(intent!, condIdx, mode) || draft.newButtonsBody !== null) && (
+                      <span className={labelCls}>Pré-visualização</span>
+                      <MenuPreview menu={draft.menu} isDark={isDark} />
+                    </>
+                  ) : (
                     <button
                       className={dashedBtnCls}
-                      onClick={() => set('buttons', [...draft.buttons, { text: '', description: '', originalIdx: null }])}
-                    >+ Adicionar botão</button>
+                      onClick={() => set('menu', { editRef: null, variant: 'plain', header: '', body: '', footer: '', title: '', items: [{ text: '', description: '' }] })}
+                    >+ Criar menu Botão/Lista</button>
                   )}
+                </div>
+              </Section>
+            )}
+
+            {showContent && draft && kind === 'choiceNode' && (
+              <Section title="Escolhas" isDark={isDark}>
+                <div className="flex flex-col gap-2">
+                  <p className={`text-[11px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Cada escolha liga, pela ordem, ao item de mesma posição do menu. Item sem destino pode transitar por palavra-chave.
+                  </p>
+                  {draft.choices.map((dest, i) => (
+                    <div key={i} className={`flex flex-col gap-1 border rounded-lg p-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className={labelCls}>
+                          Opção {i + 1}{draft.menu?.items[i]?.text.trim() ? `: ${draft.menu.items[i].text}` : ''}
+                        </span>
+                        <button className={ghostBtnCls} title="Remover escolha" onClick={() => set('choices', draft.choices.filter((_, j) => j !== i))}>×</button>
+                      </div>
+                      <IntentSelect
+                        value={dest}
+                        onChange={v => set('choices', draft.choices.map((c, j) => j === i ? v : c))}
+                        intents={intents.filter(it => it.id !== intent!.id)}
+                        inputCls={inputCls}
+                        emptyLabel="Sem destino (palavra-chave)"
+                      />
+                    </div>
+                  ))}
+                  <button
+                    className={`${dashedBtnCls} ${draft.menu && draft.choices.length >= draft.menu.items.length ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    disabled={!!draft.menu && draft.choices.length >= draft.menu.items.length}
+                    onClick={() => set('choices', [...draft.choices, ''])}
+                  >+ Adicionar Escolha</button>
                 </div>
               </Section>
             )}

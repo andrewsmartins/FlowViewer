@@ -17,7 +17,8 @@ interface NewFlowDialogProps {
  */
 export function NewFlowDialog({ hasFlow, onCreate, onClose }: NewFlowDialogProps) {
   const isDark = useTheme()
-  const [botId, setBotId] = useState('')
+  // Pré-preenche o bot de testes padrão; o usuário ainda pode trocar antes de criar.
+  const [botId, setBotId] = useState('2a3859ff-62d5-4c01-ae60-6ae2f812e786')
   const [error, setError] = useState<string | null>(null)
 
   function handleCreate() {

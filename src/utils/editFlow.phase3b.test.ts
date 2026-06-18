@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join, dirname } from 'node:path'
 import { applyConnect, applyEdgeDelete, applyNodeDelete } from './editFlow'
-import { addButton, removeButton, addButtonsMessage, updateCondition, addCondition, removeCondition } from './editIntent'
+import { addButton, removeButton, addButtonsMessage, updateCondition, addCondition, removeCondition, addButtonListMessage } from './editIntent'
 import { createIntentTemplate } from './intentTemplates'
 import { parseFlow } from './parseFlow'
 import type { BotFlowJson, BotIntent } from '../types'
@@ -40,6 +40,40 @@ describe('fluxo completo de escolhas: mensagem → botão → conectar → delet
     expect(edges).toHaveLength(1)
     expect(edges[0].label).toBe('Opção A')
     expect(edges[0].id).toBe(`${choice.id}-c0-ch0`)
+  })
+
+  it('conecta opção LIVRE do menu criando um slot novo (modelo desacoplado 10c)', () => {
+    const { json, choice, target } = choiceFlow()
+    const target2 = createIntentTemplate('defaultNode', BOT_ID, 'destino2')
+    json.list.push(target2)
+    // Menu com 2 itens e NENHUMA escolha (choices vazio) → itens livres.
+    addButtonListMessage(choice, {
+      header: '', body: 'Escolha', footer: '', title: '', variant: 'plain',
+      items: [{ text: 'A', description: '' }, { text: 'B', description: '' }],
+    })
+    expect(choice.conditions[0].action.choices).toEqual([])
+
+    // 1ª conexão cria o slot da opção 0; a 2ª, da opção 1.
+    expect(applyConnect(json, choice.id, target.id)).toEqual({ ok: true, kind: 'choice', condIdx: 0 })
+    expect(choice.conditions[0].action.choices).toEqual([target.id])
+    expect(applyConnect(json, choice.id, target2.id)).toEqual({ ok: true, kind: 'choice', condIdx: 0 })
+    expect(choice.conditions[0].action.choices).toEqual([target.id, target2.id])
+
+    // Sem mais itens livres (2 itens, 2 destinos) → falha.
+    const target3 = createIntentTemplate('defaultNode', BOT_ID, 'destino3')
+    json.list.push(target3)
+    expect(applyConnect(json, choice.id, target3.id).ok).toBe(false)
+  })
+
+  it('preenche o slot vazio do MEIO antes de criar um novo', () => {
+    const { json, choice, target } = choiceFlow()
+    addButtonListMessage(choice, {
+      header: '', body: 'm', footer: '', title: '', variant: 'plain',
+      items: [{ text: 'A', description: '' }, { text: 'B', description: '' }, { text: 'C', description: '' }],
+    })
+    choice.conditions[0].action.choices = ['x', '', 'z'] // slot 1 vazio
+    expect(applyConnect(json, choice.id, target.id)).toEqual({ ok: true, kind: 'choice', condIdx: 0 })
+    expect(choice.conditions[0].action.choices).toEqual(['x', target.id, 'z'])
   })
 
   it('deletar aresta de escolha esvazia o slot mantendo o botão', () => {
@@ -131,14 +165,14 @@ describe('applyConnect — origem por condição (Modelo B, Marco C)', () => {
     expect(again.ok).toBe(false)
   })
 
-  it('filho de escolha sem slot livre pede para adicionar botão', () => {
+  it('filho de escolha sem itens no menu pede para criar itens', () => {
     const choice = createIntentTemplate('choiceNode', BOT_ID, 'menu')
-    addCondition(choice) // c1 none; c0 é a choice, sem botões → choices vazio
+    addCondition(choice) // c1 none; c0 é a choice, sem menu → nenhum item livre
     const target = createIntentTemplate('defaultNode', BOT_ID, 'd')
     const json = { list: [choice, target] }
     const r = applyConnect(json, `${choice.id}::c0`, target.id)
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.reason).toMatch(/slot livre|botão/)
+    if (!r.ok) expect(r.reason).toMatch(/menu|item|opç/)
   })
 
   it('condição inexistente no filho falha com mensagem clara', () => {

@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { Team } from '../utils/teams'
+import type { UploadMediaType } from '../utils/uploadMedia'
 
 /** Estado do carregamento dos times da loja (variável `@team`). */
 export type TeamsStatus = 'idle' | 'loading' | 'loaded' | 'error'
@@ -23,6 +24,11 @@ export interface TeamsContextValue {
   requestToken: () => void
   /** Mapa objectId→nome, para o `variableDisplay` mostrar o nome do time. */
   byId: ReadonlyMap<string, string>
+  /**
+   * Faz upload de um arquivo de mídia para a OmniChat e devolve a URL pública + nome.
+   * Lança Error se não houver token ou se o upload falhar.
+   */
+  uploadFile: (file: File, type: UploadMediaType) => Promise<{ content: string; fileName: string }>
 }
 
 const EMPTY: TeamsContextValue = {
@@ -33,6 +39,7 @@ const EMPTY: TeamsContextValue = {
   hasToken: false,
   requestToken: () => {},
   byId: new Map(),
+  uploadFile: () => Promise.reject(new Error('sem token de sessão')),
 }
 
 export const TeamsContext = createContext<TeamsContextValue>(EMPTY)
