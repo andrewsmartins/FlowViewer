@@ -43,7 +43,7 @@ Se já houver um fluxo com edições na tela, o modal avisa antes de substituir.
 ## 2. Navegar no canvas
 
 - **Scroll** dá zoom; **arrastar** o fundo faz pan; o **minimapa** mostra a visão geral.
-- Os botões **− espaço +** na toolbar ajustam o espaçamento do layout automático.
+- No **pill de controles** (rodapé), à direita do zoom e separados por um divisor, os botões de **recolher/expandir** ajustam o espaçamento do layout automático.
 - Nós podem ser arrastados para reposicionar (apenas visual — não altera o JSON).
 
 ---

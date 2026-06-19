@@ -30,8 +30,6 @@ interface SidebarProps {
   onExport: (format: ExportFormat) => void
   onPush: () => void
   onRestore: () => void
-  onSpacingIncrease: () => void
-  onSpacingDecrease: () => void
 }
 
 /** Fecha o dropdown ao clicar fora dele. */
@@ -57,7 +55,7 @@ function useClickOutside(onOutside: () => void) {
  * popovers que ele abre (Exportar, Token, validação) acompanham o tema do app.
  */
 export function Sidebar(props: SidebarProps) {
-  const { version, report, hasFlow, exporting, canUndo, canRedo, canPush, sessionToken, onSessionTokenChange, tokenOpen, onTokenOpenChange, themeToggle, onUndo, onRedo, onImport, onNewFlow, onExport, onPush, onRestore, onSpacingIncrease, onSpacingDecrease } = props
+  const { version, report, hasFlow, exporting, canUndo, canRedo, canPush, sessionToken, onSessionTokenChange, tokenOpen, onTokenOpenChange, themeToggle, onUndo, onRedo, onImport, onNewFlow, onExport, onPush, onRestore } = props
   const isDark = useTheme()
   const [exportOpen, setExportOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
@@ -120,12 +118,6 @@ export function Sidebar(props: SidebarProps) {
       {/* Edição */}
       <RailButton label="Desfazer" icon={<UndoIcon />} onClick={onUndo} disabled={!canUndo} />
       <RailButton label="Refazer" icon={<RedoIcon />} onClick={onRedo} disabled={!canRedo} />
-
-      <Divider />
-
-      {/* Espaçamento do layout */}
-      <RailButton label="Diminuir espaçamento" icon={<MinusIcon />} onClick={onSpacingDecrease} disabled={!hasFlow} />
-      <RailButton label="Aumentar espaçamento" icon={<PlusIcon />} onClick={onSpacingIncrease} disabled={!hasFlow} />
 
       {/* Rodapé */}
       <div className="mt-auto flex flex-col items-center gap-1">
@@ -259,9 +251,6 @@ function FlowMark() {
 
 function PlusIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-}
-function MinusIcon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /></svg>
 }
 function UploadIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>

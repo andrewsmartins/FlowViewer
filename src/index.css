@@ -19,18 +19,18 @@ body { margin: 0; }
   flex-direction: row;
   gap: 2px;
   padding: 4px;
-  border-radius: 9999px;
+  border-radius: 12px;
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #94a3b8;
   box-shadow: 0 4px 16px rgb(15 23 42 / 0.10);
 }
 .react-flow__controls .react-flow__controls-button {
   width: 30px;
   height: 30px;
   border: none;
-  border-radius: 9999px;
+  border-radius: 8px;
   background: transparent;
-  color: #475569;
+  color: #000000;
   transition: background-color 0.15s, color 0.15s;
 }
 .react-flow__controls .react-flow__controls-button:hover {
@@ -48,11 +48,54 @@ body { margin: 0; }
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.40);
 }
 .dark .react-flow__controls .react-flow__controls-button {
-  color: #cbd5e1;
+  color: #ffffff;
 }
 .dark .react-flow__controls .react-flow__controls-button:hover {
   background: #334155;
   color: #f1f5f9;
+}
+/* Indicador de porcentagem de zoom entre os botões + e −. `tabular-nums` + a
+   largura mínima evitam o número "tremer" durante o zoom contínuo. */
+.react-flow__controls .react-flow__controls-zoom-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #000000;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, color 0.15s;
+}
+.react-flow__controls .react-flow__controls-zoom-value:hover {
+  background: #f1f5f9;
+  color: #000000;
+}
+.dark .react-flow__controls .react-flow__controls-zoom-value {
+  color: #ffffff;
+}
+.dark .react-flow__controls .react-flow__controls-zoom-value:hover {
+  background: #334155;
+  color: #f1f5f9;
+}
+/* Divisor entre o grupo de zoom e o grupo de espaçamento do layout. */
+.react-flow__controls .react-flow__controls-divider {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: #cbd5e1;
+}
+.dark .react-flow__controls .react-flow__controls-divider {
+  background: #475569;
 }
 
 /* Handles maiores para facilitar mirar ao reconectar arestas */
@@ -108,6 +151,18 @@ body { margin: 0; }
    o React Flow injeta no wrapper do nó — não no card, que tem overflow-hidden e
    recortaria o anel. A cor vem da CSS var `--node-color`, publicada por
    `NodeShell` a partir do `nodeVisual.ts` (fallback violeta se ausente). */
+/* Intenção com MAIS DE UMA condição = container `intentGroupNode` (parseFlow:
+   `>= 2` condições viram grupo; 1 condição vira nó solo). Sua seleção usa uma cor
+   PRÓPRIA (âmbar `#f59e0b`, livre desde que a Mensagem virou fuchsia) — distinta
+   da cor-do-tipo dos nós solo — para deixar claro que
+   o que está selecionado é o grupo inteiro, não uma condição. O `intentGroupNode`
+   não usa `NodeShell`, então não publica `--node-color`; definimos aqui na classe
+   de tipo que o React Flow injeta no wrapper. Só a seleção (`::after`) consome a
+   var, então não há efeito colateral no card nem nos filhos (que são wrappers
+   irmãos no DOM, não descendentes). */
+.react-flow__node-intentGroupNode {
+  --node-color: #f59e0b;
+}
 .react-flow__node.selected::after {
   content: '';
   position: absolute;

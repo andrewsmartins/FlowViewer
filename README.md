@@ -10,7 +10,7 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 
 ### Visualização
 - Geração automática de fluxograma a partir do JSON do bot
-- Layout hierárquico top-down calculado pelo [Dagre](https://github.com/dagrejs/dagre), com controle de espaçamento (botões `−` / `+` na toolbar)
+- Layout hierárquico top-down calculado pelo [Dagre](https://github.com/dagrejs/dagre), com controle de espaçamento (botões recolher/expandir no pill de controles, à direita do zoom)
 - **Modelo B** — um nó por **condição**, tipado pela ação dela; intenções com 2+ condições viram um **grupo** (container) com os nós-condição como filhos; cada um dos 11 `ActionType` da plataforma tem nó dedicado
 - 13 tipos de nó com cores distintas (veja [Tipos de nó](#tipos-de-nó))
 - Arestas tipadas: **fluxo** (cinza, com tag de rótulo + botão de remover), **contexto** (tracejada violeta) e **redirect a outro bot** (âmbar, animada)
@@ -82,7 +82,7 @@ O servidor sobe em `http://localhost:5173`.
 
 1. **Importar** (toolbar) abre o modal: cole o JSON do bot (resposta da aba Network) ou carregue um arquivo `.json`, e clique em **Gerar fluxo** (`Ctrl+Enter`) — ou use **Novo fluxo** informando o botId para começar do zero
    > Arquivos de exemplo em `samples/` (não versionados — dados reais): `sample01.json` (12 nós), `sample02.json` (159 nós) e `sample03.json` (141 nós)
-2. Use scroll para zoom e arraste para navegar; os botões **−** / **+** na barra superior ajustam o espaçamento do layout
+2. Use scroll para zoom e arraste para navegar; no pill de controles (rodapé), à direita do zoom, os botões de recolher/expandir ajustam o espaçamento do layout
 3. Para **criar** um nó, arraste um tipo da paleta (canto superior esquerdo) até a posição desejada
 4. Para **conectar**, arraste do handle inferior de um nó até outro nó; para **reconectar**, arraste a ponta de destino (seta) de uma aresta — conexões para outros bots não são editáveis
 5. Para **editar conteúdo**, clique no nó e use o painel à direita (Aplicar alterações grava no modelo)
@@ -150,7 +150,7 @@ Cada intent contém um array `conditions` que define tanto as **mensagens que o 
 | `"transfer"` | Transfere a conversa para um atendente humano | Vermelho |
 | `"waitForInteraction"` | Aguarda interação do usuário sem capturar dado | Ciano |
 | `"setData"` | Atribui valor a uma ou mais variáveis | Índigo |
-| `"endConversation"` | Encerra a conversa | Vermelho escuro |
+| `"endConversation"` | Encerra a conversa | Grafite |
 | `"external"` | Chama uma API externa | Verde-azulado |
 | `"none"` | Sem ação, apenas avança para o próximo nó | Cinza |
 
@@ -255,13 +255,13 @@ src/
 │       ├── TransferNode.tsx        Transferência para atendente (vermelho)
 │       ├── WaitNode.tsx            Espera por interação (ciano)
 │       ├── SetDataNode.tsx         Atribuição de variáveis (índigo)
-│       ├── EndNode.tsx             Encerramento de conversa (vermelho escuro)
+│       ├── EndNode.tsx             Encerramento de conversa (grafite)
 │       ├── ApiCallNode.tsx         Chamada de API externa (verde-azulado)
 │       ├── OrderNode.tsx           Pedido (laranja)
 │       ├── CsatNode.tsx            Captura CSAT (rosa)
 │       ├── StoreNode.tsx           Loja física (verde-limão)
 │       ├── ExternalBotNode.tsx     Redirecionamento a outro bot (âmbar)
-│       └── DefaultNode.tsx         Mensagem / encadeamento sem ação (cinza)
+│       └── DefaultNode.tsx         Mensagem / encadeamento sem ação (fuchsia)
 └── scripts/                    CLIs e smoke tests (push, rollback, smoke-phase*.mjs)
 ```
 
@@ -294,7 +294,7 @@ No **Modelo B**, cada **condição** vira um nó, tipado pela `action` dela (`ac
 | Vermelho | Transferência | `transfer` |
 | Ciano | Espera | `waitForInteraction` |
 | Índigo | Atribuição | `setData` |
-| Vermelho escuro | Encerramento | `endConversation` |
+| Grafite | Encerramento | `endConversation` |
 | Verde-azulado | Chamada de API | `external` |
 | Laranja | Pedido | `order` |
 | Rosa | Captura CSAT | `captureCsat` |

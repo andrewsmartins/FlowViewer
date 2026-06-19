@@ -775,8 +775,6 @@ export default function App() {
         onExport={handleExport}
         onPush={() => setPushOpen(true)}
         onRestore={() => setRestoreOpen(true)}
-        onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
-        onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
       />
 
       <main className="flex-1 relative overflow-hidden min-w-0">
@@ -798,6 +796,8 @@ export default function App() {
               onDuplicateFinish={handleDuplicateFinish}
               onClearHighlight={handleClearHighlight}
               onDeleteEdge={handleDeleteEdge}
+              onSpacingIncrease={() => handleSpacingChange(SPACING_STEP)}
+              onSpacingDecrease={() => handleSpacingChange(-SPACING_STEP)}
             />
             {selectedNode && (
               <DetailPanel

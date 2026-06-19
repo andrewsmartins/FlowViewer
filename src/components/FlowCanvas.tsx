@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type DragEvent } from 'react'
-import { ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, useReactFlow, type Node, type Edge, type NodeMouseHandler, type OnNodeDrag, type MiniMapNodeProps, type NodeChange, type EdgeChange, type Connection, type XYPosition } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Background, Controls, ControlButton, MiniMap, useReactFlow, useViewport, type Node, type Edge, type NodeMouseHandler, type OnNodeDrag, type MiniMapNodeProps, type NodeChange, type EdgeChange, type Connection, type XYPosition } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { NodePalette, PALETTE_DRAG_TYPE } from './NodePalette'
 import { isCreatableKind, type CreatableKind } from '../utils/intentTemplates'
@@ -68,6 +68,10 @@ interface FlowCanvasProps {
   onClearHighlight: (nodeId: string) => void
   /** Remover uma conexão pelo botão "×" da aresta (mesmo caminho do Delete). */
   onDeleteEdge: (edgeId: string) => void
+  /** Aumenta o espaçamento do layout automático (relayout via Dagre). */
+  onSpacingIncrease: () => void
+  /** Diminui o espaçamento do layout automático (relayout via Dagre). */
+  onSpacingDecrease: () => void
 }
 
 /**
@@ -97,7 +101,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
   )
 }
 
-function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onAddConditionToNode, onDuplicateStart, onDuplicateFinish, onClearHighlight, onDeleteEdge }: FlowCanvasProps) {
+function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onNodesChange, onReconnect, onConnect, onEdgesChange, onCreateNode, onAddConditionToNode, onDuplicateStart, onDuplicateFinish, onClearHighlight, onDeleteEdge, onSpacingIncrease, onSpacingDecrease }: FlowCanvasProps) {
   const { screenToFlowPosition } = useReactFlow()
   // Nó atualmente destacado como alvo de merge (manipulado via classe no DOM
   // para não re-renderizar o array controlado de nós a cada dragover).
@@ -197,7 +201,7 @@ function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onN
         bgColor={isDark ? '#020617' : '#ffffff'}
         color={isDark ? '#334155' : '#b6bfcc'}
       />
-      <Controls position="bottom-center" showInteractive={false} />
+      <ZoomControls onSpacingIncrease={onSpacingIncrease} onSpacingDecrease={onSpacingDecrease} />
       <MiniMap
         nodeColor={node => nodeColor(node.type)}
         maskColor={isDark ? 'rgba(15,23,42,0.75)' : 'rgba(248,250,252,0.7)'}
@@ -208,6 +212,66 @@ function FlowCanvasInner({ nodes, edges, layoutVersion, isDark, onNodeClick, onN
     </ReactFlow>
     </div>
     </EdgeActionsContext.Provider>
+  )
+}
+
+/**
+ * Controles de zoom (pill flutuante no rodapé). Remonta a linha manualmente — em
+ * vez de usar os botões padrão do `<Controls>` — porque o React Flow renderiza os
+ * children DEPOIS dos botões nativos, o que impediria inserir o indicador de
+ * porcentagem ENTRE o + e o −. O valor vem de `useViewport` (re-renderiza a cada
+ * mudança de zoom); clicar no número reseta para 100% (`zoomTo(1)`).
+ *
+ * À direita, separados por um divisor, ficam os botões de ESPAÇAMENTO do layout
+ * (Dagre) — controle distinto do zoom (não mexe na viewport, recalcula o layout).
+ * São diferenciados por duas pistas: o divisor e ícones próprios (recolher/expandir
+ * em vez de +/−). A cor é a mesma dos demais (preto/branco), por pedido.
+ */
+function ZoomControls({ onSpacingIncrease, onSpacingDecrease }: { onSpacingIncrease: () => void; onSpacingDecrease: () => void }) {
+  const { zoomIn, zoomOut, zoomTo, fitView } = useReactFlow()
+  const { zoom } = useViewport()
+  const percent = Math.round(zoom * 100)
+
+  return (
+    <Controls position="bottom-center" showZoom={false} showFitView={false} showInteractive={false}>
+      <ControlButton onClick={() => zoomIn({ duration: 200 })} title="Aproximar" aria-label="Aproximar">
+        <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z" /></svg>
+      </ControlButton>
+      <button
+        type="button"
+        className="react-flow__controls-zoom-value"
+        onClick={() => zoomTo(1, { duration: 200 })}
+        title="Restaurar zoom para 100%"
+        aria-label={`Zoom em ${percent}%. Clique para restaurar para 100%`}
+      >
+        {percent}%
+      </button>
+      <ControlButton onClick={() => zoomOut({ duration: 200 })} title="Afastar" aria-label="Afastar">
+        <svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z" /></svg>
+      </ControlButton>
+      <ControlButton onClick={() => fitView({ padding: 0.2, duration: 350 })} title="Ajustar à tela" aria-label="Ajustar à tela">
+        <svg viewBox="0 0 24 24"><path d="M9 4H4v5h2V6h3V4zm6 0v2h3v3h2V4h-5zM6 15H4v5h5v-2H6v-3zm12 3h-3v2h5v-5h-2v3z" /></svg>
+      </ControlButton>
+
+      <span className="react-flow__controls-divider" aria-hidden="true" />
+
+      <ControlButton onClick={onSpacingDecrease} title="Diminuir espaçamento do layout" aria-label="Diminuir espaçamento do layout">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ fill: 'none' }}>
+          <line x1="4" y1="3" x2="20" y2="3" />
+          <line x1="4" y1="21" x2="20" y2="21" />
+          <polyline points="8 7 12 11 16 7" />
+          <polyline points="8 17 12 13 16 17" />
+        </svg>
+      </ControlButton>
+      <ControlButton onClick={onSpacingIncrease} title="Aumentar espaçamento do layout" aria-label="Aumentar espaçamento do layout">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ fill: 'none' }}>
+          <line x1="4" y1="3" x2="20" y2="3" />
+          <line x1="4" y1="21" x2="20" y2="21" />
+          <polyline points="8 12 12 8 16 12" />
+          <polyline points="8 12 12 16 16 12" />
+        </svg>
+      </ControlButton>
+    </Controls>
   )
 }
 
