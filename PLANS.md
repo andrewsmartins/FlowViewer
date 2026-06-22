@@ -37,6 +37,36 @@
 > a branch; (2) avaliar as "Melhorias paralelas" (elkjs); (3) possível recriação de refs órfãs
 > no restore (caveat na "Fase 4b"). Publicação (`POST /publish`) FORA de escopo.
 
+## Feature — Tempo de envio da resposta (`executionDelay`)
+
+> **IMPLEMENTADA em 2026-06-22** na branch `feat/execution-delay` (a partir da `feat/template-message`). Versão **0.20.0**. 328 testes + tsc verdes (4 testes novos em `editIntent.test.ts`). Pendente: validação visual manual (rodar o app) e commit/PR. Decisões e mapa de implementação abaixo (úteis se algo precisar de ajuste).
+
+**Objetivo (uma frase):** adicionar, na seção "Geral" do `DetailPanel` (logo abaixo de Prioridade/Contexto), um checkbox ativo/inativo "Configurar tempo para envio da resposta" que, quando ligado, libera um campo numérico de 1–30 segundos gravado em `intent.executionDelay`.
+
+**Descrição do campo (UI):** "Defina o tempo que o bot deve esperar para responder uma ou mais mensagens."
+
+### Decisões (interrogatório 2026-06-22)
+1. **Serialização = número puro de segundos** (`executionDelay: 13`). É o que a plataforma OmniChat realmente exporta (ver exemplo do Andy); o ramo "objeto `{active}`" do `hasExecutionDelay` era chute defensivo e fica só como leitura tolerante. Fidelidade p/ push real (regra do CLAUDE.md).
+2. **Toggle OFF = remover o campo** do objeto (`delete intent.executionDelay`), **não** gravar `0`. Motivo (correção do Andy): na OmniChat *presença do campo = ativo*; gravar `0` faria toda intenção aparecer como "ativa + 0s".
+3. **Toggle ON exige mínimo 1s (faixa 1–30), default 1 ao ligar.** Evita o estado contraditório "ativo + 0s". Mantém `hasExecutionDelay` (`delay > 0`) coerente sem precisar alterá-lo. O "0" do enunciado vira o piso teórico → na prática 0 = desligar.
+4. **Validação rígida: bloquear "Aplicar".** Seguindo o padrão `captureInvalid` ([DetailPanel.tsx:2153](src/components/DetailPanel.tsx#L2153), botão em :2745-2755): criar `delayInvalid` e combinar no `disabled` + dica no rótulo. Inválido = toggle ON e segundos não-inteiro, vazio ou fora de 1–30 (borda de erro no input).
+5. **Controle = checkbox nativo** (`accent-violet-600`), reaproveitando o único padrão on/off do projeto (ex. [DetailPanel.tsx:2613](src/components/DetailPanel.tsx#L2613)). Sem componente de switch novo.
+6. **Escopo = mesmo de Prioridade/Contexto** (`showMeta` = modos `group`/`solo`, [DetailPanel.tsx:1953](src/components/DetailPanel.tsx#L1953)). Não aparece ao editar condição isolada nem em nós read-only.
+
+### Implementação (mapa)
+- **`Draft`** ([DetailPanel.tsx:166](src/components/DetailPanel.tsx#L166)): + `delayActive: boolean` e `delaySeconds: string` (string p/ tratar vazio/validação; converte no apply).
+- **Init do draft** (~[DetailPanel.tsx:316](src/components/DetailPanel.tsx#L316)): ler `intent.executionDelay` → se `number > 0`: `delayActive=true`, `delaySeconds=String(n)`; senão `false`/`''`. Ao marcar o checkbox com segundos vazio → semear `'1'`.
+- **JSX**: novo bloco abaixo do `<div className="flex gap-2">` de Prioridade/Contexto ([DetailPanel.tsx:2217-2234](src/components/DetailPanel.tsx#L2217-L2234)) — checkbox + label + texto de descrição (muted, 11px); input `type="number" min=1 max=30 step=1` revelado só quando `delayActive`.
+- **`delayInvalid`**: `draft.delayActive && (!/^\d+$/.test(draft.delaySeconds) || n<1 || n>30)`. Combinar: `disabled={captureInvalid || delayInvalid}` e ajustar o rótulo/estilo do botão.
+- **`handleApply`** (~[DetailPanel.tsx:2007](src/components/DetailPanel.tsx#L2007)): passar `executionDelay: draft.delayActive ? Number(draft.delaySeconds) : null` ao `updateIntentMeta`.
+- **`updateIntentMeta`** ([editIntent.ts:607](src/utils/editIntent.ts#L607)): + param `executionDelay?: number | null`. Se `> 0` → `intent.executionDelay = n`; se `null`/`0`/`undefined-mas-presente-no-meta` → `delete intent.executionDelay`. (`undefined` = não tocar, para não quebrar outros chamadores.)
+- **`types.ts`**: `executionDelay` segue como opcional; manter compatível com `hasExecutionDelay`.
+
+### Riscos / como testar
+- **Round-trip (principal):** importar JSON com `executionDelay: 13` → checkbox vem ON e campo 13; desligar + Aplicar → campo some do objeto exportado; ligar + 5s → exporta `executionDelay: 5`. **Teste unitário** em `editIntent` (Vitest): set grava número, off faz `delete`, fora de faixa não chega (barrado na UI).
+- **Caminho infeliz:** segundos vazio/`0`/`31`/`2.5`/negativo com toggle ON → "Aplicar" desabilitado + borda de erro; toggle OFF ignora qualquer valor residual no input.
+- **Não-regressão:** `captureInvalid` continua funcionando (a combinação `||` não pode mascarar a dica de captura). Rodar `tsc` + suíte (`vitest`) — alvo: manter verde.
+
 ## masterFlow.json — fluxo de exemplo canônico (construído por partes)
 
 > Iniciado 2026-06-22. Arquivo: [masterFlow.json](masterFlow.json) na raiz.
@@ -51,7 +81,12 @@
 3. Nomes/categorias: `start`·start / `mensagem_boas_vindas`·Mensagem / `encerrar`·Encerramento.
 4. O encerramento usa `action.type: endConversation` **com** uma `TEXT` de despedida ("Até logo! 👋").
 
-**Estado atual (Parte 1):** 3 intenções — Start (`startNode`) → Mensagem "Hello world!" (`defaultNode`) → Encerrar (`endNode`). Cadeia conexa, sem alvos órfãos.
+**Estado atual:**
+- **Parte 1:** cadeia Start (`startNode`) → Mensagem "Hello world!" (`defaultNode`) → Encerrar (`endNode`).
+- **Parte 2 — nós de teste (só mensagem):** cada nó documenta no `name` a referência do que testa e no corpo o texto do teste. Padrão estabelecido com `teste_contexto_palavra_chave` (`keywords:["teste"]`, `context: mensagem_boas_vindas`, corpo "Teste de Contexto + Palavra-chave", `next` folha). É standalone (gatilho por contexto+palavra-chave) → aparece como componente próprio, com aresta tracejada de contexto vinda da `mensagem_boas_vindas`.
+- **Parte 3 — Anexo + Prioridade:** 4 nós standalone de mensagem (`action.none` → `defaultNode`), um por tipo de anexo, cada um com prioridade distinta: `teste_anexo_imagem_prioridade_baixa` (IMAGE, 0.25), `teste_anexo_pdf_prioridade_media` (FILE, 0.5), `teste_anexo_video_prioridade_alta` (VIDEO, 0.75), `teste_anexo_colecao_prioridade_muito_alta` (COLLECTION `collectionId:72ae0Dqbfo`, 1). Links de mídia reais fornecidos pelo Andy.
+- **Parte 4 — Menu_Testes (choice/LIST) + cadeia "Teste Cabeçalho":** os 5 nós de teste tiveram `category` → `"Teste Cabeçalho"` e foram **encadeados em sequência** (contexto → imagem → pdf → vídeo → coleção → `encerrar`). Novo nó `Menu_Testes` (`action.choice` → `choiceNode`, `category: "Menu"`) com mensagem **LIST** toda preenchida (header/body/footer/título + botões com id/text/description). 3 itens: **Teste Cabeçalho** (conectado, `choices[0]` → início da cadeia) + 2 placeholders **Teste por Tipo** e **Teste por Ação** (slots `choices` vazios → aviso "sem conexão" do v0.19.0, reservados para caminhos futuros). Total: 9 intenções. `encerrar` agora é terminal compartilhado (recebe de `mensagem_boas_vindas` e da cadeia de teste). **Nota:** o JSON passou a ser formatado por `json.dump` (indent=2) a partir desta parte.
+- **Parte 5 — fluxo fechado:** `mensagem_boas_vindas.next` repontado de `encerrar` → `Menu_Testes`. Agora tudo é **1 componente conexo**: `start → boas_vindas → Menu_Testes → [Teste Cabeçalho] → cadeia → encerrar`. Placeholders do menu seguem sem destino.
 
 **Como foi testado:** parse JSON OK + simulação do grafo `parseFlow` (action→NodeKind e validação de que todo `next.intent.id` existe na lista). Pendente: validar visualmente no viewer e, se for dar push, confirmar contra a API real.
 

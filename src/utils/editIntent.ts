@@ -603,10 +603,23 @@ export function collectCategories(intents: BotIntent[]): string[] {
  * Atualiza a meta da intenção: nome, categoria, keywords e, no Modelo B
  * (Marco C), também `priority` e `context` (a intenção que precede esta — a
  * origem da aresta de contexto). `context` vazio limpa a referência (null).
+ *
+ * `executionDelay` é o tempo de espera (segundos) antes do bot responder. A
+ * plataforma OmniChat usa número puro e trata *presença do campo = ativo*; por
+ * isso `> 0` grava o número e qualquer outro caso (`null`/`0`) REMOVE o campo,
+ * em vez de gravar `0` (que apareceria como "ativo + 0s" na plataforma).
+ * `undefined` não toca no campo — preserva chamadores que não controlam o delay.
  */
 export function updateIntentMeta(
   intent: BotIntent,
-  meta: { name: string; category: string; keywords: string[]; priority?: number; context?: string | null },
+  meta: {
+    name: string
+    category: string
+    keywords: string[]
+    priority?: number
+    context?: string | null
+    executionDelay?: number | null
+  },
 ): EditResult {
   const name = meta.name.trim()
   if (!name) return { ok: false, reason: 'o nome da intenção não pode ficar vazio' }
@@ -618,6 +631,13 @@ export function updateIntentMeta(
   intent.keywords = meta.keywords.map(k => k.trim()).filter(Boolean)
   if (meta.priority !== undefined) intent.priority = meta.priority
   if (meta.context !== undefined) intent.context = meta.context?.trim() || null
+  if (meta.executionDelay !== undefined) {
+    if (typeof meta.executionDelay === 'number' && meta.executionDelay > 0) {
+      intent.executionDelay = meta.executionDelay
+    } else {
+      delete intent.executionDelay
+    }
+  }
   touch(intent)
   return { ok: true }
 }

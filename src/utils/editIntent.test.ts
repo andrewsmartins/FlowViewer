@@ -283,6 +283,34 @@ describe('updateIntentMeta', () => {
     expect(intent.priority).toBe(0.5)
     expect(intent.context).toBe('algo')
   })
+
+  it('grava executionDelay como número quando > 0', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [], executionDelay: 13 })
+    expect(intent.executionDelay).toBe(13)
+  })
+
+  it('remove executionDelay (não grava 0) quando o toggle é desligado', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    intent.executionDelay = 13
+    // null sinaliza "desligado" → o campo deve sumir do objeto, não virar 0.
+    updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [], executionDelay: null })
+    expect('executionDelay' in intent).toBe(false)
+  })
+
+  it('trata executionDelay 0 como desligado (remove o campo)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    intent.executionDelay = 5
+    updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [], executionDelay: 0 })
+    expect('executionDelay' in intent).toBe(false)
+  })
+
+  it('não mexe em executionDelay quando o campo é omitido', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    intent.executionDelay = 7
+    updateIntentMeta(intent, { name: 'x', category: 'c', keywords: [] })
+    expect(intent.executionDelay).toBe(7)
+  })
 })
 
 describe('sanitizeIntentName', () => {

@@ -170,6 +170,10 @@ interface Draft {
   keywords: string
   priority: number
   context: string
+  /** Toggle "Configurar tempo para envio da resposta" (intent.executionDelay > 0). */
+  delayActive: boolean
+  /** Segundos de espera como string (1–30); '' quando inativo/vazio. Vira número no apply. */
+  delaySeconds: string
   // Gatilho da condição editada (modo condition)
   condName: string
   condType: string
@@ -298,6 +302,11 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
     keywords: (intent.keywords ?? []).join(', '),
     priority: typeof intent.priority === 'number' ? intent.priority : 0,
     context: intent.context ?? '',
+    // `executionDelay` é número puro de segundos na plataforma; > 0 = toggle ligado.
+    delayActive: typeof intent.executionDelay === 'number' && intent.executionDelay > 0,
+    delaySeconds: typeof intent.executionDelay === 'number' && intent.executionDelay > 0
+      ? String(intent.executionDelay)
+      : '',
     condName: scopedCond?.name ?? '',
     condType: scopedCond?.type ?? 'any',
     condVariable: scopedCond?.variable ?? '',
@@ -2011,6 +2020,8 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
         keywords: draft.keywords.split(',').map(k => k.trim()).filter(Boolean),
         priority: draft.priority,
         context: draft.context,
+        // Ligado grava os segundos; desligado remove o campo (null sinaliza delete).
+        executionDelay: draft.delayActive ? Number(draft.delaySeconds) : null,
       }))
     }
 
@@ -2156,6 +2167,17 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
       : (!draft.captureDataType || draft.captureDataType === FREE_CAPTURE)
   )
 
+  // Com o toggle de tempo de envio ligado, os segundos precisam ser inteiro em [1,30].
+  const delayInvalid = !!draft && draft.delayActive && (() => {
+    if (!/^\d+$/.test(draft.delaySeconds)) return true
+    const n = Number(draft.delaySeconds)
+    return n < 1 || n > 30
+  })()
+
+  // "Aplicar" fica bloqueado enquanto houver dado de captura ou tempo de envio inválido.
+  const applyBlocked = captureInvalid || delayInvalid
+  const applyHint = captureInvalid ? ' (selecione um dado)' : delayInvalid ? ' (tempo: 1–30s)' : ''
+
   return (
     <div data-testid="detail-panel" className={`absolute right-0 top-0 h-full w-96 rounded-l-2xl shadow-2xl z-10 flex flex-col overflow-hidden ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
       {/* Header */}
@@ -2231,6 +2253,39 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
                         emptyLabel="Nenhum"
                       />
                     </label>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="accent-violet-600"
+                        checked={draft.delayActive}
+                        onChange={e => {
+                          const active = e.target.checked
+                          set('delayActive', active)
+                          // Ao ligar sem valor prévio, semeia o piso da faixa (1s).
+                          if (active && !draft.delaySeconds) set('delaySeconds', '1')
+                        }}
+                      />
+                      <span className={labelCls}>Configurar tempo para envio da resposta</span>
+                    </label>
+                    <span className={`text-[11px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Defina o tempo que o bot deve esperar para responder uma ou mais mensagens.
+                    </span>
+                    {draft.delayActive && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          step={1}
+                          className={`${inputCls} w-20 ${delayInvalid ? 'border-rose-500 focus:border-rose-500' : ''}`}
+                          value={draft.delaySeconds}
+                          onChange={e => set('delaySeconds', e.target.value)}
+                        />
+                        <span className={labelCls}>segundos (1–30)</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Section>
@@ -2743,16 +2798,16 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
           )}
           <button
             onClick={handleApply}
-            disabled={captureInvalid}
+            disabled={applyBlocked}
             className={[
               'w-full text-xs font-semibold rounded-lg px-3 py-2 transition-all duration-150',
               applied
                 ? 'bg-emerald-500 text-white'
-                : `bg-amber-400 text-slate-900 ${captureInvalid ? '' : 'hover:bg-amber-500'}`,
-              captureInvalid ? 'opacity-40 cursor-not-allowed' : 'active:scale-95',
+                : `bg-amber-400 text-slate-900 ${applyBlocked ? '' : 'hover:bg-amber-500'}`,
+              applyBlocked ? 'opacity-40 cursor-not-allowed' : 'active:scale-95',
               shake ? 'fluxo-shake' : '',
             ].join(' ')}
-          >{applied ? '✓ Aplicado' : `Aplicar alterações${captureInvalid ? ' (selecione um dado)' : ''}`}</button>
+          >{applied ? '✓ Aplicado' : `Aplicar alterações${applyHint}`}</button>
           {(mode === 'condition' || mode === 'solo') && intent && (
             <div className="flex gap-2">
               <button
