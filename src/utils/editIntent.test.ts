@@ -786,6 +786,21 @@ describe('updateActionFields / updateSetDataItems', () => {
     expect(action.multipleFields).toEqual(fields)
   })
 
+  it('grava storeType e entity na condição store (Loja física)', () => {
+    const intent = createIntentTemplate('storeNode', BOT_ID, 'x')
+    expect(updateActionFields(intent, 'store', { storeType: 'first', entity: 'list-id-123' })).toEqual({ ok: true })
+    const action = intent.conditions[0].action
+    expect(action.storeType).toBe('first')
+    expect(action.entity).toBe('list-id-123')
+  })
+
+  it('storeType vazio vira null; entity vazio é preservado como ""', () => {
+    const intent = createIntentTemplate('storeNode', BOT_ID, 'x')
+    updateActionFields(intent, 'store', { storeType: '', entity: '' })
+    expect(intent.conditions[0].action.storeType).toBeNull()
+    expect(intent.conditions[0].action.entity).toBe('')
+  })
+
   it('rejeita tipo de ação que a intenção não tem', () => {
     const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
     expect(updateActionFields(intent, 'transfer', { value: 'y' }).ok).toBe(false)

@@ -22,6 +22,13 @@ import { setNextRef, type EditResult } from '../utils/editFlow'
 import { CREATABLE_KINDS, CREATABLE_KIND_LABELS, type CreatableKind } from '../utils/intentTemplates'
 import { CAPTURE_FIELDS, CAPTURE_CATEGORY, MULTIPLE_FIELDS_SENTINEL, FREE_CAPTURE } from '../utils/captureFields'
 
+// Nó "Loja física": hoje só uma ação ("Selecionar a primeira loja" → storeType 'first').
+// Enum completo de storeType segue desconhecido; valor legado fora-da-lista é preservado
+// como <option> extra (anti-corrupção de import). Picker da Loja filtra Listas type === 'store'.
+const STORE_FIRST = 'first'
+const STORE_ACTIONS = [{ value: STORE_FIRST, label: 'Selecionar a primeira loja' }]
+const STORE_ENTITY_TYPE = 'store'
+
 const KIND_LABELS_LIGHT: Record<NodeKind, { label: string; color: string }> = {
   startNode:       { label: 'Início',          color: 'bg-emerald-100 text-emerald-700' },
   choiceNode:      { label: 'Escolha',          color: 'bg-blue-100 text-blue-700' },
@@ -201,6 +208,11 @@ interface Draft {
   captureDataType: string
   /** Dados marcados no modo múltiplo (array de `CaptureDataType`). */
   captureMultiple: string[]
+  // Nó "Loja física" (action.type === 'store').
+  /** Tipo da ação sobre a loja física; hoje só 'first' (preserva legado fora-da-lista). */
+  storeType: string
+  /** Id da Lista (`@entity`) escolhida — grava em `action.entity`. '' = nenhuma. */
+  storeEntity: string
   setDataItems: BulkUpdateItem[]
   // Lista de condições (modos group/solo) — estrutura da intenção
   conditions: DraftCondition[]
@@ -304,6 +316,9 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
   const setDataCond = mode === 'condition'
     ? (scopedCond?.action.type === 'setData' ? scopedCond : undefined)
     : intent.conditions.find(c => c.action.type === 'setData')
+  const storeCond = mode === 'condition'
+    ? (scopedCond?.action.type === 'store' ? scopedCond : undefined)
+    : intent.conditions.find(c => c.action.type === 'store')
 
   return {
     name: intent.name,
@@ -343,6 +358,9 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
     captureMultiple: Array.isArray(captureCond?.action.multipleFields)
       ? [...captureCond.action.multipleFields]
       : [],
+    // Loja física: storeType ausente/null cai na única opção ('first'); entity é o id da Lista.
+    storeType: storeCond?.action.storeType || STORE_FIRST,
+    storeEntity: typeof storeCond?.action.entity === 'string' ? storeCond.action.entity : '',
     setDataItems: (Array.isArray(setDataCond?.action.bulkUpdate) ? setDataCond.action.bulkUpdate : [])
       .map(i => ({ ...i })),
     conditions: intent.conditions.map((c, i) => ({
@@ -2084,6 +2102,94 @@ function NextFlowSection({ draft, setDraft, selfBotId, intents, isDark, inputCls
   )
 }
 
+interface StoreActionSectionProps {
+  storeType: string
+  storeEntity: string
+  /** `true` quando nenhuma Lista está escolhida (gate do "Aplicar"). */
+  invalid: boolean
+  isDark: boolean
+  inputCls: string
+  labelCls: string
+  onChangeType: (v: string) => void
+  onChangeEntity: (v: string) => void
+}
+
+/**
+ * Seção "Loja física" (nó `action.type === 'store'`): "Tipo de ação" (hoje só
+ * "Selecionar a primeira loja" → storeType 'first') + "Loja" (escolhe uma Lista
+ * `@entity` do tipo 'store', grava o id em `action.entity`). O picker da Loja
+ * auto-carrega as Listas pelo token de sessão (mesmo padrão do `@entity`/coleções),
+ * tratando os caminhos infelizes: sem token, carregando, erro+retry e vazio. A Lista
+ * salva fora do conjunto 'store' (legado/import) é preservada como <option> extra.
+ */
+function StoreActionSection({ storeType, storeEntity, invalid, isDark, inputCls, labelCls, onChangeType, onChangeEntity }: StoreActionSectionProps) {
+  const { entities, entitiesStatus, entitiesError, loadEntities, entitiesById, hasToken, requestToken } = useTeams()
+
+  // Auto-carrega as Listas ao montar quando há token (igual ao picker @entity).
+  useEffect(() => {
+    if (hasToken && entitiesStatus === 'idle') loadEntities()
+  }, [hasToken, entitiesStatus, loadEntities])
+
+  // Só Listas de loja física no picker (decisão 3). A selecionada fora desse conjunto
+  // (legado/import) vira <option> extra — anti-corrupção, igual ao captureDataType legado.
+  const storeLists = entities.filter(e => e.type === STORE_ENTITY_TYPE)
+  const legacyEntity = storeEntity && !storeLists.some(e => e.id === storeEntity)
+    ? (entitiesById.get(storeEntity)?.name ?? storeEntity)
+    : null
+  const legacyType = storeType && !STORE_ACTIONS.some(a => a.value === storeType) ? storeType : null
+
+  const mutedCls = `text-[11px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-500'}`
+
+  return (
+    <Section title="Loja física" isDark={isDark}>
+      <div className="flex flex-col gap-2.5">
+        <label className="flex flex-col gap-1">
+          <span className={labelCls}>Tipo de ação</span>
+          <select className={inputCls} value={storeType} onChange={e => onChangeType(e.target.value)}>
+            {STORE_ACTIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+            {legacyType && <option value={legacyType}>{legacyType}</option>}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className={labelCls}>Loja</span>
+          {!hasToken ? (
+            <span className={mutedCls}>
+              <button type="button" className="font-medium text-blue-500 hover:text-blue-600" onClick={requestToken}>
+                Insira o token de sessão
+              </button>
+              {' '}para carregar as listas.
+            </span>
+          ) : (entitiesStatus === 'idle' || entitiesStatus === 'loading') ? (
+            <span className={mutedCls}>Carregando listas…</span>
+          ) : entitiesStatus === 'error' ? (
+            <div className="flex flex-col gap-1">
+              <span className={`text-[11px] leading-snug ${isDark ? 'text-rose-300' : 'text-rose-600'}`}>{entitiesError}</span>
+              <button type="button" className="self-start text-xs font-medium text-blue-500 hover:text-blue-600" onClick={() => loadEntities()}>
+                Tentar de novo
+              </button>
+            </div>
+          ) : (storeLists.length === 0 && !legacyEntity) ? (
+            <span className={mutedCls}>Nenhuma lista de loja cadastrada.</span>
+          ) : (
+            <select className={inputCls} value={storeEntity} onChange={e => onChangeEntity(e.target.value)}>
+              <option value="">— Selecione —</option>
+              {storeLists.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              {legacyEntity && <option value={storeEntity}>{legacyEntity}</option>}
+            </select>
+          )}
+        </label>
+
+        {invalid && (
+          <p className={`text-[11px] leading-snug ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+            Selecione uma lista para salvar.
+          </p>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 interface DetailPanelProps {
   node: Node<FlowNodeData>
   intent: BotIntent | null
@@ -2308,6 +2414,9 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
       if (kind === 'setDataNode') {
         results.push(updateSetDataItems(intent, draft.setDataItems, ci))
       }
+      if (kind === 'storeNode') {
+        results.push(updateActionFields(intent, 'store', { storeType: draft.storeType, entity: draft.storeEntity }, ci))
+      }
     }
 
     if (showNextFlow) {
@@ -2393,6 +2502,9 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
       || draft.setDataItems.some(it => !it.variable.trim() || !it.value.trim())
   )
 
+  // Loja física exige uma Lista escolhida — sem ela gravaria action.entity vazio.
+  const storeInvalid = !!draft && kind === 'storeNode' && !draft.storeEntity.trim()
+
   // Com o toggle de tempo de envio ligado, os segundos precisam ser inteiro em [1,30].
   const delayInvalid = !!draft && draft.delayActive && (() => {
     if (!/^\d+$/.test(draft.delaySeconds)) return true
@@ -2402,9 +2514,10 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
 
   // "Aplicar" fica bloqueado enquanto houver dado de captura, variável de
   // Editar informação ou tempo de envio inválido.
-  const applyBlocked = captureInvalid || setDataInvalid || delayInvalid
+  const applyBlocked = captureInvalid || setDataInvalid || delayInvalid || storeInvalid
   const applyHint = captureInvalid ? ' (selecione um dado)'
     : setDataInvalid ? ' (preencha variável e valor)'
+    : storeInvalid ? ' (selecione uma lista)'
     : delayInvalid ? ' (tempo: 1–30s)' : ''
 
   return (
@@ -2952,6 +3065,19 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
                   )}
                 </div>
               </Section>
+            )}
+
+            {showContent && draft && kind === 'storeNode' && (
+              <StoreActionSection
+                storeType={draft.storeType}
+                storeEntity={draft.storeEntity}
+                invalid={storeInvalid}
+                isDark={isDark}
+                inputCls={inputCls}
+                labelCls={labelCls}
+                onChangeType={v => set('storeType', v)}
+                onChangeEntity={v => set('storeEntity', v)}
+              />
             )}
 
             {showCondList && draft && (

@@ -658,6 +658,8 @@ export function updateActionFields(
     variable: string
     captureDataTypesCategory: string
     multipleFields: string[]
+    storeType: string
+    entity: string
   }>,
   condIdx?: number,
 ): EditResult {
@@ -672,6 +674,9 @@ export function updateActionFields(
   if (fields.variable !== undefined) cond.action.variable = fields.variable
   if (fields.captureDataTypesCategory !== undefined) cond.action.captureDataTypesCategory = fields.captureDataTypesCategory
   if (fields.multipleFields !== undefined) cond.action.multipleFields = fields.multipleFields
+  // Loja física: storeType vazio cai pra null; entity é o id da Lista (string).
+  if (fields.storeType !== undefined) cond.action.storeType = fields.storeType || null
+  if (fields.entity !== undefined) cond.action.entity = fields.entity
   touch(intent)
   return { ok: true }
 }
