@@ -293,7 +293,7 @@ No **Modelo B**, cada **condição** vira um nó, tipado pela `action` dela (`ac
 | Azul | Escolha | `choice` |
 | Roxo | Captura | `captureData` |
 | Vermelho | Transferência | `transfer` |
-| Ciano | Espera | `waitForInteraction` |
+| Ciano | Aguardar interação | `waitForInteraction` |
 | Índigo | Atribuição | `setData` |
 | Grafite | Encerramento | `endConversation` |
 | Verde-azulado | Chamada de API | `external` |

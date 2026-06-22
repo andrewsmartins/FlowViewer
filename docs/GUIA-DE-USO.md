@@ -54,7 +54,7 @@ Se já houver um fluxo com edições na tela, o modal avisa antes de substituir.
 
 Arraste um tipo da paleta **Criar nó** (canto superior esquerdo) até a posição desejada. São **11 tipos**, em dois grupos:
 
-- **Fluxo** (dia a dia): Mensagem, Escolha, Captura, Transferência, Espera, Definir dados.
+- **Fluxo** (dia a dia): Mensagem, Escolha, Captura, Transferência, Aguardar interação, Editar informação.
 - **Avançado** (Fase 6): Encerrar conversa, Chamada de API, Pedido, Captura CSAT, Loja física.
 
 Cada um nasce como **nó solto** com o template canônico que a tela oficial usa (UUID novo, defaults corretos por tipo, caminho de erro apontando para o start quando aplicável).

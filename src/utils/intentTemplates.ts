@@ -30,8 +30,8 @@ export const CREATABLE_KIND_LABELS: Record<CreatableKind, string> = {
   choiceNode:   'Escolha',
   captureNode:  'Captura',
   transferNode: 'Transferência',
-  waitNode:     'Espera',
-  setDataNode:  'Editar Informação',
+  waitNode:     'Aguardar interação',
+  setDataNode:  'Editar informação',
   endNode:      'Encerrar conversa',
   apiCallNode:  'Chamada de API',
   orderNode:    'Pedido',
@@ -102,7 +102,7 @@ export function createConditionTemplate(actionType = 'none'): Condition {
 function buildKindAction(kind: CreatableKind, botId: string): Action {
   const action = canonicalAction(ACTION_TYPE_BY_KIND[kind])
   if (kind === 'choiceNode') action.choices = []
-  // Editar Informação nasce com uma linha vazia: o gate de save (DetailPanel)
+  // Editar informação nasce com uma linha vazia: o gate de save (DetailPanel)
   // obriga a preencher variável e valor antes de aplicar.
   if (kind === 'setDataNode') action.bulkUpdate = [{ variable: '', value: '' }]
   if (kind === 'transferNode') {
