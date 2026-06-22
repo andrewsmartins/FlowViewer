@@ -21,7 +21,7 @@
 7. **Caminhos-infelizes = idênticos ao `@team`:** sem token → aviso clicável "Insira o token da sessão"; com token → auto-load no idle; erro → mensagem + botão "Tentar de novo"; lista vazia → "Nenhuma lista cadastrada". Token só nos headers, NUNCA logado (regra do projeto + `flow-viewer.env` tem `OMNI_TOKEN`).
 
 ### Fases (1 por sessão, fecha com /handoff)
-- **Fase 1 — Camada de dados (sem React, testável):** novo `src/utils/entities.ts` espelhando `teams.ts`/`collections.ts`. `interface StoreEntity { id; name; type }`. `fetchStoreEntities(deps & { botId })` → `GET .../v1/{botId}/entities`, lê `data.list`, filtra itens com `id`, ordena por nome, `name` cai pro `id` quando ausente. `fetch` injetável + `sessionHeaders` reusado. Testes unitários (feliz: parse do `list`; infeliz: status≠ok lança sem expor token, `list` ausente → `[]`).
+- **Fase 1 — Camada de dados (sem React, testável): ✅ CONCLUÍDA 2026-06-22.** [src/utils/entities.ts](src/utils/entities.ts) criado espelhando `teams.ts`/`collections.ts`: `interface StoreEntity { id; name; type }` e `fetchStoreEntities(deps & { botId })` → `GET ${API}/v1/{botId}/entities` (por botId direto, sem `retailerId`), lê `data.list`, filtra itens com `id`, `name` cai pro `id`, `type` cai pra `''`, ordena por nome. Reusa `sessionHeaders` + `Deps` e o novo `export const API` de [teams.ts](src/utils/teams.ts) (espelha `PARSE`/`APP_ID`). 4 testes em [entities.test.ts](src/utils/entities.test.ts) (mapa+ordem+endpoint+headers; fallback id/type; ignora sem-id + lista ausente→`[]`; erro sem expor token). tsc + 344 testes verdes. Sem CHANGELOG/bump (camada interna, ainda não consumida pela UI — fica pra Fase 3).
 - **Fase 2 — Fiação no contexto + picker `@entity` dinâmico:** adicionar ao [TeamsContext](src/contexts/TeamsContext.tsx) `entities`/`entitiesStatus`/`entitiesError`/`loadEntities`/`entitiesById` (espelha coleções) e implementar o fetch no [App.tsx](src/App.tsx). Em [variables.ts](src/utils/variables.ts): grupo `entity` deixa de ser folha (`value:'@entity'`) e vira dinâmico (tratado como o `team` no picker). No [DetailPanel](src/components/DetailPanel.tsx) `VariableMenu`: coluna de Listas (auto-load por token, mesmos estados do `team`), clique insere `@entity.<name>` (prefix:true, permite continuar digitando). Opcional: `variableDisplay` resolver "Lista.<name>".
 - **Fase 3 — Editor do nó Loja física + CHANGELOG/bump:** `Draft` ganha `storeType`/`storeEntity`; init a partir de `cond.action.storeType`/`cond.action.entity`; `<Section title="Loja física">` gated por `kind === 'storeNode'` (espelha o bloco `captureNode` em [DetailPanel.tsx:2791](src/components/DetailPanel.tsx#L2791)) com select "Tipo de ação" + picker de Lista (filtra `type:store`, auto-load, estados sem-token/erro/vazio). `storeInvalid` (sem `storeEntity`) entra no `disabled` do "Aplicar". Helper em `editFlow.ts` (ex.: `setStoreAction(cond, { storeType, entity })`). CHANGELOG (Added) + bump (minor) + atualizar este PLANS.
 
@@ -34,25 +34,27 @@
 <!-- HANDOFF:START -->
 ## 🔄 Handoff — 2026-06-22
 
-**Foco da próxima sessão:** iniciar a feature **Loja física + picker `@entity`** (seção planejada no topo deste PLANS) — começar pela **Fase 1** (camada de dados `src/utils/entities.ts` + testes). A feature "Próximo Fluxo" está **100% concluída** (Fases 1–3).
+**Foco da próxima sessão:** **Fase 2 da Loja física + picker `@entity`** — fiação no `TeamsContext`/`App` (`entities`/`entitiesStatus`/`entitiesError`/`loadEntities`/`entitiesById`, espelhando coleções) + tornar o picker `@entity` dinâmico em [variables.ts](src/utils/variables.ts) e no `VariableMenu` do [DetailPanel](src/components/DetailPanel.tsx). A camada de dados (Fase 1) já está pronta e testada.
 
-**Onde paramos:** branch `feat/execution-delay`, versão **0.22.0**. A feature "Próximo Fluxo" foi finalizada nesta sessão: validação visual aprovada pelo Andy, ajuste de UI (seção "Próximo Fluxo" virou a **última do painel**, depois de "Condições"), integração canvas/push verificada por código, CHANGELOG + bump v0.22.0 + PLANS atualizados. tsc + 340 testes + build de produção verdes. **Estado do commit:** ver "Fios soltos" abaixo.
+**Onde paramos:** branch `feat/execution-delay`, versão **0.22.0**. Nesta sessão: (1) feature **Próximo Fluxo** 100% concluída (Fases 1–3) e (2) **Loja física Fase 1** (camada de dados) concluída. tsc + 344 testes verdes. **Commits feitos** (3, separados): `refactor:` rename de labels, `feat:` Próximo Fluxo v0.22.0, `feat:` Loja física Fase 1 (entities). Working tree limpo exceto untracked ignorados (logos `.png/.svg`, `masterFlow.json`).
 
 **Fios soltos / meio-feito:**
-- **Commits da "Próximo Fluxo":** verificar se já foram feitos nesta sessão (`git log --oneline -5`). O working tree acumulava também mudanças de features anteriores já commitadas (executionDelay v0.20.0, Editar Informação v0.21.0) — conferir o que ainda falta commitar.
-- **package-lock estava defasado** (0.20.1) e foi alinhado a 0.22.0 junto do package.json. Se reaparecer desalinhado, sincronizar os dois campos `version` do topo do lock.
-- **Loja física — Fase 1 ainda não iniciada.** Plano completo e fonte de dados (já sondada na API real) na seção "Feature — Nó Loja física + picker @entity" no topo deste PLANS.
+- **Loja física — Fases 2 e 3 pendentes.** Plano completo e fonte de dados (já sondada na API real) na seção "Feature — Nó Loja física + picker @entity" no topo deste PLANS (Fase 1 marcada ✅ com mapa de implementação).
+- **entities.ts ainda não é consumido pela UI** — só existe a camada de dados + testes. A Fase 2 faz a fiação; a Fase 3 adiciona o editor do nó + CHANGELOG/bump.
+- **package-lock estava defasado** (0.20.1) e foi alinhado a 0.22.0. Se reaparecer desalinhado, sincronizar os dois campos `version` do topo do lock.
+- **Untracked não commitados** (logos `.png/.svg`, `masterFlow.json`) seguem no working tree — decidir se entram no `.gitignore` ou são removidos.
 
 **Armadilhas (úteis para a próxima feature):**
 - Fonte de dados das Listas (`@entity`): `GET .../v1/{botId}/entities` — **por botId direto, sem passo `retailerId`** (diferente de `teams`/`collections`). Shape e id confirmados na sonda (ver seção do plano).
 - Padrão de picker dinâmico com token de sessão já consolidado (`@team`, coleções): auto-load no idle, estados sem-token/erro/vazio, token só nos headers (nunca logado).
 - (Próximo Fluxo) `remapRefs` só troca ids presentes no `idMap` de criação → refs cross-bot/órfãs ficam intactas por construção ([pushFlow.ts:117-144](src/utils/pushFlow.ts#L117-L144)).
 
-**Próximo passo imediato:** criar `src/utils/entities.ts` (`fetchStoreEntities`) + testes unitários (Fase 1 da Loja física), espelhando `teams.ts`/`collections.ts`.
+**Próximo passo imediato:** Fase 2 da Loja física — fiar `entities` no [TeamsContext](src/contexts/TeamsContext.tsx)/[App.tsx](src/App.tsx) (espelhar o bloco de coleções) consumindo `fetchStoreEntities`, e tornar o picker `@entity` dinâmico em [variables.ts](src/utils/variables.ts) + `VariableMenu` do [DetailPanel](src/components/DetailPanel.tsx).
 
 **Ponteiros:**
-- Plano da próxima feature: PLANS.md, seção "Feature — Nó Loja física + picker @entity" (topo) — decisões e 3 fases mapeadas.
-- "Próximo Fluxo" (concluída): seção "Feature — Próximo Fluxo" + arquivos [teams.ts](src/utils/teams.ts), [editFlow.ts](src/utils/editFlow.ts), [TeamsContext.tsx](src/contexts/TeamsContext.tsx), [App.tsx](src/App.tsx), [DetailPanel.tsx](src/components/DetailPanel.tsx) (`NextFlowSection`).
+- Plano da feature: PLANS.md, seção "Feature — Nó Loja física + picker @entity" (topo) — decisões e 3 fases (Fase 1 ✅).
+- Camada de dados pronta: [src/utils/entities.ts](src/utils/entities.ts) (`fetchStoreEntities`, `StoreEntity`) + [entities.test.ts](src/utils/entities.test.ts); reusa `export const API`/`sessionHeaders`/`Deps` de [teams.ts](src/utils/teams.ts).
+- "Próximo Fluxo" (concluída): seção "Feature — Próximo Fluxo" + [DetailPanel.tsx](src/components/DetailPanel.tsx) (`NextFlowSection`).
 
 **Skills sugeridas:** `/interrogar` antes de codar a Loja física se surgirem decisões novas; `/code-review` antes de commitar; `/verify` (ou `/run`) para validar UI.
 <!-- HANDOFF:END -->
