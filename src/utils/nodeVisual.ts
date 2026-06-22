@@ -19,12 +19,12 @@ export const NODE_COLORS: Record<NodeKind, string> = {
   waitNode:        '#06b6d4',
   setDataNode:     '#6366f1',
   externalBotNode: '#64748b',
-  defaultNode:     '#d946ef',
+  defaultNode:     '#65a30d',
   endNode:         '#3f3f46',
   apiCallNode:     '#0d9488',
   orderNode:       '#ea580c',
   csatNode:        '#db2777',
-  storeNode:       '#65a30d',
+  storeNode:       '#d946ef',
   intentGroupNode: '#cbd5e1',
 }
 

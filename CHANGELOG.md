@@ -13,7 +13,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Alterado
+- **Cores de "Mensagem" e "Loja física" invertidas** ([src/utils/nodeVisual.ts](src/utils/nodeVisual.ts), [src/components/DetailPanel.tsx](src/components/DetailPanel.tsx), [README.md](README.md)) — **Mensagem** (`defaultNode`) passou do fuchsia `#d946ef` para o **verde-limão `#65a30d`** e **Loja física** (`storeNode`) assumiu o **fuchsia `#d946ef`**. A troca vale em todas as superfícies que leem a fonte única `nodeVisual.ts` (card, canvas, minimap, bolinha da paleta) e nos badges do painel (claro/escuro).
+- **Nó "Definir dados" renomeado para "Editar Informação"** ([src/utils/intentTemplates.ts](src/utils/intentTemplates.ts)) — novo rótulo em `CREATABLE_KIND_LABELS`, refletido na paleta de criação e no seletor de tipo de condição do painel. A ação serializada (`setData`) e o `kind` interno (`setDataNode`) permanecem inalterados — só o nome amigável muda.
+
 ### Adicionado
+- **Editar Informação obriga variável e valor** ([src/utils/intentTemplates.ts](src/utils/intentTemplates.ts), [src/components/DetailPanel.tsx](src/components/DetailPanel.tsx)) — o nó agora **nasce com uma linha vazia** (`bulkUpdate: [{ variable: '', value: '' }]`) e o painel **bloqueia "Aplicar alterações"** enquanto houver linha sem variável **ou** sem valor (gate `setDataInvalid`, mesmo padrão do `captureInvalid`). A última linha não pode ser removida (botão `×` desabilitado) e um aviso âmbar orienta o preenchimento.
 - **Tempo de envio da resposta (`executionDelay`) — Fase 17** ([src/components/DetailPanel.tsx](src/components/DetailPanel.tsx), [src/utils/editIntent.ts](src/utils/editIntent.ts)) — novo controle na seção "Geral" do painel, abaixo de Prioridade/Contexto: checkbox **"Configurar tempo para envio da resposta"** que, quando ligado, libera um campo numérico de **1–30 segundos** ("Defina o tempo que o bot deve esperar para responder uma ou mais mensagens.").
   - **Serialização = número puro** (`executionDelay: 13`), fiel ao que a plataforma OmniChat exporta. Como a plataforma trata *presença do campo = ativo*, desligar o toggle **remove o campo** (via `delete`) em vez de gravar `0` — que apareceria como "ativo + 0s". `updateIntentMeta` ganhou o parâmetro `executionDelay?: number | null` (`> 0` grava; `null`/`0` remove; `undefined` não toca).
   - **Faixa 1–30, default 1 ao ligar:** evita o estado contraditório "ativo + 0s" e mantém `hasExecutionDelay` (`> 0`) coerente.

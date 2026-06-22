@@ -260,9 +260,9 @@ src/
 │       ├── ApiCallNode.tsx         Chamada de API externa (verde-azulado)
 │       ├── OrderNode.tsx           Pedido (laranja)
 │       ├── CsatNode.tsx            Captura CSAT (rosa)
-│       ├── StoreNode.tsx           Loja física (verde-limão)
+│       ├── StoreNode.tsx           Loja física (fuchsia)
 │       ├── ExternalBotNode.tsx     Redirecionamento a outro bot (âmbar)
-│       └── DefaultNode.tsx         Mensagem / encadeamento sem ação (fuchsia)
+│       └── DefaultNode.tsx         Mensagem / encadeamento sem ação (verde-limão)
 └── scripts/                    CLIs e smoke tests (push, rollback, smoke-phase*.mjs)
 ```
 
@@ -299,8 +299,8 @@ No **Modelo B**, cada **condição** vira um nó, tipado pela `action` dela (`ac
 | Verde-azulado | Chamada de API | `external` |
 | Laranja | Pedido | `order` |
 | Rosa | Captura CSAT | `captureCsat` |
-| Verde-limão | Loja física | `store` |
-| Cinza | Padrão | `none` ou ação ausente (só mensagens / encadeamento) |
+| Fuchsia | Loja física | `store` |
+| Verde-limão | Padrão / Mensagem | `none` ou ação ausente (só mensagens / encadeamento) |
 | Âmbar | Bot externo | nó sintético gerado para redirecionamentos a outro botId |
 | — | Grupo de intenção | container de uma intenção com 2+ condições (`intentGroupNode`) |
 

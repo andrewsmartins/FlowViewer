@@ -30,12 +30,12 @@ const KIND_LABELS_LIGHT: Record<NodeKind, { label: string; color: string }> = {
   waitNode:        { label: 'Aguarda',          color: 'bg-cyan-100 text-cyan-700' },
   setDataNode:     { label: 'Variável',         color: 'bg-indigo-100 text-indigo-700' },
   externalBotNode: { label: 'Outro Bot',        color: 'bg-slate-100 text-slate-600' },
-  defaultNode:     { label: 'Mensagem',         color: 'bg-fuchsia-100 text-fuchsia-700' },
+  defaultNode:     { label: 'Mensagem',         color: 'bg-lime-100 text-lime-700' },
   endNode:         { label: 'Terminar',         color: 'bg-zinc-200 text-zinc-800' },
   apiCallNode:     { label: 'Chamada API',      color: 'bg-teal-100 text-teal-700' },
   orderNode:       { label: 'Pedido',           color: 'bg-orange-100 text-orange-700' },
   csatNode:        { label: 'CSAT',             color: 'bg-pink-100 text-pink-700' },
-  storeNode:       { label: 'Loja física',      color: 'bg-lime-100 text-lime-700' },
+  storeNode:       { label: 'Loja física',      color: 'bg-fuchsia-100 text-fuchsia-700' },
   intentGroupNode: { label: 'Intenção',         color: 'bg-slate-100 text-slate-600' },
 }
 
@@ -47,12 +47,12 @@ const KIND_LABELS_DARK: Record<NodeKind, { label: string; color: string }> = {
   waitNode:        { label: 'Aguarda',          color: 'bg-cyan-950 text-cyan-300' },
   setDataNode:     { label: 'Variável',         color: 'bg-indigo-950 text-indigo-300' },
   externalBotNode: { label: 'Outro Bot',        color: 'bg-slate-800 text-slate-400' },
-  defaultNode:     { label: 'Mensagem',         color: 'bg-fuchsia-950 text-fuchsia-300' },
+  defaultNode:     { label: 'Mensagem',         color: 'bg-lime-950 text-lime-300' },
   endNode:         { label: 'Terminar',         color: 'bg-zinc-800 text-zinc-200' },
   apiCallNode:     { label: 'Chamada API',      color: 'bg-teal-950 text-teal-300' },
   orderNode:       { label: 'Pedido',           color: 'bg-orange-950 text-orange-300' },
   csatNode:        { label: 'CSAT',             color: 'bg-pink-950 text-pink-300' },
-  storeNode:       { label: 'Loja física',      color: 'bg-lime-950 text-lime-300' },
+  storeNode:       { label: 'Loja física',      color: 'bg-fuchsia-950 text-fuchsia-300' },
   intentGroupNode: { label: 'Intenção',         color: 'bg-slate-800 text-slate-400' },
 }
 
@@ -2167,6 +2167,12 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
       : (!draft.captureDataType || draft.captureDataType === FREE_CAPTURE)
   )
 
+  // Editar Informação exige ao menos uma linha, com variável E valor preenchidos.
+  const setDataInvalid = !!draft && kind === 'setDataNode' && (
+    draft.setDataItems.length === 0
+      || draft.setDataItems.some(it => !it.variable.trim() || !it.value.trim())
+  )
+
   // Com o toggle de tempo de envio ligado, os segundos precisam ser inteiro em [1,30].
   const delayInvalid = !!draft && draft.delayActive && (() => {
     if (!/^\d+$/.test(draft.delaySeconds)) return true
@@ -2174,9 +2180,12 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
     return n < 1 || n > 30
   })()
 
-  // "Aplicar" fica bloqueado enquanto houver dado de captura ou tempo de envio inválido.
-  const applyBlocked = captureInvalid || delayInvalid
-  const applyHint = captureInvalid ? ' (selecione um dado)' : delayInvalid ? ' (tempo: 1–30s)' : ''
+  // "Aplicar" fica bloqueado enquanto houver dado de captura, variável de
+  // Editar Informação ou tempo de envio inválido.
+  const applyBlocked = captureInvalid || setDataInvalid || delayInvalid
+  const applyHint = captureInvalid ? ' (selecione um dado)'
+    : setDataInvalid ? ' (preencha variável e valor)'
+    : delayInvalid ? ' (tempo: 1–30s)' : ''
 
   return (
     <div data-testid="detail-panel" className={`absolute right-0 top-0 h-full w-96 rounded-l-2xl shadow-2xl z-10 flex flex-col overflow-hidden ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
@@ -2705,12 +2714,22 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
                         placeholder="valor"
                         onChange={e => set('setDataItems', draft.setDataItems.map((it, j) => j === i ? { ...it, value: e.target.value } : it))}
                       />
-                      <button className={ghostBtnCls} onClick={() => set('setDataItems', draft.setDataItems.filter((_, j) => j !== i))}>×</button>
+                      <button
+                        className={`${ghostBtnCls} ${draft.setDataItems.length <= 1 ? 'opacity-30 cursor-not-allowed' : ''}`}
+                        disabled={draft.setDataItems.length <= 1}
+                        title={draft.setDataItems.length <= 1 ? 'É necessária ao menos uma variável' : 'Remover variável'}
+                        onClick={() => set('setDataItems', draft.setDataItems.filter((_, j) => j !== i))}
+                      >×</button>
                     </div>
                   ))}
                   <button className={dashedBtnCls} onClick={() => set('setDataItems', [...draft.setDataItems, { variable: '', value: '' }])}>
                     + Adicionar variável
                   </button>
+                  {setDataInvalid && (
+                    <p className={`text-[11px] leading-snug ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                      Preencha variável e valor em todas as linhas para salvar.
+                    </p>
+                  )}
                 </div>
               </Section>
             )}
