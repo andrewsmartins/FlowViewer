@@ -161,6 +161,14 @@ export interface FlowNodeData extends Record<string, unknown> {
   category: string
   messagePreview: string
   buttons: ButtonOption[]
+  /**
+   * Conectividade de cada opção de menu, POSICIONAL (`buttons[i]` ↔ este `[i]`).
+   * `false` = opção sem destino (slot de `action.choices` vazio ou apontando para
+   * intenção inexistente) — sinalizada com alerta no nó de Escolha. Array paralelo
+   * em vez de campo no `ButtonOption` para não poluir o modelo (que é serializado).
+   * Só preenchido em ações `choice`; vazio/ausente nos demais tipos.
+   */
+  buttonConnected?: boolean[]
   actionType: string
   captureDataType: string | null
   /** Modo "Múltiplas informações": campos selecionados (vazio/ausente = modo single). */

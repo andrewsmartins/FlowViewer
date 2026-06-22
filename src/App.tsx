@@ -16,7 +16,7 @@ import { fetchStoreCollections, type Collection } from './utils/collections'
 import { fetchStoreMessageTemplates, type MessageTemplate } from './utils/messageTemplates'
 import { uploadMedia, type UploadMediaType } from './utils/uploadMedia'
 import type { FetchLike } from './utils/pushFlow'
-import { parseFlow, intentToNodeData, buildEdges } from './utils/parseFlow'
+import { parseFlow, intentToNodeData } from './utils/parseFlow'
 import { applyEdgeReconnect, applyConnect, applyEdgeDelete, applyNodeDelete, serializeFlow } from './utils/editFlow'
 import { createIntentTemplate, createStartIntent, type CreatableKind } from './utils/intentTemplates'
 import { addCondition, collectCategories } from './utils/editIntent'
@@ -293,6 +293,22 @@ export default function App() {
   }, [deleteNode])
 
   /**
+   * Re-parseia o fluxo preservando as posições dos nós existentes e atualiza
+   * nós + arestas. Necessário quando uma mutação muda DADOS do nó (não só as
+   * arestas) — ex.: o aviso de opção sem conexão (Fase 16) vive em `node.data`
+   * e precisa ser recalculado ao conectar/remover aresta. Espelha o merge de
+   * posições do `handleApplyEdit` (re-parse robusto, sem relayout indesejado).
+   */
+  const rebuildGraph = useCallback(() => {
+    const model = parsedDataRef.current
+    if (!model) return
+    const result = parseFlow(model, spacingRef.current)
+    const posById = new Map(nodesRef.current.map(n => [n.id, n.position]))
+    setNodes(result.nodes.map(n => { const p = posById.get(n.id); return p ? { ...n, position: p } : n }))
+    setEdges(result.edges)
+  }, [])
+
+  /**
    * Reconecta o destino de uma aresta: aplica o patch no modelo (fonte de
    * verdade para exportação) e, só se ele for válido, atualiza o canvas.
    * O ID da aresta é preservado porque codifica a posição no modelo.
@@ -326,10 +342,10 @@ export default function App() {
       return
     }
     if (snapshot) historyRef.current.push(snapshot)
-    setEdges(buildEdges(model).edges)
+    rebuildGraph() // recalcula node.data (ex.: aviso de opção sem conexão), não só as arestas
     setNotice(null)
     bumpModel()
-  }, [fail, bumpModel, takeSnap])
+  }, [fail, bumpModel, takeSnap, rebuildGraph])
 
   /**
    * Mudanças de aresta vindas do canvas: seleção é aplicada direto; remoção
@@ -356,9 +372,15 @@ export default function App() {
       }
     }
     if (removed && snapshot) historyRef.current.push(snapshot)
-    if (allowed.length) setEdges(eds => applyEdgeChanges(allowed, eds))
-    if (removed) bumpModel()
-  }, [fail, bumpModel, takeSnap])
+    if (removed) {
+      // Re-parse: a remoção esvazia o slot/next no modelo → recalcula node.data
+      // (ex.: a opção volta a ficar "sem conexão" e o aviso reaparece), não só arestas.
+      rebuildGraph()
+      bumpModel()
+    } else if (allowed.length) {
+      setEdges(eds => applyEdgeChanges(allowed, eds))
+    }
+  }, [fail, bumpModel, takeSnap, rebuildGraph])
 
   /** Remove uma conexão pelo botão "×" da aresta — mesmo caminho do Delete. */
   const handleDeleteEdge = useCallback((edgeId: string) => {
@@ -379,7 +401,7 @@ export default function App() {
       id: intent.id,
       type: kind,
       position,
-      data: intentToNodeData(intent),
+      data: intentToNodeData(intent, new Set(model.list.map(i => i.id))),
     }])
     setNotice(null)
     bumpModel()

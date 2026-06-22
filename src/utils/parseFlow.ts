@@ -24,6 +24,15 @@ const NODE_SIZES: Record<NodeKind, { w: number; h: number }> = {
   intentGroupNode: { w: 280, h: 220 },
 }
 
+/**
+ * Limite de itens de menu exibidos no card do nó de Escolha. 10 = teto da
+ * mensagem de LISTA do WhatsApp (10 linhas) — acima disso o card mostra "+N".
+ * Exportado para o `ChoiceNode` cortar a lista com o mesmo valor que o sizing.
+ */
+export const CHOICE_PREVIEW_LIMIT = 10
+const CHOICE_BASE_H = 120  // cabeçalho + preview + badge de aviso (sem os pills)
+const CHOICE_PILL_H = 26   // altura aproximada de cada pill de opção
+
 // Layout do container de grupo (Modelo B): header + linha de filhos.
 const GROUP_HEADER_H = 76  // altura reservada ao cabeçalho da intenção
 const GROUP_PAD      = 14  // respiro interno do container
@@ -95,6 +104,23 @@ function condButtons(cond: Condition): ButtonOption[] {
   return []
 }
 
+/**
+ * Conectividade de cada opção de menu, POSICIONAL (`buttons[i]` ↔ `choices[i]`).
+ * Conectada = slot com destino QUE aponta para intenção existente; vazio OU ref
+ * órfã = sem conexão (nenhum dos dois gera aresta — ver `buildEdges`). Só vale em
+ * ações `choice`: outros tipos (ex.: botão FLOW de TEMPLATE) não usam `choices`,
+ * então retorna vazio (sem alerta). `intentIds` ausente (rebuild de nó avulso após
+ * criar/editar) → assume conectado quando há destino (só o slot vazio é sinalizado).
+ */
+function buttonConnectivity(cond: Condition, buttons: ButtonOption[], intentIds?: Set<string>): boolean[] {
+  if (cond.action.type !== 'choice') return []
+  const choices = Array.isArray(cond.action.choices) ? cond.action.choices : []
+  return buttons.map((_, i) => {
+    const target = choices[i]
+    return !!target && (intentIds ? intentIds.has(target) : true)
+  })
+}
+
 /** Itens de bulkUpdate de UMA condição (setData). */
 function condSetDataItems(cond: Condition): BulkUpdateItem[] {
   return cond.action.type === 'setData' && Array.isArray(cond.action.bulkUpdate)
@@ -122,22 +148,24 @@ function getConditionInfos(intent: BotIntent): ConditionInfo[] {
  * condição dentro do grupo (título = rótulo do gatilho, subtítulo = nome da
  * condição). Defensivo a intenção sem condições.
  */
-function conditionNodeData(intent: BotIntent, condIdx: number, mode: 'solo' | 'child'): FlowNodeData {
+function conditionNodeData(intent: BotIntent, condIdx: number, mode: 'solo' | 'child', intentIds?: Set<string>): FlowNodeData {
   const cond = intent.conditions[condIdx]
   if (!cond) {
     return {
-      name: intent.name, category: intent.category, messagePreview: '', buttons: [],
+      name: intent.name, category: intent.category, messagePreview: '', buttons: [], buttonConnected: [],
       actionType: 'none', captureDataType: null, transferType: null, transferValue: null,
       allMessages: [], setDataItems: [], keywords: intent.keywords ?? [], conditions: [],
     }
   }
   const action = cond.action
   const trigger = triggerLabel(cond.type)
+  const buttons = condButtons(cond)
   return {
     name:            mode === 'solo' ? intent.name : trigger,
     category:        mode === 'solo' ? intent.category : (cond.name || ''),
     messagePreview:  condMessagePreview(cond),
-    buttons:         condButtons(cond),
+    buttons,
+    buttonConnected: buttonConnectivity(cond, buttons, intentIds),
     actionType:      action.type,
     captureDataType: action.captureDataType ?? null,
     captureMultipleFields: action.captureDataTypesCategory === 'multipleFields' && Array.isArray(action.multipleFields)
@@ -401,8 +429,8 @@ function dagreLayout(nodes: Node<FlowNodeData>[], edges: Edge[], ranksep: number
  * App reconstruir o nó após edição/criação. No Modelo B um nó solto representa
  * a condição 0 com os campos de cabeçalho da intenção.
  */
-export function intentToNodeData(intent: BotIntent): FlowNodeData {
-  return conditionNodeData(intent, 0, 'solo')
+export function intentToNodeData(intent: BotIntent, intentIds?: Set<string>): FlowNodeData {
+  return conditionNodeData(intent, 0, 'solo', intentIds)
 }
 
 /**
@@ -510,17 +538,32 @@ interface BuiltIntent {
 }
 
 /**
+ * Tamanho estimado de um nó (usado só pelo Dagre p/ espaçar). Fixo por tipo,
+ * EXCETO o Escolha: sua altura cresce com o nº de opções exibidas (até
+ * `CHOICE_PREVIEW_LIMIT`), senão um valor fixo desperdiçaria espaço nos menus
+ * pequenos e apertaria os grandes (agora até 10 itens).
+ */
+function nodeSize(kind: NodeKind, data: FlowNodeData): { w: number; h: number } {
+  const base = NODE_SIZES[kind] ?? NODE_SIZES.defaultNode
+  if (kind !== 'choiceNode') return base
+  const visible = Math.min(data.buttons.length, CHOICE_PREVIEW_LIMIT)
+  const overflow = data.buttons.length > CHOICE_PREVIEW_LIMIT ? CHOICE_PILL_H : 0
+  return { w: base.w, h: CHOICE_BASE_H + visible * CHOICE_PILL_H + overflow }
+}
+
+/**
  * Constrói o nó-macro de uma intenção. 1 condição (ou 0) → nó solto; 2+ → um
  * `intentGroupNode` com os filhos-condição em linha (posições relativas ao grupo,
  * `parentId` + `extent: 'parent'`). O tamanho do grupo deriva da linha de filhos.
  */
-function buildIntentNodes(intent: BotIntent): BuiltIntent {
+function buildIntentNodes(intent: BotIntent, intentIds?: Set<string>): BuiltIntent {
   if (!isGrouped(intent)) {
     const kind = soloKind(intent)
+    const data = conditionNodeData(intent, 0, 'solo', intentIds)
     return {
-      macro: { id: intent.id, type: kind, position: { x: 0, y: 0 }, data: conditionNodeData(intent, 0, 'solo') },
+      macro: { id: intent.id, type: kind, position: { x: 0, y: 0 }, data },
       children: [],
-      size: NODE_SIZES[kind] ?? NODE_SIZES.defaultNode,
+      size: nodeSize(kind, data),
     }
   }
 
@@ -529,14 +572,15 @@ function buildIntentNodes(intent: BotIntent): BuiltIntent {
   let maxChildH = 0
   intent.conditions.forEach((cond, ci) => {
     const kind = actionToNodeKind(cond.action)
-    const s = NODE_SIZES[kind] ?? NODE_SIZES.defaultNode
+    const data = conditionNodeData(intent, ci, 'child', intentIds)
+    const s = nodeSize(kind, data)
     children.push({
       id: `${intent.id}::c${ci}`,
       type: kind,
       parentId: intent.id,
       extent: 'parent',
       position: { x, y: GROUP_HEADER_H },
-      data: conditionNodeData(intent, ci, 'child'),
+      data,
     })
     x += s.w + CHILD_GAP
     maxChildH = Math.max(maxChildH, s.h)
@@ -578,7 +622,8 @@ function collapseEdges(edges: Edge[]): Edge[] {
 }
 
 export function parseFlow(json: BotFlowJson, spacing?: { ranksep?: number; nodesep?: number }): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
-  const built = json.list.map(buildIntentNodes)
+  const intentIds = new Set(json.list.map(i => i.id))
+  const built = json.list.map(intent => buildIntentNodes(intent, intentIds))
   const { edges, externalNodes } = buildEdges(json)
 
   // Layout só sobre os nós-macro (grupos, soltos e bots externos).

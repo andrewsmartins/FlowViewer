@@ -361,6 +361,61 @@ describe('caminhos infelizes', () => {
   })
 })
 
+// ─── buttonConnected — sinal de opção de menu sem conexão (Fase 16) ──────────
+
+/** Mensagem BUTTON com N opções de texto `op0..opN-1`. */
+function buttonsMsg(n: number): BotMessage {
+  return {
+    type: 'BUTTON', content: null,
+    messageConfig: {
+      header: null, title: null, body: 'menu', footer: null, type: 'text',
+      buttons: Array.from({ length: n }, (_, i) => ({ id: `b${i}`, text: `op${i}`, description: null })),
+    },
+  }
+}
+
+describe('buttonConnected — conectividade posicional das opções de menu', () => {
+  it('marca conectado/vazio/órfão por posição (buttons[i] ↔ choices[i])', () => {
+    const target = makeIntent('tgt', [makeCond({})])
+    const choice = makeIntent('ch', [makeCond({
+      messages: [buttonsMsg(3)],
+      action: makeAction('choice', { choices: ['tgt', '', 'fantasma'] }),
+    })])
+    const { nodes } = parseFlow({ list: [choice, target] })
+    const data = nodes.find(n => n.id === 'ch')!.data
+    // [0] destino válido → true; [1] slot vazio → false; [2] ref órfã → false.
+    expect(data.buttonConnected).toEqual([true, false, false])
+  })
+
+  it('choices mais curto que buttons: os botões excedentes ficam sem conexão', () => {
+    const target = makeIntent('tgt', [makeCond({})])
+    const choice = makeIntent('ch', [makeCond({
+      messages: [buttonsMsg(3)],
+      action: makeAction('choice', { choices: ['tgt'] }), // só 1 slot p/ 3 botões
+    })])
+    const { nodes } = parseFlow({ list: [choice, target] })
+    expect(nodes.find(n => n.id === 'ch')!.data.buttonConnected).toEqual([true, false, false])
+  })
+
+  it('ação que não é choice não recebe conectividade (sem alerta falso)', () => {
+    // Botão FLOW de TEMPLATE vive numa mensagem BUTTON com action.type !== choice.
+    const intent = makeIntent('tpl', [makeCond({
+      messages: [buttonsMsg(1)], action: makeAction('none'),
+    })])
+    const { nodes } = parseFlow({ list: [intent] })
+    expect(nodes[0].data.buttonConnected).toEqual([])
+  })
+
+  it('intentToNodeData sem intentIds: só o slot vazio é sinalizado (ref assumida ok)', () => {
+    const intent = makeIntent('ch', [makeCond({
+      messages: [buttonsMsg(2)],
+      action: makeAction('choice', { choices: ['algum-id', ''] }),
+    })])
+    // Sem o Set de IDs, 'algum-id' é assumido conectado; só o vazio fica false.
+    expect(intentToNodeData(intent).buttonConnected).toEqual([true, false])
+  })
+})
+
 // ─── intentToNodeData (nó solto, usado pelo App após criar/editar) ────────────
 
 describe('intentToNodeData delega ao view-model da condição 0 (solo)', () => {

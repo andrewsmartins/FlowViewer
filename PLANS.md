@@ -37,6 +37,26 @@
 > a branch; (2) avaliar as "Melhorias paralelas" (elkjs); (3) possível recriação de refs órfãs
 > no restore (caveat na "Fase 4b"). Publicação (`POST /publish`) FORA de escopo.
 
+## masterFlow.json — fluxo de exemplo canônico (construído por partes)
+
+> Iniciado 2026-06-22. Arquivo: [masterFlow.json](masterFlow.json) na raiz.
+
+**Objetivo:** manter um fluxo de exemplo de referência, fiel ao formato real da plataforma OmniChat, montado incrementalmente parte a parte.
+
+**Bot:** usa o bot de testes `2a3859ff-62d5-4c01-ae60-6ae2f812e786` (mesmo dos backups em `samples/` e do push/smoke).
+
+**Decisões (interrogatório 2026-06-22):**
+1. **Réplica fiel** do formato da plataforma (não o mínimo do parser) — para poder ir pro push real sem virar armadilha. Conjunto de campos espelhado de `samples/sample03.json` e `example.json`.
+2. O `next` da mensagem **encadeia** para o nó seguinte (não é folha terminal) — formato `redirect: continueFlow / action: intent / type: context / intent:{id,botId}`.
+3. Nomes/categorias: `start`·start / `mensagem_boas_vindas`·Mensagem / `encerrar`·Encerramento.
+4. O encerramento usa `action.type: endConversation` **com** uma `TEXT` de despedida ("Até logo! 👋").
+
+**Estado atual (Parte 1):** 3 intenções — Start (`startNode`) → Mensagem "Hello world!" (`defaultNode`) → Encerrar (`endNode`). Cadeia conexa, sem alvos órfãos.
+
+**Como foi testado:** parse JSON OK + simulação do grafo `parseFlow` (action→NodeKind e validação de que todo `next.intent.id` existe na lista). Pendente: validar visualmente no viewer e, se for dar push, confirmar contra a API real.
+
+**Próximas partes:** estender a partir da Mensagem (hoje folha após o Encerrar) com novos tipos de nó conforme necessário.
+
 ## Contexto
 
 O FlowViewer hoje é um **visualizador read-only**: importa o JSON de intenções de um bot
@@ -1516,3 +1536,104 @@ notice) — combinando confirmação de resultado (toast) com micro-animação n
 
 Bump **patch** (melhoria de UX, sem mudança de schema/contrato): 0.18.0 → **0.18.1** ✅.
 `CHANGELOG.md` atualizado (Adicionado: feedback visual ao aplicar edições — toast + animação) ✅.
+
+## Fase 16 — Sinal de "opção de menu sem conexão" no nó de Escolha — ✅ IMPLEMENTADA (v0.19.0)
+
+> Interrogado e decidido em 2026-06-22 (branch `feat/template-message`).
+> Implementado em 2026-06-22 (v0.19.0): tsc + 324 testes + build verdes. Falta a
+> validação visual manual (importar fluxo com slot vazio, conferir nos 2 temas).
+> **Adendo ao plano:** junto subiu o limite de exibição do card de **4 → 10 itens**
+> (teto da lista do WhatsApp) — `CHOICE_PREVIEW_LIMIT` e altura dinâmica do nó.
+>
+> **Desvios da implementação vs. plano (descobertos ao codar):**
+> - `condButtons` retorna a **referência viva** do array de botões do modelo. Gravar
+>   `connected` em cada `ButtonOption` poluiria o modelo serializado → usei array
+>   **paralelo** `buttonConnected?: boolean[]` no `FlowNodeData` (não no `ButtonOption`).
+> - Conectividade é calculada **só para `action.type === 'choice'`** — um botão FLOW de
+>   TEMPLATE também passa por `condButtons` mas não usa `choices`; sem o filtro seria
+>   marcado como "sem conexão" erroneamente. Fora de choice → array vazio (sem alerta).
+> - `CHOICE_PREVIEW_LIMIT` é **exportado de `parseFlow.ts`** e importado pelo `ChoiceNode`
+>   — fonte única do limite, usado tanto no corte da lista quanto no sizing do Dagre.
+> - Altura do nó de Escolha virou **dinâmica** (`nodeSize`): `CHOICE_BASE_H + visíveis ×
+>   CHOICE_PILL_H` — fixo desperdiçaria espaço nos menus pequenos e apertaria os de 10.
+>
+> **Arquivos tocados:** `types.ts` (campo `buttonConnected`), `parseFlow.ts` (constantes,
+> `buttonConnectivity`, `conditionNodeData`/`intentToNodeData`/`buildIntentNodes` com
+> `intentIds`, `nodeSize`), `ChoiceNode.tsx` (badge + ícone + limite 10), `App.tsx`
+> (passa `intentIds` ao criar nó), `parseFlow.test.ts` (+4 testes).
+>
+> **Fix pós-implementação (2026-06-22):** conectar/remover conexão **pelo canvas** não
+> atualizava o aviso — `handleConnect` e o caminho de remoção em `handleEdgesChange`
+> (`App.tsx`) só faziam `setEdges(buildEdges(...))`, e o aviso vive em `node.data`
+> (`buttonConnected`), que o rebuild só-de-arestas não recalcula. Extraído `rebuildGraph()`
+> (re-parse preservando posições, espelha `handleApplyEdit`) e usado nos dois caminhos.
+> Reconectar não precisou (vai de conectado→conectado; mantém o tratamento de id estável).
+> `buildEdges` deixou de ser importado no `App.tsx`.
+
+**Objetivo (1 frase):** sinalizar visualmente, no canvas, cada opção de menu do nó de
+Escolha que não leva a lugar nenhum (slot de destino vazio ou apontando para intenção
+inexistente) — um "shift-left" do aviso `buttons.length ≠ choices.length` que hoje só
+aparece tarde, no export (`validateFlow.ts`), e sem localização.
+
+### Estado atual (ponto de partida)
+
+- O nó de Escolha guarda os itens em `data.buttons`, renderizados como pills em
+  [ChoiceNode.tsx:17-26](src/components/nodes/ChoiceNode.tsx#L17-L26) (preview cortado em 4 + nota "+N opções").
+- O destino de cada opção vive em `cond.action.choices`, **mapeado posicionalmente**:
+  `buttons[i] ↔ choices[i]` ([parseFlow.ts:448-458](src/utils/parseFlow.ts#L448-L458)).
+- Uma opção não gera aresta quando `choices[i]` é vazio (`''`) **ou** aponta para
+  intenção inexistente (`!intentIds.has(choiceId)` — ver `getChoices` em parseFlow.ts:59
+  e o `intentIds.has` do builder de arestas).
+- **`ChoiceNode` hoje não sabe** quais botões têm destino — `FlowNodeData` não carrega
+  essa informação por botão.
+
+### Decisões (e o porquê)
+
+1. **Onde sinalizar:** ícone âmbar em cada pill desconectado **+** badge agregado
+   (contador) no topo do corpo do nó. Por quê: o preview corta em 4 botões — se a opção
+   solta for a 5ª+, só o ícone do pill não a mostraria; o badge agregado captura as
+   escondidas.
+2. **Semântica de "sem conexão":** slot **vazio** (`''`) **OU** ref **quebrada**
+   (aponta p/ intenção que não existe). Ambos já são becos sem saída hoje; pegar a ref
+   quebrada é fiel a JSON importado da plataforma. Regra por botão:
+   `connected = !!action.choices[i] && intentIds.has(action.choices[i])`. **Usar o
+   `action.choices` CRU** (não o deduplicado de `getChoices`, que filtra vazios e
+   perderia o alinhamento posicional). `choices` mais curto que `buttons` → excedentes
+   contam como desconectados.
+3. **Cor/estilo:** triângulo de alerta **⚠ em âmbar**. A semântica "aviso" vem da
+   **forma** (triângulo), não só da cor — mitiga a colisão do âmbar com a aresta de
+   redirect a outro bot (`#f59e0b`) e a cor do `intentGroupNode`. Tom exato com contraste
+   nos dois temas via **ThemeContext** (regra do projeto: nada de `dark:` do Tailwind —
+   ver [[feedback_dark_mode_theming]]).
+4. **Badge fora do NodeShell:** renderizar como **primeiro filho do corpo do ChoiceNode**
+   (abaixo do cabeçalho, acima do preview), **sem mexer no `NodeShell`** (compartilhado
+   por ~14 nós) — isola a mudança, zero risco de regressão nos outros tipos.
+5. **Escopo:** só o nó de Escolha (modos `button` e `list`, ambos usam buttons+choices).
+   Becos sem saída de outros tipos (transfer/mensagem sem `next`) ficam **fora** por ora.
+6. **Aviso, não erro:** opção solta pode ser intencional em alguns fluxos → sinalizar
+   como aviso visual, **não** bloquear export.
+
+### Esboço de implementação
+
+- **`parseFlow.ts`:** em `conditionNodeData`/`condButtons`, enriquecer cada botão com
+  `connected: boolean` (regra da decisão 2). Isso exige **passar o `Set` de IDs de
+  intenções existentes (`intentIds`) ao builder de nós** — hoje ele só vive no builder de
+  arestas. (Ponto onde a implementação encosta; risco baixo.)
+- **`types.ts`:** `ButtonOption` (ou o tipo do botão em `FlowNodeData.buttons`) ganha
+  `connected?: boolean`.
+- **`ChoiceNode.tsx`:** ícone ⚠ âmbar à direita do pill quando `!connected`
+  (`title="Opção sem conexão"`); badge agregado no topo do corpo quando
+  `count > 0` ("N opções sem conexão"). Cor via `useTheme()`.
+
+### Caminho infeliz / testes
+
+- **Unit (Vitest, `parseFlow.test.ts`):** (1) slot válido → sem flag; (2) slot vazio →
+  flag; (3) ref quebrada → flag; (4) `choices` mais curto que `buttons` → excedentes com
+  flag; (5) contagem agregada correta. **Sem** smoke Playwright (pouco retorno p/ um ícone).
+- **Visual manual:** importar um fluxo com slot de escolha vazio e conferir ícone + badge,
+  nos temas claro e escuro.
+
+### Versão / docs
+
+Bump **minor** (nova feature de UI, sem mudança de schema/contrato): 0.18.1 → **0.19.0**.
+Atualizar `CHANGELOG.md` (Adicionado: sinal de opção de menu sem conexão no nó de Escolha).
