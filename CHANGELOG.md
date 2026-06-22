@@ -13,6 +13,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Adicionado
+- **Feedback ao "Aplicar alterações" — Fase 15** ([src/components/DetailPanel.tsx](src/components/DetailPanel.tsx), [src/App.tsx](src/App.tsx), [src/index.css](src/index.css)) — antes o sucesso da edição era mudo (o painel não fecha e quase não muda), agora confirma o resultado em dois pontos de atenção:
+  - **Toast de sucesso** "Alterações aplicadas." no rodapé do canvas (reusa o `Toast` `success`, que antes era *apagado* no apply). Cobre tanto o botão Aplicar quanto a exclusão de condição.
+  - **Micro-animação no botão:** no sucesso o texto morfa para **"✓ Aplicado"** em verde por ~1,2s; o press dá um `active:scale-95` tátil. Na falha o botão faz um **shake** curto (~0,4s), complementar ao texto vermelho contextual que já existia. Sem detecção de "nada mudou": clicar sem alterar mostra sucesso (diff campo-a-campo seria frágil e de baixo valor).
+
 ### Corrigido
 - **Upload de mídia voltou a funcionar em dev (CORS/403 no S3)** ([src/utils/uploadMedia.ts](src/utils/uploadMedia.ts), [vite.config.ts](vite.config.ts)) — o passo 2 do upload (presigned POST ao S3) falhava com dois erros encadeados, ambos disfarçados de "blocked by CORS policy" no browser:
   - **403 — faltava o campo de formulário `Content-Type`** — a `Policy` do presigned POST traz a condição `["eq", "$Content-Type", <mime>]`, que **exige um campo de formulário `Content-Type`** com esse valor exato. O header `Content-Type` da *parte* `file` do multipart **não** satisfaz essa condição. O `fields` devolvido pela OmniChat não inclui o campo, então o S3 recusava com **403** — e como respostas de erro do S3 não trazem `Access-Control-Allow-Origin`, o browser reportava como erro de CORS. _Correção: adicionamos `Content-Type` (com `file.type`, o mesmo `mimeType` enviado no passo 1) ao form, antes do campo `file`, só quando o `fields` ainda não o trouxe._

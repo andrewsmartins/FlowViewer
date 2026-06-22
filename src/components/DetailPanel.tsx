@@ -1899,6 +1899,27 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
   const { mode, condIdx } = resolveMode(node, intent)
   const [draft, setDraft] = useState<Draft | null>(intent ? buildDraft(intent, mode, condIdx) : null)
   const [panelError, setPanelError] = useState<string | null>(null)
+  // Feedback ao aplicar (Fase 15): `applied` morfa o botão para "✓ Aplicado" por
+  // ~1,2s no sucesso; `shake` treme o botão por ~0,4s na falha. Timers em ref para
+  // limpar no unmount e não dispararem setState num componente desmontado.
+  const [applied, setApplied] = useState(false)
+  const [shake, setShake] = useState(false)
+  const appliedTimer = useRef<number | null>(null)
+  const shakeTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (appliedTimer.current) clearTimeout(appliedTimer.current)
+    if (shakeTimer.current) clearTimeout(shakeTimer.current)
+  }, [])
+  const flashApplied = useCallback(() => {
+    setApplied(true)
+    if (appliedTimer.current) clearTimeout(appliedTimer.current)
+    appliedTimer.current = window.setTimeout(() => setApplied(false), 1200)
+  }, [])
+  const flashShake = useCallback(() => {
+    setShake(true)
+    if (shakeTimer.current) clearTimeout(shakeTimer.current)
+    shakeTimer.current = window.setTimeout(() => setShake(false), 400)
+  }, [])
   // Coleções/modelos JÁ SALVOS abertos no modo "editar" (chave = endereço da mensagem).
   // Estado só de UI — reseta ao trocar de nó.
   const [editingColl, setEditingColl] = useState<Set<string>>(new Set())
@@ -1966,6 +1987,7 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
       if (incompleteNew || incompleteExisting) {
         setPanelError('Preencha todas as variáveis do modelo de mensagem antes de salvar.')
         onApplyFailed()
+        flashShake()
         return
       }
     }
@@ -2085,10 +2107,12 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
     if (failed && !failed.ok) {
       setPanelError(`Falha ao aplicar: ${failed.reason}.`)
       onApplyFailed()
+      flashShake()
       return
     }
     setPanelError(null)
     onApply(intent.id)
+    flashApplied()
     setDraft(buildDraft(intent, mode, condIdx))
   }
 
@@ -2720,8 +2744,15 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
           <button
             onClick={handleApply}
             disabled={captureInvalid}
-            className={`w-full text-xs font-semibold rounded-lg px-3 py-2 bg-amber-400 text-slate-900 transition-colors ${captureInvalid ? 'opacity-40 cursor-not-allowed' : 'hover:bg-amber-500'}`}
-          >Aplicar alterações{captureInvalid ? ' (selecione um dado)' : ''}</button>
+            className={[
+              'w-full text-xs font-semibold rounded-lg px-3 py-2 transition-all duration-150',
+              applied
+                ? 'bg-emerald-500 text-white'
+                : `bg-amber-400 text-slate-900 ${captureInvalid ? '' : 'hover:bg-amber-500'}`,
+              captureInvalid ? 'opacity-40 cursor-not-allowed' : 'active:scale-95',
+              shake ? 'fluxo-shake' : '',
+            ].join(' ')}
+          >{applied ? '✓ Aplicado' : `Aplicar alterações${captureInvalid ? ' (selecione um dado)' : ''}`}</button>
           {(mode === 'condition' || mode === 'solo') && intent && (
             <div className="flex gap-2">
               <button

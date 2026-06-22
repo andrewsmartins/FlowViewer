@@ -98,6 +98,16 @@ body { margin: 0; }
   background: #475569;
 }
 
+/* Shake curto do botão "Aplicar alterações" quando a aplicação falha (Fase 15).
+   Feedback de erro no ponto de ação, complementar ao texto vermelho do painel.
+   Mesmo padrão de keyframe em CSS puro usado pelo resto deste arquivo. */
+@keyframes fluxo-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.fluxo-shake { animation: fluxo-shake 0.4s ease-in-out; }
+
 /* Handles maiores para facilitar mirar ao reconectar arestas */
 .react-flow__handle {
   width: 10px;

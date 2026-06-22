@@ -603,7 +603,9 @@ export default function App() {
     setEdges(result.edges)
     // Reaponta o nó selecionado para a sua versão reconstruída (mesmo id).
     setSelectedNode(prev => prev ? (merged.find(n => n.id === prev.id) ?? null) : prev)
-    setNotice(null)
+    // Confirma o resultado da edição (Fase 15): o painel não fecha e quase não muda,
+    // então sem isto o sucesso ficava mudo. Cobre Aplicar e exclusão de condição.
+    setNotice({ level: 'success', text: 'Alterações aplicadas.' })
     // Acumula categorias recém-criadas/editadas para reuso nas demais intenções.
     setKnownCategories(prev => {
       const merged = new Set(prev)

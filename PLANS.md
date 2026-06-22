@@ -1454,3 +1454,65 @@ endereço · Complemento · E-mail · Gênero · Data de nascimento.
 
 Bump **minor** (feature de UI + mudança de schema): 0.17.1 → **0.18.0**. Atualizar
 `CHANGELOG.md` (Changed: schema `multipleFields` agora array; UI do nó de Captura).
+
+---
+
+## Fase 15 — Feedback ao "Aplicar alterações" (toast + micro-animação) — ✅ IMPLEMENTADA
+
+> Interrogada e decidida em 2026-06-22 (branch `feat/template-message`).
+> Implementada em 2026-06-22 (v0.18.1): tsc + 320 testes + build verdes. Falta a
+> validação manual dos 3 cenários abaixo.
+
+**Objetivo (1 frase):** dar feedback claro ao clicar "Aplicar alterações" — hoje o
+sucesso é mudo (painel continua aberto e idêntico; `handleApplyEdit` até *apaga* o
+notice) — combinando confirmação de resultado (toast) com micro-animação no botão.
+
+### Estado atual (ponto de partida)
+
+- Botão em [DetailPanel.tsx:2720-2724](src/components/DetailPanel.tsx#L2720-L2724): só `transition-colors` no hover; `disabled` quando `captureInvalid`.
+- `handleApply` ([:1942](src/components/DetailPanel.tsx#L1942)): sucesso → `setPanelError(null)` + `onApply(intent.id)` + rebuild do draft; falha → `setPanelError(...)` + `onApplyFailed()` (rollback).
+- `handleApplyEdit` ([App.tsx:588](src/App.tsx#L588)) re-parseia o canvas e hoje chama `setNotice(null)` ([:606](src/App.tsx#L606)) — apaga qualquer aviso no sucesso.
+- Infra de feedback **já existe**: `Toast` com nível `success` que auto-some em 6s ([Toast.tsx](src/components/Toast.tsx)).
+- `handleApplyEdit` é compartilhado pelo botão Aplicar **e** por `handleDeleteCondition` ([:2105](src/components/DetailPanel.tsx#L2105)).
+
+### Decisões (e o porquê)
+
+1. **Feedback = toast de sucesso + micro-animação no botão.** Animação sozinha
+   confirma o clique, não o resultado; como o painel não fecha, o usuário precisa
+   saber que *gravou*. Os dois atendem pontos de atenção diferentes (botão vs canvas).
+2. **Animação de sucesso:** texto morfa para **"✓ Aplicado"** em verde (`emerald`,
+   mesma paleta do Toast success) por ~1,2s e volta ao normal; `active:scale-95` no
+   press dá resposta tátil instantânea. Semântico, reusa paleta existente.
+3. **Falha:** **shake** curto no botão **+** manter o `panelError` vermelho atual
+   (texto contextual continua sendo a fonte principal do "o que corrigir"). Sem toast
+   de erro (o erro é local, junto do campo).
+4. **No-op (clicar sem mudar nada):** sempre mostrar sucesso. Não construir detecção
+   de diff (frágil/custoso com template, coleção, menu, condições); confirmar é honesto.
+5. **Texto do toast:** genérico **"Alterações aplicadas."**, setado em `handleApplyEdit`
+   (trocar o `setNotice(null)` por `setNotice({ level: 'success', text: ... })`). Cobre
+   apply e exclusão de condição num lugar só, sem acoplar mensagem DetailPanel→App.
+6. **Teste:** verificação **manual** no app (não há valor em testar animação/toast
+   em unit; `App.tsx` não tem testes). Sem teste automatizado novo.
+
+### Esboço de implementação
+
+- **DetailPanel:** estado local `applied` (boolean) e `shake` (boolean) com `setTimeout`
+  (limpar no unmount). Sucesso de `handleApply` → `setApplied(true)` (reverte ~1,2s).
+  Falha (os dois `return` de erro) → `setShake(true)` (reverte ~400ms).
+- Botão: texto condicional (`applied ? '✓ Aplicado' : 'Aplicar alterações…'`), classes
+  condicionais para cor verde quando `applied` e classe de shake quando `shake`,
+  `active:scale-95` fixo. Definir o keyframe de shake (Tailwind `animate-*` custom ou
+  inline) — verificar `tailwind.config`/CSS global.
+- **App:** em `handleApplyEdit`, trocar `setNotice(null)` (:606) por toast de sucesso.
+
+### Caminho infeliz / testes (manual)
+
+1. **Sucesso:** editar um campo → Aplicar → morph "✓ Aplicado" + toast verde no rodapé.
+2. **Falha:** variável de TEMPLATE vazia → Aplicar → shake + texto vermelho, sem toast.
+3. **No-op:** Aplicar sem mexer em nada → sucesso normal.
+4. Clique repetido durante o morph não quebra (botão segue funcional).
+
+### Versão / docs
+
+Bump **patch** (melhoria de UX, sem mudança de schema/contrato): 0.18.0 → **0.18.1** ✅.
+`CHANGELOG.md` atualizado (Adicionado: feedback visual ao aplicar edições — toast + animação) ✅.
