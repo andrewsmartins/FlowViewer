@@ -3,12 +3,13 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join, dirname } from 'node:path'
 import {
-  listMessages, updateMessageText, addTextMessage, removeMessage,
+  listMessages, updateMessageText, addTextMessage, addMediaMessage, removeMessage,
   updateButton, updateIntentMeta, updateActionFields, updateSetDataItems,
   addCondition, sanitizeIntentName, collectCategories, updateCondition,
   addButtonListMessage, addChoice, removeChoice, setChoiceDestination, setChoices,
   replaceButtonListMessage, addCollectionMessage, updateCollectionMessage,
   addTemplateMessage, updateTemplateMessage, type TemplateMessagePayload,
+  listErrorMessages, setActionErrorNext,
 } from './editIntent'
 import { validateFlow } from './validateFlow'
 import { createIntentTemplate } from './intentTemplates'
@@ -875,5 +876,126 @@ describe('validateFlow', () => {
   it('lista vazia não quebra', () => {
     const report = validateFlow({ list: [] })
     expect(report.errors).toEqual([])
+  })
+})
+
+describe('Container de erro — mensagens em action.error.assistant_says', () => {
+  it('addTextMessage(container:error) cai no caminho de erro, não nas respostas normais', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')   // já nasce com action.error
+    expect(addTextMessage(intent, 'falhou, tente de novo', 0, 'error')).toEqual({ ok: true })
+    expect(intent.conditions[0].action.error!.assistant_says[0].messages[0]).toEqual({
+      type: 'TEXT', content: 'falhou, tente de novo', fileName: '',
+    })
+    // não vazou para as respostas normais
+    expect(listMessages(intent)).toHaveLength(0)
+    // visível só via listErrorMessages, com ref marcado container:'error'
+    const errMsgs = listErrorMessages(intent)
+    expect(errMsgs).toHaveLength(1)
+    expect(errMsgs[0].text).toBe('falhou, tente de novo')
+    expect(errMsgs[0].ref.container).toBe('error')
+  })
+
+  it('cria action.error/assistant_says quando ausentes (nó sem caminho de erro)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')   // none → sem action.error
+    expect(intent.conditions[0].action.error).toBeUndefined()
+    expect(addTextMessage(intent, 'fallback', 0, 'error')).toEqual({ ok: true })
+    expect(intent.conditions[0].action.error!.assistant_says[0].messages[0].content).toBe('fallback')
+    expect(listErrorMessages(intent).map(m => m.text)).toEqual(['fallback'])
+  })
+
+  it('addMediaMessage / addCollectionMessage / addTemplateMessage no container de erro', () => {
+    const intent = createIntentTemplate('apiCallNode', BOT_ID, 'x')
+    addMediaMessage(intent, 'IMAGE', 'https://s3/x.png', 'x.png', 0, 'error')
+    addCollectionMessage(intent, 'coll-123', 0, 'error')
+    const payload: TemplateMessagePayload = {
+      messageTemplateId: 'tpl-1', title: 'T', content: 'corpo {{1}}', tokens: ['@v'], flowButtonText: 'Abrir',
+    }
+    addTemplateMessage(intent, payload, 0, 'error')
+    const errTypes = listErrorMessages(intent).map(m => m.type)
+    expect(errTypes).toEqual(['IMAGE', 'COLLECTION', 'TEMPLATE'])
+    expect(listMessages(intent)).toHaveLength(0)   // nada vazou para as respostas
+  })
+
+  it('updateMessageText e removeMessage operam pelo ref com container:error', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    addTextMessage(intent, 'erro A', 0, 'error')
+    const ref = listErrorMessages(intent)[0].ref
+    expect(updateMessageText(intent, ref, 'erro editado')).toEqual({ ok: true })
+    expect(listErrorMessages(intent)[0].text).toBe('erro editado')
+    expect(removeMessage(intent, ref)).toEqual({ ok: true })
+    expect(listErrorMessages(intent)).toHaveLength(0)
+  })
+
+  it('container omitido = comportamento atual (não-regressão): cai nas respostas normais', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    addTextMessage(intent, 'resposta normal')   // sem container → 'condition'
+    expect(listMessages(intent).map(m => m.text)).toEqual(['resposta normal'])
+    expect(listErrorMessages(intent)).toHaveLength(0)   // nada no caminho de erro
+  })
+
+  it('respostas e erros ficam isolados no mesmo nó', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    addTextMessage(intent, 'oi')
+    addTextMessage(intent, 'deu erro', 0, 'error')
+    expect(listMessages(intent).map(m => m.text)).toEqual(['oi'])
+    expect(listErrorMessages(intent).map(m => m.text)).toEqual(['deu erro'])
+  })
+
+  it('listErrorMessages não materializa estrutura (só leitura) em nó sem error', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    expect(listErrorMessages(intent)).toEqual([])
+    expect(intent.conditions[0].action.error).toBeUndefined()
+  })
+})
+
+describe('setActionErrorNext — destino do caminho de erro (acoplamento intentBot)', () => {
+  it('continueFlow → intentBot vazio; type:error e action:intent fixos', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    expect(setActionErrorNext(intent, 0, { redirect: 'continueFlow', intent: `${BOT_ID}-start` })).toEqual({ ok: true })
+    expect(intent.conditions[0].action.error!.next).toEqual({
+      redirect: 'continueFlow', type: 'error', intent: `${BOT_ID}-start`, intentBot: '', action: 'intent',
+    })
+  })
+
+  it('waitInteraction → intentBot = botId da intenção', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    setActionErrorNext(intent, 0, { redirect: 'waitInteraction', intent: 'algum-destino' })
+    expect(intent.conditions[0].action.error!.next).toEqual({
+      redirect: 'waitInteraction', type: 'error', intent: 'algum-destino', intentBot: BOT_ID, action: 'intent',
+    })
+  })
+
+  it('trocar o rádio reescreve intentBot (continueFlow ↔ waitInteraction)', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    setActionErrorNext(intent, 0, { redirect: 'waitInteraction', intent: `${BOT_ID}-start` })
+    expect(intent.conditions[0].action.error!.next.intentBot).toBe(BOT_ID)
+    setActionErrorNext(intent, 0, { redirect: 'continueFlow', intent: `${BOT_ID}-start` })
+    expect(intent.conditions[0].action.error!.next.intentBot).toBe('')
+  })
+
+  it('preserva as mensagens de erro existentes (só sobrescreve o next)', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    addTextMessage(intent, 'fallback', 0, 'error')
+    setActionErrorNext(intent, 0, { redirect: 'continueFlow', intent: `${BOT_ID}-start` })
+    expect(listErrorMessages(intent).map(m => m.text)).toEqual(['fallback'])
+  })
+
+  it('cria action.error quando o nó ainda não tem (defaultNode)', () => {
+    const intent = createIntentTemplate('defaultNode', BOT_ID, 'x')
+    expect(intent.conditions[0].action.error).toBeUndefined()
+    setActionErrorNext(intent, 0, { redirect: 'continueFlow', intent: `${BOT_ID}-start` })
+    expect(intent.conditions[0].action.error!.next.redirect).toBe('continueFlow')
+    expect(intent.conditions[0].action.error!.assistant_says).toEqual([])
+  })
+
+  it('rejeita condição inexistente', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    expect(setActionErrorNext(intent, 9, { redirect: 'continueFlow', intent: 'x' }).ok).toBe(false)
+  })
+
+  it('intent vazio ("— Selecione —") cai no Start sintético — nunca grava intent vazio', () => {
+    const intent = createIntentTemplate('transferNode', BOT_ID, 'x')
+    setActionErrorNext(intent, 0, { redirect: 'continueFlow', intent: '' })
+    expect(intent.conditions[0].action.error!.next.intent).toBe(`${BOT_ID}-start`)
   })
 })

@@ -1,4 +1,4 @@
-import type { BotIntent, BotMessage, BulkUpdateItem, Condition, ButtonMessageConfig, ButtonOption } from '../types'
+import type { BotIntent, BotMessage, BulkUpdateItem, Condition, ButtonMessageConfig, ButtonOption, AssistantSay, Next } from '../types'
 import type { EditResult } from './editFlow'
 import { createConditionTemplate, createConditionForKind, type CreatableKind } from './intentTemplates'
 
@@ -13,6 +13,13 @@ export interface MessageRef {
   condIdx: number
   sayIdx: number
   msgIdx: number
+  /**
+   * Container das mensagens dentro da condição. `'condition'` (default) = as
+   * respostas normais (`cond.assistant_says`); `'error'` = as mensagens de
+   * fallback do caminho de erro (`cond.action.error.assistant_says`). Permite
+   * reusar toda a máquina de mensagens para os dois conjuntos.
+   */
+  container?: 'condition' | 'error'
 }
 
 export interface EditableMessage {
@@ -49,8 +56,51 @@ function touch(intent: BotIntent): void {
   intent.updatedAt = new Date().toUTCString()
 }
 
+/**
+ * Resolve o array de `assistant_says` de uma condição conforme o container do
+ * endereço: `'condition'` (default) → `cond.assistant_says`; `'error'` →
+ * `cond.action.error.assistant_says`. Por padrão é só leitura (retorna
+ * `undefined` quando o caminho de erro não existe). Com `create: true` materializa
+ * `action.error`/`assistant_says` ausentes — usado pelos writers de mensagem; o
+ * `next` placeholder (`type:'error'`) é depois sobrescrito por `setActionErrorNext`.
+ */
+function saysOf(
+  cond: Condition | undefined,
+  container: MessageRef['container'] = 'condition',
+  create = false,
+): AssistantSay[] | undefined {
+  if (!cond) return undefined
+  if (container !== 'error') return cond.assistant_says
+  if (!cond.action.error) {
+    if (!create) return undefined
+    cond.action.error = { next: { type: 'error' }, assistant_says: [] }
+  }
+  if (!cond.action.error.assistant_says) {
+    if (!create) return undefined
+    cond.action.error.assistant_says = []
+  }
+  return cond.action.error.assistant_says
+}
+
 function getMessage(intent: BotIntent, ref: MessageRef): BotMessage | null {
-  return intent.conditions[ref.condIdx]?.assistant_says[ref.sayIdx]?.messages[ref.msgIdx] ?? null
+  return saysOf(intent.conditions[ref.condIdx], ref.container)?.[ref.sayIdx]?.messages[ref.msgIdx] ?? null
+}
+
+/** Monta o `EditableMessage` exibível a partir de um `BotMessage` e seu endereço. */
+function toEditableMessage(msg: BotMessage, ref: MessageRef): EditableMessage {
+  const text = msg.type === 'TEXT' || msg.type === 'IMAGE' || msg.type === 'FILE'
+    || msg.type === 'VIDEO' || msg.type === 'TEMPLATE'
+    ? msg.content ?? ''
+    : msg.messageConfig?.body ?? ''
+  return {
+    ref, type: msg.type, text, fileName: msg.fileName ?? '',
+    ...(msg.type === 'COLLECTION' ? { collectionId: msg.collectionId ?? '' } : {}),
+    ...(msg.type === 'TEMPLATE' ? {
+      messageTemplateId: msg.messageTemplateId ?? '',
+      templateTitle: msg.title ?? '',
+      templateTokens: [...(msg.messageTemplateTokens ?? [])],
+    } : {}),
+  }
 }
 
 /** Lista todas as mensagens da intenção com seus endereços, na ordem de exibição. */
@@ -59,19 +109,26 @@ export function listMessages(intent: BotIntent): EditableMessage[] {
   intent.conditions.forEach((cond, condIdx) => {
     cond.assistant_says.forEach((say, sayIdx) => {
       say.messages.forEach((msg, msgIdx) => {
-        const text = msg.type === 'TEXT' || msg.type === 'IMAGE' || msg.type === 'FILE'
-          || msg.type === 'VIDEO' || msg.type === 'TEMPLATE'
-          ? msg.content ?? ''
-          : msg.messageConfig?.body ?? ''
-        result.push({
-          ref: { condIdx, sayIdx, msgIdx }, type: msg.type, text, fileName: msg.fileName ?? '',
-          ...(msg.type === 'COLLECTION' ? { collectionId: msg.collectionId ?? '' } : {}),
-          ...(msg.type === 'TEMPLATE' ? {
-            messageTemplateId: msg.messageTemplateId ?? '',
-            templateTitle: msg.title ?? '',
-            templateTokens: [...(msg.messageTemplateTokens ?? [])],
-          } : {}),
-        })
+        result.push(toEditableMessage(msg, { condIdx, sayIdx, msgIdx }))
+      })
+    })
+  })
+  return result
+}
+
+/**
+ * Lista as mensagens de fallback do caminho de erro de cada condição
+ * (`action.error.assistant_says`), com refs marcados `container:'error'`.
+ * Conjunto separado das respostas normais (`listMessages`) — alimenta a seção
+ * "Em caso de erro" do painel. Só leitura: condições sem `action.error` são
+ * ignoradas (não cria estrutura).
+ */
+export function listErrorMessages(intent: BotIntent): EditableMessage[] {
+  const result: EditableMessage[] = []
+  intent.conditions.forEach((cond, condIdx) => {
+    cond.action.error?.assistant_says?.forEach((say, sayIdx) => {
+      say.messages.forEach((msg, msgIdx) => {
+        result.push(toEditableMessage(msg, { condIdx, sayIdx, msgIdx, container: 'error' }))
       })
     })
   })
@@ -98,11 +155,12 @@ export function updateMessageText(intent: BotIntent, ref: MessageRef, text: stri
  * No Modelo B (Marco C) o editor de um filho passa o `condIdx` da condição
  * sendo editada para que a mensagem caia na condição certa.
  */
-export function addTextMessage(intent: BotIntent, text: string, condIdx = 0): EditResult {
+export function addTextMessage(intent: BotIntent, text: string, condIdx = 0, container: MessageRef['container'] = 'condition'): EditResult {
   const cond = intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: 'intenção sem condições' }
-  if (!cond.assistant_says.length) cond.assistant_says.push({ channel: 'any', messages: [] })
-  cond.assistant_says[0].messages.push({ type: 'TEXT', content: text, fileName: '' })
+  const says = saysOf(cond, container, true)!
+  if (!says.length) says.push({ channel: 'any', messages: [] })
+  says[0].messages.push({ type: 'TEXT', content: text, fileName: '' })
   touch(intent)
   return { ok: true }
 }
@@ -119,7 +177,7 @@ export function removeMessage(intent: BotIntent, ref: MessageRef): EditResult {
   if (isButtonList && intent.conditions[ref.condIdx]?.action.type === 'choice') {
     return { ok: false, reason: `mensagens do tipo ${msg.type} não podem ser removidas (os botões mapeiam para as escolhas)` }
   }
-  intent.conditions[ref.condIdx].assistant_says[ref.sayIdx].messages.splice(ref.msgIdx, 1)
+  saysOf(intent.conditions[ref.condIdx], ref.container)![ref.sayIdx].messages.splice(ref.msgIdx, 1)
   touch(intent)
   return { ok: true }
 }
@@ -134,11 +192,13 @@ export function addMediaMessage(
   content: string,
   fileName: string,
   condIdx = 0,
+  container: MessageRef['container'] = 'condition',
 ): EditResult {
   const cond = intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: 'intenção sem condições' }
-  if (!cond.assistant_says.length) cond.assistant_says.push({ channel: 'any', messages: [] })
-  cond.assistant_says[0].messages.push({ type, content, fileName })
+  const says = saysOf(cond, container, true)!
+  if (!says.length) says.push({ channel: 'any', messages: [] })
+  says[0].messages.push({ type, content, fileName })
   touch(intent)
   return { ok: true }
 }
@@ -148,12 +208,13 @@ export function addMediaMessage(
  * Espelha o formato exportado pela plataforma: `collectionId` carrega o objectId da
  * coleção e `fileName` vai como string vazia (não usa `content`).
  */
-export function addCollectionMessage(intent: BotIntent, collectionId: string, condIdx = 0): EditResult {
+export function addCollectionMessage(intent: BotIntent, collectionId: string, condIdx = 0, container: MessageRef['container'] = 'condition'): EditResult {
   const cond = intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: 'intenção sem condições' }
   if (!collectionId.trim()) return { ok: false, reason: 'selecione uma coleção antes de salvar' }
-  if (!cond.assistant_says.length) cond.assistant_says.push({ channel: 'any', messages: [] })
-  cond.assistant_says[0].messages.push({ type: 'COLLECTION', fileName: '', collectionId })
+  const says = saysOf(cond, container, true)!
+  if (!says.length) says.push({ channel: 'any', messages: [] })
+  says[0].messages.push({ type: 'COLLECTION', fileName: '', collectionId })
   touch(intent)
   return { ok: true }
 }
@@ -203,12 +264,13 @@ function buildTemplateMessage(payload: TemplateMessagePayload): BotMessage {
  * (variáveis) são preenchidos pelo usuário. Exige `messageTemplateId` (a UI bloqueia
  * antes, mas guardamos aqui também).
  */
-export function addTemplateMessage(intent: BotIntent, payload: TemplateMessagePayload, condIdx = 0): EditResult {
+export function addTemplateMessage(intent: BotIntent, payload: TemplateMessagePayload, condIdx = 0, container: MessageRef['container'] = 'condition'): EditResult {
   const cond = intent.conditions[condIdx]
   if (!cond) return { ok: false, reason: 'intenção sem condições' }
   if (!payload.messageTemplateId.trim()) return { ok: false, reason: 'selecione um modelo de mensagem antes de salvar' }
-  if (!cond.assistant_says.length) cond.assistant_says.push({ channel: 'any', messages: [] })
-  cond.assistant_says[0].messages.push(buildTemplateMessage(payload))
+  const says = saysOf(cond, container, true)!
+  if (!says.length) says.push({ channel: 'any', messages: [] })
+  says[0].messages.push(buildTemplateMessage(payload))
   touch(intent)
   return { ok: true }
 }
@@ -688,6 +750,39 @@ export function updateActionFields(
       type: fields.externalType ?? ext.type,
       apiName: fields.apiName ?? ext.apiName,
     }
+  }
+  touch(intent)
+  return { ok: true }
+}
+
+/**
+ * Grava o destino do caminho de erro (`action.error.next`) de uma condição,
+ * aplicando o acoplamento confirmado nos exemplos reais: `redirect:'continueFlow'`
+ * → `intentBot:''`; `redirect:'waitInteraction'` → `intentBot:<botId da intenção>`.
+ * `type:'error'` e `action:'intent'` são fixos; `intent` é o id da intenção-destino
+ * (string, ex.: `${botId}-start`). Preserva as `assistant_says` de erro existentes
+ * (só sobrescreve o `next`); cria o `action.error` se ainda não houver.
+ */
+export function setActionErrorNext(
+  intent: BotIntent,
+  condIdx: number,
+  fields: { redirect: string; intent: string },
+): EditResult {
+  const cond = intent.conditions[condIdx]
+  if (!cond) return { ok: false, reason: 'condição não encontrada na intenção' }
+  const next: Next = {
+    redirect: fields.redirect,
+    type: 'error',
+    // Nunca grava intent vazio (a opção "— Selecione —" do picker) — cai no Start
+    // sintético, o default válido da seção "Em caso de erro".
+    intent: fields.intent || `${intent.botId}-start`,
+    intentBot: fields.redirect === 'waitInteraction' ? intent.botId : '',
+    action: 'intent',
+  }
+  if (!cond.action.error) {
+    cond.action.error = { next, assistant_says: [] }
+  } else {
+    cond.action.error.next = next
   }
   touch(intent)
   return { ok: true }

@@ -306,7 +306,9 @@ export function applyNodeDelete(json: BotFlowJson, nodeId: string): EditResult {
       const errNext = cond.action.error?.next
       if (errNext && typeof errNext.intent === 'string' && errNext.intent === nodeId) {
         errNext.intent = `${other.botId}-start`
-        errNext.intentBot = other.botId
+        // Mantém o acoplamento intentBot↔redirect (continueFlow→'' / waitInteraction→botId)
+        // que setActionErrorNext garante — não preencher intentBot quando é continueFlow.
+        errNext.intentBot = errNext.redirect === 'waitInteraction' ? other.botId : ''
       }
 
       if (Array.isArray(cond.fallbackIntents) && cond.fallbackIntents.includes(nodeId)) {

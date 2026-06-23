@@ -1,4 +1,4 @@
-import type { Action, BotIntent, Condition, ErrorAction } from '../types'
+import type { Action, BotIntent, Condition, ErrorAction, NodeKind } from '../types'
 
 /**
  * Templates canônicos de BotIntent para criação de nós na paleta.
@@ -73,19 +73,34 @@ function canonicalAction(type: string): Action {
   }
 }
 
-/** Caminho de erro padrão: volta para a intenção inicial ({botId}-start, em string). */
+/**
+ * Caminho de erro padrão: volta para a intenção inicial ({botId}-start, em string).
+ * Nasce em `continueFlow` (segue o próximo fluxo após o erro) com `intentBot:''` —
+ * acoplamento confirmado nos exemplos reais (continueFlow→intentBot vazio;
+ * waitInteraction→intentBot:<botId>). Ver `setActionErrorNext` em editIntent.ts.
+ */
 function canonicalError(botId: string): ErrorAction {
   return {
     assistant_says: [{ channel: 'any', messages: [] }],
     next: {
-      redirect: 'waitInteraction',
+      redirect: 'continueFlow',
       type: 'error',
       intent: `${botId}-start`,
-      intentBot: botId,
+      intentBot: '',
       action: 'intent',
     },
   }
 }
+
+/**
+ * Os 7 tipos de NÓ DE AÇÃO que materializam `action.error` no template (a
+ * plataforma aceita `action.error` em todos eles). Os 4 tipos estruturais
+ * (none/choice/wait/end) não têm caminho de erro. Fonte única — o painel
+ * (`DetailPanel`) reusa este Set para gated da seção "Em caso de erro".
+ */
+export const ACTION_KINDS_WITH_ERROR: ReadonlySet<NodeKind> = new Set<NodeKind>([
+  'captureNode', 'setDataNode', 'storeNode', 'apiCallNode', 'transferNode', 'orderNode', 'csatNode',
+])
 
 /** Condição canônica mínima (action `none` por padrão) — também usada ao adicionar condições no painel. */
 export function createConditionTemplate(actionType = 'none'): Condition {
@@ -109,14 +124,12 @@ function buildKindAction(kind: CreatableKind, botId: string): Action {
     // 'direct4userPrevious' ("Devolver ao vendedor") é o único destino SEM campo,
     // então o nó recém-criado nasce VÁLIDO (não força abrir picker/preencher valor).
     action.transferType = 'direct4userPrevious'
-    action.error = canonicalError(botId)
   }
   if (kind === 'captureNode') {
     // `free` = estado de repouso "texto livre": serializa valor válido se o nó for
     // criado e nunca configurado (evita captureDataType null no push). No painel
     // aparece como "— Selecione —" e o gate de save ainda exige escolher um dado.
     action.captureDataType = 'free'
-    action.error = canonicalError(botId)
   }
   // Defaults dos tipos novos da Fase 6 (mínimos embasados no spec — ver
   // docs/MODELO-INTENCAO-OMNICHAT.md §4). `endConversation`/`external`/`store`
@@ -124,6 +137,9 @@ function buildKindAction(kind: CreatableKind, botId: string): Action {
   // `{ type: [], apiName: [] }` canônico e o enum de storeType é desconhecido.
   if (kind === 'orderNode') action.orderType = 'generateOrder'
   if (kind === 'csatNode') action.captureDataType = 'supportRate'
+  // Os 7 nós de ação materializam o caminho de erro (`action.error`) já no
+  // template (D9) — a plataforma aceita em todos. Default continueFlow→start (D10).
+  if (ACTION_KINDS_WITH_ERROR.has(kind)) action.error = canonicalError(botId)
   return action
 }
 

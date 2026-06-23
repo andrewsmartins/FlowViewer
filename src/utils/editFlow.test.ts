@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join, dirname } from 'node:path'
-import { parseEdgeId, applyEdgeReconnect, serializeFlow, setNextRef } from './editFlow'
+import { parseEdgeId, applyEdgeReconnect, serializeFlow, setNextRef, applyNodeDelete } from './editFlow'
 import { parseFlow } from './parseFlow'
+import { createIntentTemplate } from './intentTemplates'
 import type { BotFlowJson, Condition } from '../types'
 
 const samplesDir = join(dirname(fileURLToPath(import.meta.url)), '../../samples')
@@ -189,5 +190,35 @@ describe('setNextRef — destino da seção "Próximo Fluxo" (mesmo bot / outro 
   it('null em condição sem next não quebra', () => {
     const cond = makeCond(undefined)
     expect(() => setNextRef(cond, null, MAIN)).not.toThrow()
+  })
+})
+
+describe('applyNodeDelete — reaponta error.next preservando o acoplamento intentBot↔redirect', () => {
+  const BOT = 'bot-del-1'
+
+  function flowWithErrorTarget(redirect: string): { json: BotFlowJson; targetId: string } {
+    const action = createIntentTemplate('transferNode', BOT, 'acao')
+    const target = createIntentTemplate('defaultNode', BOT, 'alvo')
+    const next = action.conditions[0].action.error!.next
+    next.intent = target.id
+    next.redirect = redirect
+    next.intentBot = redirect === 'waitInteraction' ? BOT : ''
+    return { json: { list: [action, target] }, targetId: target.id }
+  }
+
+  it('continueFlow: ao deletar o destino, cai no Start com intentBot vazio', () => {
+    const { json, targetId } = flowWithErrorTarget('continueFlow')
+    expect(applyNodeDelete(json, targetId).ok).toBe(true)
+    const next = json.list[0].conditions[0].action.error!.next
+    expect(next.intent).toBe(`${BOT}-start`)
+    expect(next.intentBot).toBe('')
+  })
+
+  it('waitInteraction: ao deletar o destino, cai no Start mantendo intentBot = botId', () => {
+    const { json, targetId } = flowWithErrorTarget('waitInteraction')
+    expect(applyNodeDelete(json, targetId).ok).toBe(true)
+    const next = json.list[0].conditions[0].action.error!.next
+    expect(next.intent).toBe(`${BOT}-start`)
+    expect(next.intentBot).toBe(BOT)
   })
 })

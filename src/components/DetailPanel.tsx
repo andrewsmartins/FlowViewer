@@ -5,10 +5,10 @@ import type { BotIntent, Condition, BulkUpdateItem, FlowNodeData, NodeKind, Butt
 import { useTheme } from '../contexts/ThemeContext'
 import { PRIORITY_LABELS, CONDITION_TYPE_LABELS } from '../utils/nodeMeta'
 import {
-  listMessages, updateMessageText, addTextMessage, addMediaMessage, addCollectionMessage, updateCollectionMessage, removeMessage,
+  listMessages, listErrorMessages, updateMessageText, addTextMessage, addMediaMessage, addCollectionMessage, updateCollectionMessage, removeMessage,
   addTemplateMessage, updateTemplateMessage, addButtonListMessage, replaceButtonListMessage, setChoices,
   updateCondition, addCondition, removeCondition,
-  updateIntentMeta, updateActionFields, updateSetDataItems, sanitizeIntentName,
+  updateIntentMeta, updateActionFields, updateSetDataItems, setActionErrorNext, sanitizeIntentName,
   type EditableMessage, type MessageRef, type TemplateMessagePayload,
 } from '../utils/editIntent'
 import { acceptFor, type UploadMediaType } from '../utils/uploadMedia'
@@ -19,7 +19,7 @@ import { useTeams } from '../contexts/TeamsContext'
 import type { Collection } from '../utils/collections'
 import { templateVarCount, type MessageTemplate } from '../utils/messageTemplates'
 import { setNextRef, type EditResult } from '../utils/editFlow'
-import { CREATABLE_KINDS, CREATABLE_KIND_LABELS, type CreatableKind } from '../utils/intentTemplates'
+import { CREATABLE_KINDS, CREATABLE_KIND_LABELS, ACTION_KINDS_WITH_ERROR, type CreatableKind } from '../utils/intentTemplates'
 import { CAPTURE_FIELDS, CAPTURE_CATEGORY, MULTIPLE_FIELDS_SENTINEL, FREE_CAPTURE } from '../utils/captureFields'
 
 // Nó "Loja física": hoje só uma ação ("Selecionar a primeira loja" → storeType 'first').
@@ -249,6 +249,18 @@ interface Draft {
   messages: EditableMessage[]
   newMessages: NewDraftMessage[]
   removedRefs: MessageRef[]
+  // Seção "Em caso de erro" (action.error) — conjunto de mensagens SEPARADO das
+  // respostas normais, com seus próprios diffs. Só nos 7 nós de ação.
+  /** Mensagens de fallback existentes (action.error.assistant_says), refs container:'error'. */
+  errorMessages: EditableMessage[]
+  /** Mensagens de erro novas, ainda não aplicadas. */
+  newErrorMessages: NewDraftMessage[]
+  /** Refs de mensagens de erro marcadas para remoção. */
+  removedErrorRefs: MessageRef[]
+  /** Destino do erro: 'continueFlow' (segue o próximo fluxo) ou 'waitInteraction' (aguarda o cliente). */
+  errorRedirect: string
+  /** Intenção-destino do erro (id string; default `${botId}-start`). */
+  errorIntent: string
   // Nó de Escolha (Fase 10c): menu (em cima) + destinos (embaixo), ligados pela ordem.
   /** Índice da condição de escolha em escopo (-1 se não há). Menu/escolhas miram nela. */
   choiceCondIdx: number
@@ -352,10 +364,31 @@ function condValueForDraft(cond: Condition | undefined): string {
   return cond.value ?? ''
 }
 
+/**
+ * Estado inicial da seção "Em caso de erro" a partir do `action.error.next` da
+ * condição-fonte. `redirect` default `'continueFlow'`; `intent` aceito como string
+ * (forma do erro) ou objeto (lê `.id`), com fallback `${botId}-start`. Tolerante a
+ * nós sem `action.error` (ainda não materializado).
+ */
+function errorNextDraft(cond: Condition | undefined, botId: string): Pick<Draft, 'errorRedirect' | 'errorIntent'> {
+  const next = cond?.action.error?.next
+  const rawIntent = next?.intent
+  const intentId = typeof rawIntent === 'string' ? rawIntent : (rawIntent?.id ?? '')
+  return {
+    errorRedirect: next?.redirect || 'continueFlow',
+    errorIntent: intentId || `${botId}-start`,
+  }
+}
+
 function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft {
   const scopedCond = intent.conditions[condIdx]
   const allMessages = listMessages(intent)
   const scoped = mode === 'condition' ? allMessages.filter(m => m.ref.condIdx === condIdx) : allMessages
+  // Mensagens de erro: escopadas à condição editada (condition) ou todas (solo).
+  const allErrorMessages = listErrorMessages(intent)
+  const errorMessages = mode === 'condition' ? allErrorMessages.filter(m => m.ref.condIdx === condIdx) : allErrorMessages
+  // Condição-fonte do caminho de erro: a própria (condition) ou a 1ª que tem action.error (solo).
+  const errorCond = mode === 'condition' ? scopedCond : (intent.conditions.find(c => c.action.error) ?? intent.conditions[0])
 
   // Nó de Escolha: o menu (Botão/Lista) é extraído para `menu` e some da lista de
   // mensagens (é editado em bloco no topo); os destinos vão para `choices`.
@@ -404,6 +437,10 @@ function buildDraft(intent: BotIntent, mode: PanelMode, condIdx: number): Draft 
     messages,
     newMessages: [],
     removedRefs: [],
+    errorMessages,
+    newErrorMessages: [],
+    removedErrorRefs: [],
+    ...errorNextDraft(errorCond, intent.botId),
     choiceCondIdx,
     menu,
     choices,
@@ -2506,6 +2543,308 @@ function TransferActionSection({ transferType, transferValue, invalid, isDark, i
   )
 }
 
+interface MessageListEditorProps {
+  /** Intenção em escopo — usada só para resolver o resumo de Botão/Lista de exibição. */
+  intent: BotIntent | null
+  /** Mensagens existentes (edição in-place de TEXT/COLLECTION/TEMPLATE; remoção das demais). */
+  messages: EditableMessage[]
+  /** Mensagens novas, ainda não aplicadas. */
+  newMessages: NewDraftMessage[]
+  /** Atualiza a lista de mensagens existentes (edição in-place). */
+  onChangeMessages: (next: EditableMessage[]) => void
+  /** Marca uma mensagem existente para remoção (o pai filtra a lista + registra o ref removido). */
+  onRemoveExisting: (ref: MessageRef) => void
+  /** Atualiza a lista de mensagens novas. */
+  onChangeNew: (next: NewDraftMessage[]) => void
+  editingColl: Set<string>
+  setEditingColl: Dispatch<SetStateAction<Set<string>>>
+  editingTpl: Set<string>
+  setEditingTpl: Dispatch<SetStateAction<Set<string>>>
+  /** Prefixo das chaves de estado de edição — evita colisão entre os containers (respostas vs. erro). */
+  keyPrefix: string
+  isDark: boolean
+  inputCls: string
+  labelCls: string
+  ghostBtnCls: string
+  dashedBtnCls: string
+}
+
+/**
+ * Editor da lista de mensagens (existentes + novas + "Adicionar Resposta"),
+ * compartilhado entre a seção "Mensagens" (respostas normais) e a seção "Em caso
+ * de erro". O `AddMessageMenu` já exclui Botão/Lista (vira o Menu do nó de Escolha),
+ * então os dois usos oferecem TEXT/IMAGE/FILE/VIDEO/COLLECTION/TEMPLATE. Botão/Lista
+ * só aparecem como resumo de EXIBIÇÃO de mensagens existentes (nunca no caminho de erro).
+ */
+function MessageListEditor({
+  intent, messages, newMessages, onChangeMessages, onRemoveExisting, onChangeNew,
+  editingColl, setEditingColl, editingTpl, setEditingTpl, keyPrefix,
+  isDark, inputCls, labelCls, ghostBtnCls, dashedBtnCls,
+}: MessageListEditorProps) {
+  const keyOf = (ref: MessageRef) => `${keyPrefix}${ref.condIdx}-${ref.sayIdx}-${ref.msgIdx}`
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Mensagens existentes */}
+      {messages.map((msg, i) => (
+        <div key={keyOf(msg.ref)} className="flex flex-col gap-0.5">
+          {msg.type === 'TEXT' ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className={labelCls}>Texto</span>
+                <button className={ghostBtnCls} onClick={() => onRemoveExisting(msg.ref)}>remover</button>
+              </div>
+              <VariableTextArea
+                className={`${inputCls} resize-y min-h-[56px]`}
+                value={msg.text}
+                isDark={isDark}
+                onChange={v => onChangeMessages(messages.map((m, j) => j === i ? { ...m, text: v } : m))}
+              />
+            </>
+          ) : msg.ref.container !== 'error' && isDisplayButtonList(intent, msg.ref, msg.type) ? (
+            <ButtonListSummary
+              config={intent!.conditions[msg.ref.condIdx].assistant_says[msg.ref.sayIdx].messages[msg.ref.msgIdx].messageConfig!}
+              msgType={msg.type}
+              isDark={isDark}
+              labelCls={labelCls}
+              ghostBtnCls={ghostBtnCls}
+              onRemove={() => onRemoveExisting(msg.ref)}
+            />
+          ) : msg.type === 'COLLECTION' ? (
+            <CollectionField
+              collectionId={msg.collectionId ?? ''}
+              editing={editingColl.has(keyOf(msg.ref))}
+              isDark={isDark}
+              inputCls={inputCls}
+              labelCls={labelCls}
+              ghostBtnCls={ghostBtnCls}
+              dashedBtnCls={dashedBtnCls}
+              onChangeId={id => onChangeMessages(messages.map((m, j) => j === i ? { ...m, collectionId: id } : m))}
+              onSave={() => setEditingColl(s => { const n = new Set(s); n.delete(keyOf(msg.ref)); return n })}
+              onEdit={() => setEditingColl(s => new Set(s).add(keyOf(msg.ref)))}
+              onRemove={() => onRemoveExisting(msg.ref)}
+            />
+          ) : msg.type === 'TEMPLATE' ? (
+            <TemplateField
+              messageTemplateId={msg.messageTemplateId ?? ''}
+              tokens={msg.templateTokens ?? []}
+              editing={editingTpl.has(keyOf(msg.ref))}
+              fallbackTitle={msg.templateTitle}
+              fallbackBody={msg.text}
+              isDark={isDark}
+              inputCls={inputCls}
+              labelCls={labelCls}
+              ghostBtnCls={ghostBtnCls}
+              dashedBtnCls={dashedBtnCls}
+              onSelectTemplate={t => onChangeMessages(messages.map((m, j) => j === i ? { ...m, messageTemplateId: t.objectId, templateTitle: t.title, templateTokens: Array(templateVarCount(t)).fill('') } : m))}
+              onChangeToken={(vi, value) => onChangeMessages(messages.map((m, j) => j === i ? { ...m, templateTokens: (m.templateTokens ?? []).map((t, k) => k === vi ? value : t) } : m))}
+              onSave={() => setEditingTpl(s => { const n = new Set(s); n.delete(keyOf(msg.ref)); return n })}
+              onEdit={() => setEditingTpl(s => new Set(s).add(keyOf(msg.ref)))}
+              onRemove={() => onRemoveExisting(msg.ref)}
+            />
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span>{MEDIA_ICONS[msg.type] ?? '📎'}</span>
+                <span className={`${labelCls} truncate`} title={msg.fileName || msg.text}>
+                  {msg.fileName || msg.text.split('/').pop() || msg.type}
+                </span>
+              </div>
+              <button className={ghostBtnCls} onClick={() => onRemoveExisting(msg.ref)}>remover</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Novas mensagens ainda não aplicadas */}
+      {newMessages.map((msg, i) => (
+        <div key={`${keyPrefix}new-${i}`}>
+          {msg.type === 'TEXT' ? (
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center justify-between">
+                <span className={labelCls}>Texto (nova)</span>
+                <button className={ghostBtnCls} onClick={() => onChangeNew(newMessages.filter((_, j) => j !== i))}>remover</button>
+              </div>
+              <VariableTextArea
+                className={`${inputCls} resize-y min-h-[56px]`}
+                value={msg.content}
+                isDark={isDark}
+                placeholder="Texto da mensagem…"
+                onChange={v => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, content: v } : m))}
+              />
+            </div>
+          ) : msg.type === 'BUTTONLIST' ? (
+            <ButtonListEditor
+              msg={msg}
+              isDark={isDark}
+              inputCls={inputCls}
+              labelCls={labelCls}
+              ghostBtnCls={ghostBtnCls}
+              dashedBtnCls={dashedBtnCls}
+              onChange={next => onChangeNew(newMessages.map((m, j) => j === i ? next : m))}
+              onRemove={() => onChangeNew(newMessages.filter((_, j) => j !== i))}
+            />
+          ) : msg.type === 'COLLECTION' ? (
+            <CollectionField
+              collectionId={msg.collectionId}
+              editing={msg.editing}
+              isDark={isDark}
+              inputCls={inputCls}
+              labelCls={labelCls}
+              ghostBtnCls={ghostBtnCls}
+              dashedBtnCls={dashedBtnCls}
+              onChangeId={collectionId => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, collectionId } : m))}
+              onSave={() => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, editing: false } : m))}
+              onEdit={() => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, editing: true } : m))}
+              onRemove={() => onChangeNew(newMessages.filter((_, j) => j !== i))}
+            />
+          ) : msg.type === 'TEMPLATE' ? (
+            <TemplateField
+              messageTemplateId={msg.messageTemplateId}
+              tokens={msg.tokens}
+              editing={msg.editing}
+              isDark={isDark}
+              inputCls={inputCls}
+              labelCls={labelCls}
+              ghostBtnCls={ghostBtnCls}
+              dashedBtnCls={dashedBtnCls}
+              onSelectTemplate={t => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, messageTemplateId: t.objectId, tokens: Array(templateVarCount(t)).fill('') } : m))}
+              onChangeToken={(vi, value) => onChangeNew(newMessages.map((m, j) => j === i && m.type === 'TEMPLATE' ? { ...m, tokens: m.tokens.map((t, k) => k === vi ? value : t) } : m))}
+              onSave={() => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, editing: false } : m))}
+              onEdit={() => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, editing: true } : m))}
+              onRemove={() => onChangeNew(newMessages.filter((_, j) => j !== i))}
+            />
+          ) : (
+            <MediaMessageEditor
+              msg={msg}
+              index={i}
+              isDark={isDark}
+              inputCls={inputCls}
+              labelCls={labelCls}
+              ghostBtnCls={ghostBtnCls}
+              onChange={(content, fileName) => onChangeNew(newMessages.map((m, j) => j === i ? { ...m, content, fileName } : m))}
+              onRemove={() => onChangeNew(newMessages.filter((_, j) => j !== i))}
+            />
+          )}
+        </div>
+      ))}
+
+      {/* Botão "+ Adicionar Resposta" com dropdown de tipos */}
+      <AddMessageMenu
+        isDark={isDark}
+        dashedBtnCls={dashedBtnCls}
+        onAdd={type => onChangeNew([...newMessages, type === 'BUTTONLIST'
+          ? { type, variant: 'plain', header: '', body: '', footer: '', title: '', items: [{ text: '', description: '' }] }
+          : type === 'COLLECTION'
+            ? { type, collectionId: '', editing: true }
+          : type === 'TEMPLATE'
+            ? { type, messageTemplateId: '', tokens: [], editing: true }
+            : { type, content: '', fileName: '' }])}
+      />
+    </div>
+  )
+}
+
+/**
+ * Seção "Em caso de erro" (`action.error`) dos 7 nós de ação. Reúne (1) as
+ * mensagens de fallback (mesmos editores das respostas, SEM Botão/Lista — eles
+ * mapeariam para `action.choices` inexistentes), (2) o "Próximo fluxo após o erro"
+ * (`IntentSelect`, default Start) e (3) dois rádios exclusivos para o `redirect`:
+ * seguir o próximo fluxo (`continueFlow`) ou aguardar o cliente (`waitInteraction`).
+ * Sem gate: sempre tem default válido, então nunca bloqueia "Aplicar".
+ */
+interface ErrorActionSectionProps {
+  draft: Draft
+  setDraft: Dispatch<SetStateAction<Draft | null>>
+  intent: BotIntent | null
+  intents: BotIntent[]
+  editingColl: Set<string>
+  setEditingColl: Dispatch<SetStateAction<Set<string>>>
+  editingTpl: Set<string>
+  setEditingTpl: Dispatch<SetStateAction<Set<string>>>
+  isDark: boolean
+  inputCls: string
+  labelCls: string
+  ghostBtnCls: string
+  dashedBtnCls: string
+}
+
+function ErrorActionSection({
+  draft, setDraft, intent, intents, editingColl, setEditingColl, editingTpl, setEditingTpl,
+  isDark, inputCls, labelCls, ghostBtnCls, dashedBtnCls,
+}: ErrorActionSectionProps) {
+  const patch = (p: Partial<Draft>) => setDraft(d => d ? { ...d, ...p } : d)
+  const hintCls = `text-[11px] leading-snug ${isDark ? 'text-slate-400' : 'text-slate-500'}`
+  const radioBase = `flex items-start gap-2 text-xs cursor-pointer rounded-lg border p-2 transition-colors ${isDark ? 'border-slate-800' : 'border-slate-100'}`
+  return (
+    <Section title="Em caso de erro" isDark={isDark} collapsible defaultOpen={false}>
+      <div className="flex flex-col gap-3">
+        <p className={hintCls}>Mensagens enviadas quando a ação falha. Defina também o que fazer em seguida.</p>
+
+        <MessageListEditor
+          intent={intent}
+          messages={draft.errorMessages}
+          newMessages={draft.newErrorMessages}
+          onChangeMessages={next => patch({ errorMessages: next })}
+          onRemoveExisting={ref => setDraft(d => d ? {
+            ...d,
+            errorMessages: d.errorMessages.filter(m => !(m.ref.condIdx === ref.condIdx && m.ref.sayIdx === ref.sayIdx && m.ref.msgIdx === ref.msgIdx)),
+            removedErrorRefs: [...d.removedErrorRefs, ref],
+          } : d)}
+          onChangeNew={next => patch({ newErrorMessages: next })}
+          editingColl={editingColl}
+          setEditingColl={setEditingColl}
+          editingTpl={editingTpl}
+          setEditingTpl={setEditingTpl}
+          keyPrefix="err-"
+          isDark={isDark}
+          inputCls={inputCls}
+          labelCls={labelCls}
+          ghostBtnCls={ghostBtnCls}
+          dashedBtnCls={dashedBtnCls}
+        />
+
+        <label className="flex flex-col gap-1">
+          <span className={labelCls}>Próximo fluxo após o erro</span>
+          <IntentSelect
+            value={draft.errorIntent}
+            onChange={v => patch({ errorIntent: v })}
+            intents={intents}
+            inputCls={inputCls}
+            emptyLabel="— Selecione —"
+          />
+        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <label className={radioBase}>
+            <input
+              type="radio"
+              className="mt-0.5 accent-violet-600"
+              checked={draft.errorRedirect === 'continueFlow'}
+              onChange={() => patch({ errorRedirect: 'continueFlow' })}
+            />
+            <span>
+              <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>Seguir o próximo fluxo</span>
+              <span className={`block ${hintCls}`}>Direciona para o fluxo escolhido acima.</span>
+            </span>
+          </label>
+          <label className={radioBase}>
+            <input
+              type="radio"
+              className="mt-0.5 accent-violet-600"
+              checked={draft.errorRedirect === 'waitInteraction'}
+              onChange={() => patch({ errorRedirect: 'waitInteraction' })}
+            />
+            <span>
+              <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>Aguardar interação do cliente</span>
+              <span className={`block ${hintCls}`}>Para o fluxo e espera o cliente responder.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 interface DetailPanelProps {
   node: Node<FlowNodeData>
   intent: BotIntent | null
@@ -2618,12 +2957,15 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
     // Vale para novas (com modelo escolhido) e existentes. Mandar `{{n}}` cru ao
     // cliente no WhatsApp seria um vazamento visível.
     if (showContent) {
-      const incompleteNew = draft.newMessages.some(m =>
+      const newIncomplete = (list: NewDraftMessage[]) => list.some(m =>
         m.type === 'TEMPLATE' && m.messageTemplateId.trim()
         && m.tokens.slice(0, tplVarCount(m.messageTemplateId, m.tokens)).some(t => !t.trim()))
-      const incompleteExisting = draft.messages.some(m =>
+      const existingIncomplete = (list: EditableMessage[]) => list.some(m =>
         m.type === 'TEMPLATE' && (m.messageTemplateId ?? '').trim()
         && (m.templateTokens ?? []).slice(0, tplVarCount(m.messageTemplateId!, m.templateTokens ?? [])).some(t => !t.trim()))
+      // Vale para respostas normais E mensagens do caminho de erro.
+      const incompleteNew = newIncomplete(draft.newMessages) || newIncomplete(draft.newErrorMessages)
+      const incompleteExisting = existingIncomplete(draft.messages) || existingIncomplete(draft.errorMessages)
       if (incompleteNew || incompleteExisting) {
         setPanelError('Preencha todas as variáveis do modelo de mensagem antes de salvar.')
         onApplyFailed()
@@ -2642,6 +2984,58 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
         tokens,
         flowButtonText: tpl?.flowButtonText ?? fb?.flowButtonText ?? '',
       }
+    }
+
+    // Diff de um conjunto de mensagens (respostas normais OU caminho de erro),
+    // parametrizado por `container`: update in-place de TEXT/COLLECTION/TEMPLATE,
+    // remoção (índice decrescente p/ refs não deslocarem) e adição das novas. As
+    // funções de update/remove resolvem o container pelo `ref.container`; as de add
+    // recebem `container` explícito. Botão/Lista nunca entra no caminho de erro.
+    const messageDiff = (
+      container: MessageRef['container'],
+      messages: EditableMessage[],
+      newMessages: NewDraftMessage[],
+      removedRefs: MessageRef[],
+    ): EditResult[] => {
+      const curOf = (ref: MessageRef) => {
+        const cond = intent.conditions[ref.condIdx]
+        const says = ref.container === 'error' ? cond?.action.error?.assistant_says : cond?.assistant_says
+        return says?.[ref.sayIdx]?.messages[ref.msgIdx]
+      }
+      return [
+        ...messages.filter(m => m.type === 'TEXT').map(m => updateMessageText(intent, m.ref, m.text)),
+        ...messages
+          .filter(m => m.type === 'COLLECTION' && !!(m.collectionId ?? '').trim())
+          .map(m => updateCollectionMessage(intent, m.ref, (m.collectionId ?? '').trim())),
+        ...messages
+          .filter(m => m.type === 'TEMPLATE' && !!(m.messageTemplateId ?? '').trim())
+          .map(m => {
+            const cur = curOf(m.ref)
+            return updateTemplateMessage(intent, m.ref, tplPayload(m.messageTemplateId!, m.templateTokens ?? [], {
+              title: cur?.title, content: cur?.content ?? undefined, flowButtonText: cur?.messageConfig?.buttons?.[0]?.text,
+            }))
+          }),
+        ...[...removedRefs]
+          .sort((a, b) => b.condIdx - a.condIdx || b.sayIdx - a.sayIdx || b.msgIdx - a.msgIdx)
+          .map(ref => removeMessage(intent, ref)),
+        ...newMessages
+          // Botão/Lista conta com corpo ou item; Coleção com collectionId; demais com content (evita rascunho vazio).
+          .filter(m =>
+            m.type === 'BUTTONLIST' ? (m.body.trim() || m.items.some(it => it.text.trim()))
+            : m.type === 'COLLECTION' ? !!m.collectionId.trim()
+            : m.type === 'TEMPLATE' ? !!m.messageTemplateId.trim()
+            : m.content.trim())
+          .map(m =>
+            m.type === 'TEXT' ? addTextMessage(intent, m.content.trim(), ci ?? 0, container)
+            : m.type === 'BUTTONLIST'
+              ? addButtonListMessage(intent, { header: m.header, body: m.body, footer: m.footer, title: m.title, items: m.items, variant: m.variant }, ci ?? 0)
+            : m.type === 'COLLECTION'
+              ? addCollectionMessage(intent, m.collectionId.trim(), ci ?? 0, container)
+            : m.type === 'TEMPLATE'
+              ? addTemplateMessage(intent, tplPayload(m.messageTemplateId.trim(), m.tokens), ci ?? 0, container)
+              : addMediaMessage(intent, m.type, m.content.trim(), m.fileName.trim(), ci ?? 0, container)
+          ),
+      ]
     }
 
     if (showMeta) {
@@ -2678,41 +3072,7 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
         }
         results.push(setChoices(intent, draft.choiceCondIdx, draft.choices))
       }
-      results.push(
-        // TEXT e COLLECTION são editáveis em mensagens existentes; IMAGE/FILE/VIDEO são display-only.
-        ...draft.messages.filter(m => m.type === 'TEXT').map(m => updateMessageText(intent, m.ref, m.text)),
-        ...draft.messages
-          .filter(m => m.type === 'COLLECTION' && !!(m.collectionId ?? '').trim())
-          .map(m => updateCollectionMessage(intent, m.ref, (m.collectionId ?? '').trim())),
-        ...draft.messages
-          .filter(m => m.type === 'TEMPLATE' && !!(m.messageTemplateId ?? '').trim())
-          .map(m => {
-            const cur = intent.conditions[m.ref.condIdx]?.assistant_says[m.ref.sayIdx]?.messages[m.ref.msgIdx]
-            return updateTemplateMessage(intent, m.ref, tplPayload(m.messageTemplateId!, m.templateTokens ?? [], {
-              title: cur?.title, content: cur?.content ?? undefined, flowButtonText: cur?.messageConfig?.buttons?.[0]?.text,
-            }))
-          }),
-        ...[...draft.removedRefs]
-          .sort((a, b) => b.condIdx - a.condIdx || b.sayIdx - a.sayIdx || b.msgIdx - a.msgIdx)
-          .map(ref => removeMessage(intent, ref)),
-        ...draft.newMessages
-          // Botão/Lista conta com corpo ou item; Coleção com collectionId; demais com content (evita rascunho vazio).
-          .filter(m =>
-            m.type === 'BUTTONLIST' ? (m.body.trim() || m.items.some(it => it.text.trim()))
-            : m.type === 'COLLECTION' ? !!m.collectionId.trim()
-            : m.type === 'TEMPLATE' ? !!m.messageTemplateId.trim()
-            : m.content.trim())
-          .map(m =>
-            m.type === 'TEXT' ? addTextMessage(intent, m.content.trim(), ci ?? 0)
-            : m.type === 'BUTTONLIST'
-              ? addButtonListMessage(intent, { header: m.header, body: m.body, footer: m.footer, title: m.title, items: m.items, variant: m.variant }, ci ?? 0)
-            : m.type === 'COLLECTION'
-              ? addCollectionMessage(intent, m.collectionId.trim(), ci ?? 0)
-            : m.type === 'TEMPLATE'
-              ? addTemplateMessage(intent, tplPayload(m.messageTemplateId.trim(), m.tokens), ci ?? 0)
-              : addMediaMessage(intent, m.type, m.content.trim(), m.fileName.trim(), ci ?? 0)
-          ),
-      )
+      results.push(...messageDiff('condition', draft.messages, draft.newMessages, draft.removedRefs))
       if (kind === 'transferNode') {
         results.push(updateActionFields(intent, 'transfer', { transferType: draft.transferType, value: draft.transferValue.trim() }, ci))
       }
@@ -2735,6 +3095,13 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
       }
       if (kind === 'apiCallNode') {
         results.push(updateActionFields(intent, 'external', { externalType: draft.externalType, apiName: draft.externalApiName }, ci))
+      }
+      // Seção "Em caso de erro" (7 nós de ação): diff das mensagens de fallback no
+      // container 'error' + destino do erro (setActionErrorNext aplica o acoplamento
+      // intentBot↔redirect e fixa type:'error'+action:'intent'). Sem gate.
+      if (ACTION_KINDS_WITH_ERROR.has(kind)) {
+        results.push(...messageDiff('error', draft.errorMessages, draft.newErrorMessages, draft.removedErrorRefs))
+        results.push(setActionErrorNext(intent, ci ?? 0, { redirect: draft.errorRedirect, intent: draft.errorIntent }))
       }
     }
 
@@ -2992,209 +3359,28 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
 
             {showContent && draft && (
               <Section title="Mensagens" isDark={isDark}>
-                <div className="flex flex-col gap-2">
-                  {/* Mensagens existentes */}
-                  {draft.messages.map((msg, i) => (
-                    <div key={`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`} className="flex flex-col gap-0.5">
-                      {msg.type === 'TEXT' ? (
-                        <>
-                          <div className="flex items-center justify-between">
-                            <span className={labelCls}>Texto</span>
-                            <button
-                              className={ghostBtnCls}
-                              onClick={() => setDraft(d => d && ({
-                                ...d,
-                                messages: d.messages.filter((_, j) => j !== i),
-                                removedRefs: [...d.removedRefs, msg.ref],
-                              }))}
-                            >remover</button>
-                          </div>
-                          <VariableTextArea
-                            className={`${inputCls} resize-y min-h-[56px]`}
-                            value={msg.text}
-                            isDark={isDark}
-                            onChange={v => setDraft(d => d && ({
-                              ...d,
-                              messages: d.messages.map((m, j) => j === i ? { ...m, text: v } : m),
-                            }))}
-                          />
-                        </>
-                      ) : isDisplayButtonList(intent, msg.ref, msg.type) ? (
-                        <ButtonListSummary
-                          config={intent!.conditions[msg.ref.condIdx].assistant_says[msg.ref.sayIdx].messages[msg.ref.msgIdx].messageConfig!}
-                          msgType={msg.type}
-                          isDark={isDark}
-                          labelCls={labelCls}
-                          ghostBtnCls={ghostBtnCls}
-                          onRemove={() => setDraft(d => d && ({
-                            ...d,
-                            messages: d.messages.filter((_, j) => j !== i),
-                            removedRefs: [...d.removedRefs, msg.ref],
-                          }))}
-                        />
-                      ) : msg.type === 'COLLECTION' ? (
-                        <CollectionField
-                          collectionId={msg.collectionId ?? ''}
-                          editing={editingColl.has(`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`)}
-                          isDark={isDark}
-                          inputCls={inputCls}
-                          labelCls={labelCls}
-                          ghostBtnCls={ghostBtnCls}
-                          dashedBtnCls={dashedBtnCls}
-                          onChangeId={id => setDraft(d => d && ({
-                            ...d,
-                            messages: d.messages.map((m, j) => j === i ? { ...m, collectionId: id } : m),
-                          }))}
-                          onSave={() => setEditingColl(s => {
-                            const n = new Set(s); n.delete(`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`); return n
-                          })}
-                          onEdit={() => setEditingColl(s => new Set(s).add(`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`))}
-                          onRemove={() => setDraft(d => d && ({
-                            ...d,
-                            messages: d.messages.filter((_, j) => j !== i),
-                            removedRefs: [...d.removedRefs, msg.ref],
-                          }))}
-                        />
-                      ) : msg.type === 'TEMPLATE' ? (
-                        <TemplateField
-                          messageTemplateId={msg.messageTemplateId ?? ''}
-                          tokens={msg.templateTokens ?? []}
-                          editing={editingTpl.has(`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`)}
-                          fallbackTitle={msg.templateTitle}
-                          fallbackBody={msg.text}
-                          isDark={isDark}
-                          inputCls={inputCls}
-                          labelCls={labelCls}
-                          ghostBtnCls={ghostBtnCls}
-                          dashedBtnCls={dashedBtnCls}
-                          onSelectTemplate={t => setDraft(d => d && ({
-                            ...d,
-                            messages: d.messages.map((m, j) => j === i ? { ...m, messageTemplateId: t.objectId, templateTitle: t.title, templateTokens: Array(templateVarCount(t)).fill('') } : m),
-                          }))}
-                          onChangeToken={(vi, value) => setDraft(d => d && ({
-                            ...d,
-                            messages: d.messages.map((m, j) => j === i ? { ...m, templateTokens: (m.templateTokens ?? []).map((t, k) => k === vi ? value : t) } : m),
-                          }))}
-                          onSave={() => setEditingTpl(s => {
-                            const n = new Set(s); n.delete(`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`); return n
-                          })}
-                          onEdit={() => setEditingTpl(s => new Set(s).add(`${msg.ref.condIdx}-${msg.ref.sayIdx}-${msg.ref.msgIdx}`))}
-                          onRemove={() => setDraft(d => d && ({
-                            ...d,
-                            messages: d.messages.filter((_, j) => j !== i),
-                            removedRefs: [...d.removedRefs, msg.ref],
-                          }))}
-                        />
-                      ) : (
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span>{MEDIA_ICONS[msg.type] ?? '📎'}</span>
-                            <span className={`${labelCls} truncate`} title={msg.fileName || msg.text}>
-                              {msg.fileName || msg.text.split('/').pop() || msg.type}
-                            </span>
-                          </div>
-                          <button
-                            className={ghostBtnCls}
-                            onClick={() => setDraft(d => d && ({
-                              ...d,
-                              messages: d.messages.filter((_, j) => j !== i),
-                              removedRefs: [...d.removedRefs, msg.ref],
-                            }))}
-                          >remover</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Novas mensagens ainda não aplicadas */}
-                  {draft.newMessages.map((msg, i) => (
-                    <div key={`new-${i}`}>
-                      {msg.type === 'TEXT' ? (
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center justify-between">
-                            <span className={labelCls}>Texto (nova)</span>
-                            <button
-                              className={ghostBtnCls}
-                              onClick={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
-                            >remover</button>
-                          </div>
-                          <VariableTextArea
-                            className={`${inputCls} resize-y min-h-[56px]`}
-                            value={msg.content}
-                            isDark={isDark}
-                            placeholder="Texto da mensagem…"
-                            onChange={v => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, content: v } : m))}
-                          />
-                        </div>
-                      ) : msg.type === 'BUTTONLIST' ? (
-                        <ButtonListEditor
-                          msg={msg}
-                          isDark={isDark}
-                          inputCls={inputCls}
-                          labelCls={labelCls}
-                          ghostBtnCls={ghostBtnCls}
-                          dashedBtnCls={dashedBtnCls}
-                          onChange={next => set('newMessages', draft.newMessages.map((m, j) => j === i ? next : m))}
-                          onRemove={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
-                        />
-                      ) : msg.type === 'COLLECTION' ? (
-                        <CollectionField
-                          collectionId={msg.collectionId}
-                          editing={msg.editing}
-                          isDark={isDark}
-                          inputCls={inputCls}
-                          labelCls={labelCls}
-                          ghostBtnCls={ghostBtnCls}
-                          dashedBtnCls={dashedBtnCls}
-                          onChangeId={collectionId => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, collectionId } : m))}
-                          onSave={() => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, editing: false } : m))}
-                          onEdit={() => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, editing: true } : m))}
-                          onRemove={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
-                        />
-                      ) : msg.type === 'TEMPLATE' ? (
-                        <TemplateField
-                          messageTemplateId={msg.messageTemplateId}
-                          tokens={msg.tokens}
-                          editing={msg.editing}
-                          isDark={isDark}
-                          inputCls={inputCls}
-                          labelCls={labelCls}
-                          ghostBtnCls={ghostBtnCls}
-                          dashedBtnCls={dashedBtnCls}
-                          onSelectTemplate={t => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, messageTemplateId: t.objectId, tokens: Array(templateVarCount(t)).fill('') } : m))}
-                          onChangeToken={(vi, value) => set('newMessages', draft.newMessages.map((m, j) => j === i && m.type === 'TEMPLATE' ? { ...m, tokens: m.tokens.map((t, k) => k === vi ? value : t) } : m))}
-                          onSave={() => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, editing: false } : m))}
-                          onEdit={() => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, editing: true } : m))}
-                          onRemove={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
-                        />
-                      ) : (
-                        <MediaMessageEditor
-                          msg={msg}
-                          index={i}
-                          isDark={isDark}
-                          inputCls={inputCls}
-                          labelCls={labelCls}
-                          ghostBtnCls={ghostBtnCls}
-                          onChange={(content, fileName) => set('newMessages', draft.newMessages.map((m, j) => j === i ? { ...m, content, fileName } : m))}
-                          onRemove={() => set('newMessages', draft.newMessages.filter((_, j) => j !== i))}
-                        />
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Botão "+ Adicionar Resposta" com dropdown de tipos */}
-                  <AddMessageMenu
-                    isDark={isDark}
-                    dashedBtnCls={dashedBtnCls}
-                    onAdd={type => set('newMessages', [...draft.newMessages, type === 'BUTTONLIST'
-                      ? { type, variant: 'plain', header: '', body: '', footer: '', title: '', items: [{ text: '', description: '' }] }
-                      : type === 'COLLECTION'
-                        ? { type, collectionId: '', editing: true }
-                      : type === 'TEMPLATE'
-                        ? { type, messageTemplateId: '', tokens: [], editing: true }
-                        : { type, content: '', fileName: '' }])}
-                  />
-                </div>
+                <MessageListEditor
+                  intent={intent}
+                  messages={draft.messages}
+                  newMessages={draft.newMessages}
+                  onChangeMessages={next => set('messages', next)}
+                  onRemoveExisting={ref => setDraft(d => d && ({
+                    ...d,
+                    messages: d.messages.filter(m => !(m.ref.condIdx === ref.condIdx && m.ref.sayIdx === ref.sayIdx && m.ref.msgIdx === ref.msgIdx)),
+                    removedRefs: [...d.removedRefs, ref],
+                  }))}
+                  onChangeNew={next => set('newMessages', next)}
+                  editingColl={editingColl}
+                  setEditingColl={setEditingColl}
+                  editingTpl={editingTpl}
+                  setEditingTpl={setEditingTpl}
+                  keyPrefix=""
+                  isDark={isDark}
+                  inputCls={inputCls}
+                  labelCls={labelCls}
+                  ghostBtnCls={ghostBtnCls}
+                  dashedBtnCls={dashedBtnCls}
+                />
               </Section>
             )}
 
@@ -3414,6 +3600,24 @@ export function DetailPanel({ node, intent, intents, categories, onBeforeApply, 
               />
             )}
 
+            {showContent && draft && ACTION_KINDS_WITH_ERROR.has(kind) && (
+              <ErrorActionSection
+                draft={draft}
+                setDraft={setDraft}
+                intent={intent}
+                intents={intents}
+                editingColl={editingColl}
+                setEditingColl={setEditingColl}
+                editingTpl={editingTpl}
+                setEditingTpl={setEditingTpl}
+                isDark={isDark}
+                inputCls={inputCls}
+                labelCls={labelCls}
+                ghostBtnCls={ghostBtnCls}
+                dashedBtnCls={dashedBtnCls}
+              />
+            )}
+
             {showCondList && draft && (
               <Section title="Condições" isDark={isDark}>
                 <div className="flex flex-col gap-2">
@@ -3610,11 +3814,39 @@ function ReadOnlyExternal({ node, isDark }: { node: Node<FlowNodeData>; isDark: 
   )
 }
 
-function Section({ title, children, isDark }: { title: string; children: React.ReactNode; isDark: boolean }) {
+/**
+ * Bloco de seção do painel. Por padrão é estático (título + conteúdo). Com
+ * `collapsible`, o título vira um botão que abre/fecha o conteúdo — `defaultOpen`
+ * controla o estado inicial (default fechado). Usado pela seção "Em caso de erro".
+ */
+function Section({ title, children, isDark, collapsible = false, defaultOpen = true }: {
+  title: string
+  children: React.ReactNode
+  isDark: boolean
+  collapsible?: boolean
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const titleCls = `text-[10px] uppercase tracking-wider font-semibold ${isDark ? 'text-slate-500' : 'text-slate-400'}`
+  if (!collapsible) {
+    return (
+      <div>
+        <p className={`${titleCls} mb-1.5`}>{title}</p>
+        {children}
+      </div>
+    )
+  }
   return (
     <div>
-      <p className={`text-[10px] uppercase tracking-wider font-semibold mb-1.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{title}</p>
-      {children}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-1 w-full mb-1.5 ${titleCls} hover:opacity-80 transition-opacity`}
+      >
+        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+        {title}
+      </button>
+      {open && children}
     </div>
   )
 }

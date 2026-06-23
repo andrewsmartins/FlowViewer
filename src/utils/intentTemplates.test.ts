@@ -35,16 +35,24 @@ describe('createIntentTemplate', () => {
     }
   })
 
-  it('transfer e captureData incluem caminho de erro apontando para o start', () => {
-    for (const kind of ['transferNode', 'captureNode'] as const) {
+  it('os 7 nós de ação incluem caminho de erro continueFlow apontando para o start', () => {
+    const actionKinds = ['captureNode', 'setDataNode', 'storeNode', 'apiCallNode', 'transferNode', 'orderNode', 'csatNode'] as const
+    for (const kind of actionKinds) {
       const action = createIntentTemplate(kind, BOT_ID, 'x').conditions[0].action
-      expect(action.error?.next).toEqual({
-        redirect: 'waitInteraction',
+      expect(action.error?.next, kind).toEqual({
+        redirect: 'continueFlow',
         type: 'error',
         intent: `${BOT_ID}-start`,
-        intentBot: BOT_ID,
+        intentBot: '',
         action: 'intent',
       })
+    }
+  })
+
+  it('os 4 nós estruturais (none/choice/wait/end) NÃO materializam caminho de erro', () => {
+    for (const kind of ['defaultNode', 'choiceNode', 'waitNode', 'endNode'] as const) {
+      const action = createIntentTemplate(kind, BOT_ID, 'x').conditions[0].action
+      expect(action.error, kind).toBeUndefined()
     }
   })
 
