@@ -3,22 +3,25 @@
 <!-- HANDOFF:START -->
 ## 🔄 Handoff — 2026-06-23
 
-**Foco da próxima sessão:** implementar o **editor do nó Pedido** (dropdown "Tipo de ação"). Plano completo e aprovado no PLANS.md § "Nó Pedido — dropdown 'Tipo de ação' (planejado)". Esta sessão foi só interrogatório (`/interrogar`) — **nenhum código foi escrito**.
+**Foco da próxima sessão:** **decidir e abrir os PRs** das duas branches de feature empilhadas. A feature do editor do nó Pedido está **concluída, testada (manualmente pelo Andy) e commitada** — era a última fase planejada do editor. Não há mais fase de código pendente.
 
-**Onde paramos:** branch `feat/error-action-section` (não troquei de branch). Só editei o `PLANS.md` (adicionei a seção do plano do Pedido + este handoff). A feature anterior "Em caso de erro" (v0.25.0, commit `495b47e`) segue **commitada, NÃO mergeada e sem PR** — decisão de PR ainda pendente, mas saiu do foco.
+**Onde paramos:** branch `feat/order-node-editor` (saiu de `feat/error-action-section`, **não** de `main`). Editor do nó Pedido implementado de ponta a ponta e commitado em `5c43d69` (v0.26.0): `orderType` no `updateActionFields`, `OrderActionSection` + draft/parse/serialização no `DetailPanel`, `ORDER_LABELS` derivado de `ORDER_ACTIONS` no `OrderNode`, 3 testes de round-trip, CHANGELOG + bump `package.json`. `tsc` limpo, 379 testes verdes, build OK.
 
 **Fios soltos:**
-- **Implementar o nó Pedido** conforme o plano. Ordem sugerida: começar por `editIntent.ts:updateActionFields` (adicionar `orderType`) + testes unitários, depois draft/parse/serialização no `DetailPanel.tsx`, depois o componente `OrderActionSection` e o `ORDER_LABELS` do `OrderNode.tsx`.
-- **Confirmar o termo "Adicionar item"** vs. o rótulo oficial da tela do construtor OmniChat (pendência registrada no plano; decidimos unificar em "Adicionar item" salvo evidência do contrário).
-- **PR da `feat/error-action-section` → `main`** continua não decidido (provavelmente criar branch nova `feat/order-node-editor` a partir de onde fizer sentido antes de codar o Pedido).
+- **PRs empilhados (decisão principal):** `feat/order-node-editor` foi criada a partir de `feat/error-action-section`, que **continua sem PR/merge** (feature "Em caso de erro", v0.25.0, commit `495b47e`). Um PR desta branch → `main` levaria as duas features juntas (v0.25 + v0.26). Decidir: PR único, ou mergear `feat/error-action-section` primeiro e depois rebasear/abrir o PR do Pedido.
+- **Seção "Nó Pedido — … (planejado)" no corpo do PLANS.md está STALE** (a feature foi entregue, mas o rótulo segue "(planejado)"). Não arquivei nesta sessão: PLANS está ~212 linhas, abaixo do limiar de 600. Arquivar (verbatim → `docs/PLANS-ARCHIVE.md` + linha no Histórico) quando o PLANS crescer, ou já agora se preferir manter o corpo fiel.
+- **CHANGELOG acumula backlog em `[Não lançado]`** (v0.15→v0.26 nunca recortadas em headings versionados). Segui o padrão existente (bump `package.json` + entrada em `[Não lançado]`); recortar os headings versionados é uma limpeza à parte, não bloqueia nada.
+- **Validação manual no viewer:** Andy confirmou que o editor do Pedido funciona.
 
-**Armadilhas desta sessão:** nos 2 JSONs de exemplo do Pedido, `generateOrder` **mantém `action.variable` preenchida** — a plataforma não limpa, só ignora. Por isso decidimos NÃO tocar em `variable` no modo `generateOrder` (preserve-and-patch). `updateActionFields` ([editIntent.ts:713](src/utils/editIntent.ts#L713)) já grava `variable` (linha 738) mas **não** grava `orderType` — falta adicionar esse campo. `VariablePicker` ([DetailPanel.tsx:1805](src/components/DetailPanel.tsx#L1805)) é o picker `@` reutilizável. Toda a feature é mirror da `StoreActionSection` ([:2229](src/components/DetailPanel.tsx#L2229)) — usar como molde (dropdown + campo condicional + gate âmbar do "Aplicar").
+**Armadilhas desta sessão:**
+- A ferramenta **Bash NÃO é PowerShell**: a sintaxe de here-string `@'...'@` é só do PowerShell; no Bash ela injetou um `@` literal no início do subject do commit. Tive de `--amend` com here-doc real (`<<'EOF'`). Para commits multi-linha via Bash tool, usar here-doc; via PowerShell tool, usar `@'...'@`.
+- Decisão de design já cristalizada no código: `generateOrder` **preserva** `action.variable` (preserve-and-patch) — a serialização só passa `variable` no modo `addToCart`.
 
-**Próximo passo imediato:** criar branch para a feature do Pedido e implementar `updateActionFields` aceitando `orderType` + teste unitário do round-trip (`addToCart` grava `variable`, `generateOrder` preserva).
+**Próximo passo imediato:** rodar `git log --oneline main..feat/order-node-editor` para ver os commits que iriam no PR e então decidir a estratégia de PR (única vs. mergear a base primeiro).
 
-**Ponteiros:** PLANS.md § "Nó Pedido — dropdown 'Tipo de ação' (planejado)" (plano + 5 decisões + plano de implementação com linhas-âncora). Arquivos: [OrderNode.tsx](src/components/nodes/OrderNode.tsx), [DetailPanel.tsx](src/components/DetailPanel.tsx), [editIntent.ts](src/utils/editIntent.ts), `intentTemplates.ts` (template cria `orderType: 'generateOrder'`).
+**Ponteiros:** commit `5c43d69` (feature) e `495b47e` (base "Em caso de erro"). PLANS.md § "Nó Pedido — … (planejado)" (design, agora entregue). CHANGELOG `[Não lançado] > Adicionado` (topo). Arquivos: [DetailPanel.tsx](src/components/DetailPanel.tsx), [editIntent.ts](src/utils/editIntent.ts), [OrderNode.tsx](src/components/nodes/OrderNode.tsx).
 
-**Skills sugeridas:** `/code-review` antes de commitar; `/verify` ou `/run` para a validação visual no viewer (passo final manual).
+**Skills sugeridas:** `gh` CLI para abrir o(s) PR(s); `/code-review` se quiser uma revisão extra antes do PR (o código já está commitado e testado).
 
 <!-- HANDOFF:END -->
 
