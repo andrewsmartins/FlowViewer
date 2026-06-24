@@ -3,58 +3,57 @@
 <!-- HANDOFF:START -->
 ## 🔄 Handoff — 2026-06-24
 
-**Foco da próxima sessão:** **exercitar o servidor MCP da Fase 3 com o Claude de verdade**
-(operando as tools `mcp__omnichat-flow-editor__*`) — está **bloqueado por reload**: o
-`.mcp.json` foi criado nesta sessão e o Claude Code só lê/aprova servidores MCP no **startup**.
-Depois disso, **commitar a Fase 3** (`/code-review` antes).
+**Foco da próxima sessão:** **IMPLEMENTAR a Fase 4 — resolvers nome→ID sobre a API OmniChat.**
+O `/interrogar` já foi feito nesta sessão e as **8 decisões estão fechadas e gravadas no corpo
+§"Fase 4"** — não reabrir. Próximo passo é só codar, começando pelo gate (`find_team`).
 
-**Onde paramos:** branch **`feat/mcp-tools-spike`**. **Fase 3 implementada e verificada, mas
-NÃO commitada** (working tree sujo). Entregue: [mcp/server.ts](mcp/server.ts) (9 tools via
-`@modelcontextprotocol/sdk` por stdio), [mcp/nodeCatalog.ts](mcp/nodeCatalog.ts) (manifesto
-enxuto nas `instructions` + `describe_node_type`), [mcp/tsconfig.json](mcp/tsconfig.json),
-[mcp/README.md](mcp/README.md), [.mcp.json](.mcp.json) na raiz, `package.json` (deps
-`@modelcontextprotocol/sdk`/`zod`/`tsx` + scripts `mcp`/`mcp:typecheck`), CHANGELOG e a marca
-✅ na § "Fase 3" do corpo. **Typecheck do mcp limpo, suíte cheia verde (398 testes)**,
-verificado ponta a ponta por um **cliente MCP stdio programático** (handshake + `tools/list` +
-ciclo `create→set_action_field→connect→validate→revert`, revert restaura 1:1 sobre cópia
-temporária). **Falta o teste com IA real.**
+**Onde paramos:** branch **`feat/mcp-tools-spike`**. **Fase 3 segue commitada** (`cd22c89`).
+Esta sessão foi **só planejamento**: `/handon` (briefing) → `/interrogar` da Fase 4 → consolidei
+as decisões no corpo §"Fase 4". **Nenhum código mexido**; o working tree tem **só
+`PLANS.md` modificado e não commitado** (a reescrita do §Fase 4 + este handoff).
 
 **Fios soltos / meio-feito:**
-- **Decisão aberta (a 1ª pergunta ao retomar):** qual `FLOW_FILE` usar no teste com IA real.
-  Eu ia perguntar (cópia sandbox `public/masterFlow.sandbox.json` / fixture versionado /
-  fluxo novo do zero) e o usuário interrompeu com `/handoff`. **Recomendo a cópia sandbox** —
-  o `.mcp.json` hoje aponta `FLOW_FILE=public/masterFlow.json` (o fixture **versionado** de 42
-  nós); operar nele de verdade muta/grava o arquivo (com `.bak`, e dá `revert`, mas arrisca
-  commitar lixo).
-- Limitações herdadas da spike (no README): `condIdx` default 0 (nós-grupo parciais);
-  `setDataNode`/conteúdo de mensagem ainda sem tool; resolução nome→ID só na Fase 4.
+- **PLANS.md não commitado** — decidir se commita o planejamento (`docs:`) antes de começar a
+  codar ou junto com a 1ª fatia.
+- **Nenhum código da Fase 4 ainda.** As 8 decisões estão no corpo; a implementação é greenfield
+  sobre funções de fetch que **já existem e são testadas**.
 
-**Armadilhas desta sessão (não redescobrir):**
-1. **Servidor MCP recém-adicionado NÃO entra na sessão corrente** — `.mcp.json` é lido no
-   startup do Claude Code; criar no meio da sessão não injeta as tools (confirmado: ToolSearch
-   não as acha). Reiniciar / `/mcp` + aprovar o servidor `omnichat-flow-editor`.
-2. **Script ESM no scratchpad não resolve o `node_modules` do repo** — a resolução de bare
-   imports parte da pasta do script, não do cwd. Rodar scripts de verificação de dentro do
-   repo (criei e removi `verify-mcp.mjs` na raiz).
-3. **`mcp/tsconfig.json` deve incluir só `mcp/`** (`["**/*.ts"]`) — o `tsc` segue os imports
-   sozinho. Glob amplo sobre `src/utils` puxava arquivos de DOM (`exportImage`/`uploadMedia`)
-   e quebrava o typecheck.
-4. **Stdio: log só em stderr** (`console.error`) — stdout é o canal do protocolo MCP.
-5. (mantida) **Bash tool ≠ here-string PowerShell** — `git commit -m @'…'@` injeta `@` solto;
-   usar `git commit -F - <<'EOF' … EOF`.
+**Armadilhas desta sessão (gotchas de implementação — não redescobrir):**
+1. **As funções de fetch já existem e são puras** (`Deps {fetch, token}`, fetch injetável,
+   **lançam** em falha): `fetchStoreTeams`/`fetchActiveBots` ([teams.ts](src/utils/teams.ts)),
+   `fetchSupervisedUsers` ([users.ts](src/utils/users.ts)), `fetchBotEndpoints`
+   ([endpoints.ts](src/utils/endpoints.ts)), `fetchStoreEntities` ([entities.ts](src/utils/entities.ts)),
+   `fetchServerIntents` ([pushFlow.ts:151](src/utils/pushFlow.ts#L151)). Reusar `sessionHeaders`/
+   `Deps`/`API`/`PARSE` de `teams.ts`. **Não reescrever fetch.**
+2. **`.mcp.json` NÃO injeta `OMNI_TOKEN`** (só `FLOW_FILE`). O servidor MCP precisa **ler
+   `flow-viewer.env` por conta própria no startup** (a chave existe). Token vive na camada de
+   tools, **nunca chega ao modelo**. Token ausente → mensagem "configure `OMNI_TOKEN`".
+3. **`getBotId()` ainda não existe na `FlowStore`** — criar: derivar do intent `-start` (id
+   `{botId}-start`) ou de `next.intent.botId`. Edge: flow vazio sem intents → mensagem clara.
+4. **`fetchSupervisedUsers` precisa ganhar param `search` opcional** (hoje hardcoda `search:'.*'`
+   + cap 100) para o `find_user` filtrar server-side (decisão 6 / 8).
+5. (mantida) **`mcp/tsconfig.json` inclui só `mcp/`** — `tsc` segue os imports sozinho; glob
+   amplo sobre `src/utils` puxa arquivos de DOM e quebra o typecheck.
+6. (mantida) **Bash tool ≠ here-string PowerShell** — usar `git commit -F - <<'EOF' … EOF`.
 
-**Próximo passo imediato:** reiniciar o Claude Code no projeto → aprovar `omnichat-flow-editor`
-→ confirmar com `/mcp` (9 tools) → decidir o `FLOW_FILE` (recomendo criar a cópia sandbox e
-ajustar o `.mcp.json`) → pedir em linguagem natural a criação de um nó e observar o agente
-operar as tools. Depois `/code-review` + commit da Fase 3.
+**Próximo passo imediato:** criar o módulo de resolvers em `src/tools/` (helper de match
+normalizado + cache de sessão + mensagens de erro) e o **`find_team` primeiro como gate**;
+escrever os **unit com `fetch` injetado** (match exato/candidatos/ambíguo/vazio/401-AUTH/cache);
+rodar o **smoke read-only real** (lista times do bot de testes); só então abrir os outros 5
+resolvers (`find_user`, `find_bot`/`list_bots`, `list_api_integrations`, `list_entities`,
+`list_intents`) e expô-los em [mcp/server.ts](mcp/server.ts). Ver corpo §"Fase 4" para as 8
+decisões (botId do flow; read-only + set_action_field; erros msg+AUTH; cache sob demanda;
+matching contains; find_user server-side; list_intents cross-bot).
 
 **Threads parados (não perder, ortogonais):** editor do nó **Pedido** (planejado no corpo §"Nó
 Pedido", **não** implementado); **PRs/merge** das v0.25–v0.27 ainda na branch
-`feat/order-node-editor`, não mergeadas em `main`.
+`feat/order-node-editor`, não mergeadas em `main`; **Fase 2** (`NODE_CATALOG`) ainda pendente
+(consolida o `actionType` hoje espelhado à mão em `nodeCatalog.ts`; toca o DetailPanel/383
+testes — fazer com a suíte verde como gate).
 
-**Skills sugeridas ao retomar:** `/verify` para exercitar o MCP ponta a ponta com IA real;
-`/code-review` antes de commitar a Fase 3; `/interrogar` se a Fase 4 (resolvers) abrir decisão
-nova.
+**Skills sugeridas ao retomar:** `/code-review` antes de commitar; `/verify` para o smoke
+read-only dos resolvers contra a API real. (`/interrogar` da Fase 4 **já concluído** — não
+repetir.)
 
 <!-- HANDOFF:END -->
 
@@ -258,27 +257,89 @@ consumidores reais (Fase 5) — estrutura à frente da necessidade hoje.
 
 ### Fase 4 — Resolvers sobre a API OmniChat
 
-**Objetivo:** tools que resolvem **nome → ID** batendo na API — as **mesmas chamadas dos
-entity pickers** do DetailPanel (reusar): `list_teams`/`find_team`, `find_user`,
-`list_bots`/`list_intents`, `list_api_integrations`, `list_entities`/`list_variables`.
+> **Decisões fechadas no interrogatório de 2026-06-24** (skill `interrogar`). Substituem o
+> esboço anterior (Q7/Q8) — em especial o **pré-load eager** foi revertido para **sob demanda**.
+
+**Objetivo (1 frase):** tools read-only que resolvem **nome → ID** batendo na API OmniChat,
+**reusando as funções de fetch já existentes e testadas** ([teams.ts](src/utils/teams.ts),
+[users.ts](src/utils/users.ts), [endpoints.ts](src/utils/endpoints.ts),
+[entities.ts](src/utils/entities.ts), `fetchServerIntents` em [pushFlow.ts](src/utils/pushFlow.ts)) —
+o agente devolve o ID e grava pelo `set_action_field` existente, **sem nunca inventar ID**.
+
+**Conjunto de resolvers (núcleo 5 + intents):** `find_team`/`list_teams`, `find_user`,
+`find_bot`/`list_bots`, `list_api_integrations`, `list_entities`, `list_intents`. **Dropado
+`list_variables`** (`variables.ts` é catálogo **estático** `@customer.*`; as dinâmicas `@team`/
+`@entity` já são cobertas por `find_team`/`list_entities`). Ordem: **`find_team` primeiro** (caso
+mais comum — transfer; exercita o passo extra `retailerId` de `teams.ts`) e serve de **gate**
+(round-trip read-only real verde) antes de abrir os outros no mesmo PR (todos o mesmo formato).
 
 **Decisões (com o porquê):**
-1. **Falha explícita; o agente para e pergunta; gravação só aceita ID de `resolve` real
-   (Q7).** O modelo **nunca inventa ID**. Subtipos distintos (não um "erro" genérico):
-   `AUTH_FAILED` (sem retry — "renove o `OMNI_TOKEN`"); `API_ERROR`/timeout (1 retry, depois
-   reporta e para); `EMPTY_LIST` (para e pergunta — eventual **placeholder autorizado por
-   humano**, gravado via `set_action_field` normal, marcado, **não** via resolver — preserva
-   o workflow de fluxo-exemplo da Parte 8 sem o modelo fabricar ID); `NOT_FOUND` (devolve
-   **candidatos próximos** para desambiguar — lado fuzzy do "resolver por nome").
-2. **Pré-load eager das listas pequenas no startup + sob demanda das grandes; sem TTL
-   (Q8).** Listas **pequenas** (times, bots, APIs) → buscadas **assim que o token entra**
-   (startup do MCP) e cacheadas pela sessão: sem stall no meio da construção, consciência
-   imediata do que existe, e **falha rápida em token ruim** (descobre no startup, não no
-   meio do fluxo). Listas **grandes** (usuários, produtos) → **busca sob demanda** cacheada
-   por query (não dá pra pré-carregar todos). **Sem TTL** (sessão curta, single-user;
-   invalidação por relógio resolveria um problema que quase não ocorre). Falha de pré-load
-   por **API fora do ar** = avisa e **inicia mesmo assim** (degradado; resolvers retêm sob
-   demanda); só **auth** bloqueia.
+1. **Fonte do `botId`: derivado do flow file** (`flowStore.getBotId()` lê o id do intent
+   `-start`, ou `next.intent.botId`). Fonte única — nunca diverge do fluxo sendo editado;
+   evita 2ª config (env) que poderia apontar pra loja errada em silêncio. Quase todos os
+   fetches precisam dele (`endpoints`/`entities` por `botId` direto; `teams`/`users` resolvem
+   `retailerId` a partir dele — `find_user` é a exceção: é "supervisionados pela conta do
+   token", sem `botId`). **Edge:** flow novo sem intents → sem `botId` → resolver falha com
+   mensagem clara.
+2. **Resolvers read-only devolvem o ID; o modelo passa ao `set_action_field` (inalterado).**
+   A garantia "mata ID alucinado" é **prática, não mecânica**: o resolver é a **única fonte**
+   de ID, então o modelo não tem de onde alucinar. Descartado o **gate de IDs resolvidos na
+   sessão** (quebraria em IDs reais já presentes no flow importado — Parte 8 tem times/usuários
+   reais — e exigiria estado de sessão) e as **tools resolve-and-write** (multiplicariam tools
+   por campo e duplicariam o `set_action_field` genérico). Casa com a filosofia
+   `list_nodes`/`describe_node` (leitura separada da escrita).
+3. **Erros = mensagens claras + AUTH especial; sem enum formal.** O modelo lê o **texto** e
+   decide. A única distinção de comportamento na camada: **401/403 → "renove o `OMNI_TOKEN`",
+   sem retry** (token de sessão Parse é curto — é a falha real #1; descoberta preguiçosamente
+   na 1ª chamada, com mensagem clara — não há pré-load pra "falhar rápido no startup", e erro
+   de boot em subprocesso stdio é difícil de surfaçar). `NOT_FOUND`/ambíguo → devolve
+   **candidatos** para o modelo desambiguar com o humano. Lista vazia / erro genérico → só
+   mensagem boa. **Token ausente** (não expirado) → "configure `OMNI_TOKEN` em
+   `flow-viewer.env`" (mesma família AUTH). Descartada a **taxonomia formal 4-subtipos** (o
+   modelo se comporta igual a partir de uma boa mensagem; enum vira cerimônia single-user).
+4. **Cache sob demanda, por sessão, sem TTL.** Nenhum pré-load no startup. A 1ª chamada de
+   cada resolver dispara o fetch (a tool tem o token, lido do `flow-viewer.env` no boot do
+   MCP — **nunca chega ao modelo**) e cacheia; as seguintes batem no cache. Resolvers são
+   read-only contra a API e edições locais não afetam as listas remotas → **sem invalidação**
+   na sessão. Um caminho de código só (lazy+cache). **Reverte o esboço eager** — o ganho do
+   eager (falha rápida em token ruim, consciência imediata) é marginal e já coberto pela
+   mensagem AUTH na 1ª chamada.
+5. **Matching nome→ID: normalizado exato + `contains` para candidatos.** Normaliza (minúscula
+   + sem acento — pt-BR). **Exato único → devolve o ID.** Senão, devolve quem **contém** a
+   query como **candidatos** (serve o usuário que só sabe *parte* do nome — `contains` é
+   estritamente melhor que Levenshtein nesse caso; fuzzy só corrige typo de nome já conhecido,
+   ganho raro porque o modelo copia o nome que o humano deu). **Ambíguo (>1)** → devolve os
+   empatados; **o modelo PARA e pergunta, nunca auto-escolhe** (é o que protege contra gravar
+   o alvo errado em silêncio). Mesmo helper para `find_team`/`find_user`/`find_bot` e o match
+   dentro do `list_intents`.
+6. **`find_user` filtra server-side.** `fetchSupervisedUsers` ([users.ts:51](src/utils/users.ts#L51))
+   hoje busca `search:'.*'` com **cap de 100** e filtra em memória — trunca em loja grande
+   (alvo-produto) e pode perder o alvo. Estender o util com um param `search` opcional e mandar
+   o nome para a cloud function filtrar no servidor; cache por query (`users:<nome>`).
+7. **`list_intents` é o complemento cross-bot** (recebe um `botId`, reusa `fetchServerIntents`
+   read-only, devolve `{id, name}` compacto). Para o bot atual o modelo usa `list_nodes`
+   (local); `list_intents` resolve o caso "redireciona para a intenção X de *outro* bot" (além
+   do `-start` da Parte 10): `find_bot(nome) → botId → list_intents(botId) → acha → grava
+   next.intent {id, botId}`.
+
+**Onde mora o código:** novo módulo na camada de tools (`src/tools/`) que envolve as funções
+de fetch existentes (match + cache + mensagens de erro); exposto como tools MCP em
+[mcp/server.ts](mcp/server.ts). Mantém a **fonte única** reusável pelo backend de produto
+(Fase 5). Reusar `sessionHeaders`/`Deps` de [teams.ts](src/utils/teams.ts) (o `buildHeaders` de
+`pushFlow.ts` é equivalente — não unificar agora, só reusar o que cada util já tem).
+
+**Como será testado (decisão):** **unit com `fetch` injetado** (sem rede, igual a
+`teams.test`/`users.test`) cobrindo match exato único / candidatos / ambiguidade / lista vazia /
+401 AUTH (mensagem, sem retry) / cache (2 chamadas = 1 fetch) — escalando do `find_team` para os
+demais. **+ 1 smoke read-only manual** contra a API real do bot de testes (`find_team` lista os
+times) como rede de segurança contra drift do contrato da API interna (risco registrado).
+**Sandbox dispensável:** os resolvers só **leem** da API; a escrita é local no flow file (já com
+`.bak`+`revert`), então operar `public/masterFlow.json` direto segue seguro.
+
+**Riscos/pendências:** (a) API interna não documentada pode mudar — o smoke read-only é a rede
+de segurança; (b) `find_user` >100 mitigado por server-side search, mas confirmar que a cloud
+function respeita `search` no smoke; (c) flow file sem `botId` (flow novo vazio) → mensagem
+clara em vez de stack trace.
 
 ### Fase 5 — Produto (direcional, NÃO detalhar agora)
 
