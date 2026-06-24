@@ -7,7 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { FlowStore } from '../src/tools/flowStore'
 import {
-  createNode, setActionField, setNodeChoices, connectNodes,
+  createNode, setActionField, setNodeChoices, setMenu, connectNodes, connectToBot,
   validate, revert, listNodes, describeNode,
   ACTION_FIELDS, type ActionFieldName,
 } from '../src/tools/flowTools'
@@ -86,15 +86,18 @@ const instructions = [
   'operando estas tools — NUNCA escreva JSON cru. A validade vive no código das tools.',
   '',
   'Trabalho típico: list_nodes (orientar) → describe_node (inspecionar) → create_node →',
-  'set_action_field / set_choices → connect → validate. Use revert para desfazer tudo',
-  'desde o início da sessão.',
+  'set_action_field / set_menu / set_choices → connect → validate. Use revert para desfazer',
+  'tudo desde o início da sessão.',
   '',
   'Regras:',
   '- Referencie nós por id OU nome exato (nome ambíguo é erro — use o id).',
+  '- Nó de Escolha (choiceNode): crie os itens com set_menu (body + itens), depois ligue os',
+  '  destinos com set_choices ou connect. Sem set_menu o menu nasce vazio (sem botões).',
+  '- Redirect cross-bot: connect_to_bot(node, botId, intentId?) grava o next para outro bot.',
   '- NUNCA invente IDs de time/usuário/bot/API/lista (campos value, apiName, next.intent).',
   '  Resolva o nome → ID pelos resolvers (find_team/find_user/find_bot/list_*) e só então',
-  '  grave o ID com set_action_field. Se o resolver devolver candidatos ou ambiguidade,',
-  '  PARE e pergunte ao humano — nunca auto-escolha.',
+  '  grave o ID com set_action_field / connect_to_bot. Se o resolver devolver candidatos ou',
+  '  ambiguidade, PARE e pergunte ao humano — nunca auto-escolha.',
   '- describe_node_type(kind) detalha os campos de cada tipo (sem kind, lista todos).',
   '',
   'Tipos de nó criáveis:',
@@ -159,6 +162,23 @@ server.registerTool('set_choices', {
   },
 }, async ({ node, destinations }) => reply(setNodeChoices(store, node, destinations)))
 
+server.registerTool('set_menu', {
+  title: 'Definir menu de escolha',
+  description: 'Cria a mensagem de itens (BUTTON/LIST) de um nó de Escolha de uma vez. Infere BUTTON vs LIST. Destinos à parte (set_choices/connect).',
+  inputSchema: {
+    node: z.string().describe('id ou nome do nó de escolha'),
+    body: z.string().describe('texto principal do menu'),
+    items: z.array(z.object({
+      text: z.string().describe('rótulo do item'),
+      description: z.string().optional().describe('descrição (item com descrição força LIST)'),
+    })).describe('itens do menu, na ordem (1-10)'),
+    header: z.string().optional().describe('cabeçalho (opcional)'),
+    footer: z.string().optional().describe('rodapé (opcional)'),
+    title: z.string().optional().describe('título da lista (opcional, só LIST)'),
+  },
+}, async ({ node, body, items, header, footer, title }) =>
+  reply(setMenu(store, node, body, items, header ?? '', footer ?? '', title ?? '')))
+
 server.registerTool('connect', {
   title: 'Conectar nós',
   description: 'Liga origem→destino na 1ª vaga livre (next ou slot de escolha).',
@@ -167,6 +187,16 @@ server.registerTool('connect', {
     target: z.string().describe('id ou nome do destino'),
   },
 }, async ({ source, target }) => reply(connectNodes(store, source, target)))
+
+server.registerTool('connect_to_bot', {
+  title: 'Redirecionar para outro bot',
+  description: 'Redireciona o next de um nó para uma intenção de OUTRO bot. botId/intentId vêm dos resolvers (find_bot/list_intents). intentId omitido → entrada do bot ({botId}-start).',
+  inputSchema: {
+    node: z.string().describe('id ou nome do nó de origem (não pode ser nó de escolha)'),
+    botId: z.string().describe('botId do outro bot (resolva pelo find_bot — NUNCA invente)'),
+    intentId: z.string().optional().describe('id da intenção-destino (resolva pelo list_intents); omitido → {botId}-start'),
+  },
+}, async ({ node, botId, intentId }) => reply(connectToBot(store, node, botId, intentId)))
 
 server.registerTool('validate', {
   title: 'Validar fluxo',

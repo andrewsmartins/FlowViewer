@@ -1,59 +1,60 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-24
+## 🔄 Handoff — 2026-06-24 (noite)
 
-**Foco da próxima sessão:** **IMPLEMENTAR a Fase 4 — resolvers nome→ID sobre a API OmniChat.**
-O `/interrogar` já foi feito nesta sessão e as **8 decisões estão fechadas e gravadas no corpo
-§"Fase 4"** — não reabrir. Próximo passo é só codar, começando pelo gate (`find_team`).
+**Foco da próxima sessão:** **`/code-review` do diff da Fase 4b → commitar**. Se ok, decidir o
+próximo macro-passo: (A) **merge da `feat/mcp-tools-spike` para `main`** (Fases 1/3/4/4b prontas —
+fecha a spike) ou (B) **Fase 2 (`NODE_CATALOG`)**, o refactor adiado (toca o DetailPanel, 383
+testes; `/interrogar` antes, suíte verde como gate).
 
-**Onde paramos:** branch **`feat/mcp-tools-spike`**. **Fase 3 segue commitada** (`cd22c89`).
-Esta sessão foi **só planejamento**: `/handon` (briefing) → `/interrogar` da Fase 4 → consolidei
-as decisões no corpo §"Fase 4". **Nenhum código mexido**; o working tree tem **só
-`PLANS.md` modificado e não commitado** (a reescrita do §Fase 4 + este handoff).
+**Onde paramos:** branch **`feat/mcp-tools-spike`**. **Fase 4b IMPLEMENTADA mas NÃO commitada**
+(working tree sujo). Fechou os 2 gaps que a prova "agente↔fluxo com IA real" (início desta sessão)
+expôs: `choiceNode` nascia sem botões e redirect cross-bot não tinha tool de escrita. Duas tools
+novas **expondo lógica já testada dos utils** (sem algoritmo novo): `setMenu` (envolve
+`addButtonListMessage` + sincroniza N slots de `choices`) e `connectToBot` (envolve `setNextRef` +
+4 guardas) em [flowTools.ts](src/tools/flowTools.ts); fiadas como `set_menu`/`connect_to_bot` em
+[mcp/server.ts](mcp/server.ts). **+12 testes** (total **433**, verde), `tsc` + `mcp:typecheck`
+limpos. CHANGELOG + PLANS §"Fase 4b" atualizados.
 
-**Fios soltos / meio-feito:**
-- **PLANS.md não commitado** — decidir se commita o planejamento (`docs:`) antes de começar a
-  codar ou junto com a 1ª fatia.
-- **Nenhum código da Fase 4 ainda.** As 8 decisões estão no corpo; a implementação é greenfield
-  sobre funções de fetch que **já existem e são testadas**.
+**Fios soltos / meio-feito:** só o **commit** (aguardando `/code-review`). Arquivos sujos:
+`flowTools.ts`, `mcp/server.ts`, `flowTools.test.ts`, `CHANGELOG.md`, `PLANS.md`. Nada de código
+incompleto. Mensagem de commit sugerida: `feat(tools): Fase 4b — set_menu + connect_to_bot`.
 
-**Armadilhas desta sessão (gotchas de implementação — não redescobrir):**
-1. **As funções de fetch já existem e são puras** (`Deps {fetch, token}`, fetch injetável,
-   **lançam** em falha): `fetchStoreTeams`/`fetchActiveBots` ([teams.ts](src/utils/teams.ts)),
-   `fetchSupervisedUsers` ([users.ts](src/utils/users.ts)), `fetchBotEndpoints`
-   ([endpoints.ts](src/utils/endpoints.ts)), `fetchStoreEntities` ([entities.ts](src/utils/entities.ts)),
-   `fetchServerIntents` ([pushFlow.ts:151](src/utils/pushFlow.ts#L151)). Reusar `sessionHeaders`/
-   `Deps`/`API`/`PARSE` de `teams.ts`. **Não reescrever fetch.**
-2. **`.mcp.json` NÃO injeta `OMNI_TOKEN`** (só `FLOW_FILE`). O servidor MCP precisa **ler
-   `flow-viewer.env` por conta própria no startup** (a chave existe). Token vive na camada de
-   tools, **nunca chega ao modelo**. Token ausente → mensagem "configure `OMNI_TOKEN`".
-3. **`getBotId()` ainda não existe na `FlowStore`** — criar: derivar do intent `-start` (id
-   `{botId}-start`) ou de `next.intent.botId`. Edge: flow vazio sem intents → mensagem clara.
-4. **`fetchSupervisedUsers` precisa ganhar param `search` opcional** (hoje hardcoda `search:'.*'`
-   + cap 100) para o `find_user` filtrar server-side (decisão 6 / 8).
-5. (mantida) **`mcp/tsconfig.json` inclui só `mcp/`** — `tsc` segue os imports sozinho; glob
-   amplo sobre `src/utils` puxa arquivos de DOM e quebra o typecheck.
-6. (mantida) **Bash tool ≠ here-string PowerShell** — usar `git commit -F - <<'EOF' … EOF`.
+**Armadilhas desta sessão (gotchas — não redescobrir):**
+1. **MCP em execução roda o código ANTIGO.** O servidor MCP sobe no boot do Claude Code via
+   `.mcp.json`; `set_menu`/`connect_to_bot` **não aparecem como tools MCP até reiniciar o Claude
+   Code**. Por isso o smoke da 4b foi via `tsx` efêmero (funções reais), não via MCP ao vivo.
+2. **`set_menu` cria só os ITENS**, não os destinos — cria N slots de `choices` vazios
+   sincronizados (`buttons[i]↔choices[i]`); destinos seguem por `set_choices`/`connect`. Infere
+   BUTTON vs LIST (item com descrição OU 4+ itens → LIST).
+3. **`connect_to_bot` recebe IDs JÁ resolvidos** (find_bot/list_intents) — não auto-resolve;
+   `intentId` omitido → `${botId}-start`. 4 guardas: recusa nó-choice, recusa botId do próprio
+   bot, **sobrescreve** next existente, sem validação remota.
+4. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** (`public/masterFlow.json`). A prova via
+   MCP no início desta sessão deixou um diff **só de EOL** (conteúdo idêntico) — restaurei com
+   `git checkout -- public/masterFlow.json`. Se rodar a prova via MCP de novo, reaparece: checar
+   `git diff` (vazio = só EOL) e restaurar.
+5. (mantida) **smoke efêmero:** não deixar `_smoke-*.ts` no repo (apaguei o `_smoke-phase4b.ts`).
+   Boilerplate de token/fetch para reusar: [scripts/smoke-phase4-resolvers.ts](scripts/smoke-phase4-resolvers.ts).
+6. (mantidas) **Bash ≠ here-string PowerShell** (`git commit -F - <<'EOF'`); **`mcp/tsconfig.json`
+   inclui só `mcp/`** — não alargar o glob (puxa DOM e quebra).
 
-**Próximo passo imediato:** criar o módulo de resolvers em `src/tools/` (helper de match
-normalizado + cache de sessão + mensagens de erro) e o **`find_team` primeiro como gate**;
-escrever os **unit com `fetch` injetado** (match exato/candidatos/ambíguo/vazio/401-AUTH/cache);
-rodar o **smoke read-only real** (lista times do bot de testes); só então abrir os outros 5
-resolvers (`find_user`, `find_bot`/`list_bots`, `list_api_integrations`, `list_entities`,
-`list_intents`) e expô-los em [mcp/server.ts](mcp/server.ts). Ver corpo §"Fase 4" para as 8
-decisões (botId do flow; read-only + set_action_field; erros msg+AUTH; cache sob demanda;
-matching contains; find_user server-side; list_intents cross-bot).
+**Próximo passo imediato:** rodar `/code-review` sobre o working tree; aplicar achados; commitar
+a Fase 4b. Depois perguntar ao Andy: merge da spike ou Fase 2.
 
-**Threads parados (não perder, ortogonais):** editor do nó **Pedido** (planejado no corpo §"Nó
+**Threads parados (ortogonais, não perder):** editor do nó **Pedido** (planejado no corpo §"Nó
 Pedido", **não** implementado); **PRs/merge** das v0.25–v0.27 ainda na branch
-`feat/order-node-editor`, não mergeadas em `main`; **Fase 2** (`NODE_CATALOG`) ainda pendente
-(consolida o `actionType` hoje espelhado à mão em `nodeCatalog.ts`; toca o DetailPanel/383
-testes — fazer com a suíte verde como gate).
+`feat/order-node-editor`, não mergeadas em `main`; e o merge da **`feat/mcp-tools-spike`**
+(Fases 1/3/4/4b prontas) para `main` quando fechar a spike.
 
-**Skills sugeridas ao retomar:** `/code-review` antes de commitar; `/verify` para o smoke
-read-only dos resolvers contra a API real. (`/interrogar` da Fase 4 **já concluído** — não
-repetir.)
+**Ponteiros:** PLANS §"Fase 4b" (decisões A1-3/B1/4-guardas); `setMenu`/`connectToBot` em
+[flowTools.ts](src/tools/flowTools.ts); utils reusados `addButtonListMessage`
+([editIntent.ts:456](src/utils/editIntent.ts#L456)) e `setNextRef`
+([editFlow.ts:140](src/utils/editFlow.ts#L140)).
+
+**Skills sugeridas ao retomar:** `/code-review` antes de commitar (PRIMEIRO passo); `/interrogar`
+antes da Fase 2 (refactor arriscado).
 
 <!-- HANDOFF:END -->
 
@@ -355,6 +356,81 @@ times) como rede de segurança contra drift do contrato da API interna (risco re
 de segurança; (b) `find_user` >100 mitigado por server-side search, mas confirmar que a cloud
 function respeita `search` no smoke; (c) flow file sem `botId` (flow novo vazio) → mensagem
 clara em vez de stack trace.
+
+### Fase 4b — Fechar gaps de construção descobertos na prova foco A (set_menu + connect_to_bot)
+
+> Origem: a prova "agente↔fluxo com IA real" (2026-06-24) exercitou o pipeline completo e
+> expôs DOIS gaps na camada de escrita. Decisões fechadas no interrogatório (skill
+> `interrogar`) na mesma data.
+
+**Contexto da descoberta:** a prova mandou construir um menu "Atendimento" (opção Financeiro →
+transfer; opção Cadastro → redirect cross-bot). Funcionou o esperado: `create_node`,
+`find_team` (resolveu `Financeiro`→`S1Cl3fbnFG`), `find_bot` (**PAROU na ambiguidade** — 3
+candidatos, salvaguarda ok), `transferNode` completo, `validate`, `revert`. Mas dois buracos:
+1. **`choiceNode` não é construível do zero** — nasce com `choices=[]` e **0 botões**;
+   `set_choices` só mapeia destinos sobre botões **existentes** e `connect` recusa ("sem vaga
+   livre"). Não há tool que crie os itens/labels do menu.
+2. **redirect cross-bot não tem tool de escrita** — `find_bot`/`list_intents` resolvem o ID,
+   mas `connect` só liga interno (recusou o `…-start` do outro bot) e `set_action_field` não
+   cobre `next.intent`. O ID resolvido fica órfão.
+
+**Descoberta-chave:** a lógica das duas correções **já existe e é testada** nos utils — falta
+só **expor como tool + fiar no MCP** (não há algoritmo novo):
+- `addButtonListMessage` ([editIntent.ts:456](src/utils/editIntent.ts#L456)) cria a mensagem
+  BUTTON/LIST com itens + validação (1-10 itens, body obrigatório, LIST com 4+).
+- `setNextRef` ([editFlow.ts:140](src/utils/editFlow.ts#L140)) grava `next.intent={botId,id}`
+  com `action:'bot'` (serialização confirmada em export real). Nenhuma das duas está importada
+  hoje no [flowTools.ts](src/tools/flowTools.ts).
+
+**Objetivo (1 frase):** expor duas tools de escrita — `set_menu` (itens de um choiceNode) e
+`connect_to_bot` (redirect cross-bot) — sobre funções já existentes, **fechando o ciclo de
+construção agente↔fluxo**.
+
+**Decisões (com o porquê):**
+1. **`set_menu` cria o menu inteiro de uma vez** (não item-por-item), assinatura **completa**:
+   `set_menu(node, body, items:[{text, description?}], header?, footer?, title?)`. Envolve
+   `addButtonListMessage`; infere BUTTON vs LIST (`described` OU 4+ itens → LIST, regra que
+   `buildButtonList` já aplica). **Por quê menu inteiro:** o agente raciocina em "menu com
+   opções X,Y,Z", não em N chamadas; validação embutida. **Por quê assinatura completa:**
+   fidelidade ao `messageConfig` real (header/footer/title opcionais expostos).
+2. **`set_menu` cria só os ITENS; destinos à parte.** Cria N slots de `choices` **vazios
+   sincronizados** com os botões (validate limpo — sem "N botões para 0 escolhas"). Destinos
+   seguem via `set_choices`/`connect` (já funcionam). **Por quê:** separa conteúdo (botões) de
+   topologia (choices) — o modelo posicional existente —; cobre o caso comum de o destino
+   ainda não existir quando o menu é criado.
+3. **`connect_to_bot(node, botId, intentId?)` — tool nova dedicada**, não estender `connect`.
+   Recebe os IDs **já resolvidos** (find_bot/list_intents) e grava via `setNextRef`
+   (`action:'bot'`). `intentId` opcional → default `${botId}-start` (entrada do outro bot, caso
+   comum). **Por quê não estender connect:** connect resolve o alvo no flow **atual**; cross-bot
+   o alvo não está no flow e precisaria do `botId` separado → viraria outra tool disfarçada.
+   Mantém a salvaguarda de ambiguidade **nos resolvers** (a tool não auto-resolve).
+4. **4 guardas da `connect_to_bot`** (caminho infeliz): (a) **origem de escolha**
+   (`action.type==='choice'`) → recusa ("use `set_choices`; cross-bot é do `next`"); (b)
+   **`botId===mainBotId`** → recusa ("mesmo bot: use `connect`" — evita `next` interno órfão);
+   (c) **`next` já preenchido → SOBRESCREVE** com confirmação (semântica "defina o destino",
+   ação deliberada, coerente com `setNextRef` — diferente do `connect`, que recusa vaga
+   ocupada); (d) **sem validação remota do `intentId`** (a tool não chama a API do outro bot;
+   confia nos resolvers + regra "nunca inventar ID"; default `-start` cobre o caso sem
+   `list_intents`).
+
+**Onde mora o código:** duas funções novas em [flowTools.ts](src/tools/flowTools.ts)
+(`setMenu`/`connectToBot`) envolvendo `addButtonListMessage`/`setNextRef` (importar dos utils —
+hoje não importadas). Fiar em [mcp/server.ts](mcp/server.ts) como `set_menu`/`connect_to_bot`
+(mesmo padrão das tools existentes; `set_menu` precisa de schema de `items` = array de objetos).
+
+**Como será testado:** **unit em [flowTools.test.ts](src/tools/flowTools.test.ts)** (não
+retestar os utils, já cobertos): `set_menu` (cria botões + `choices` sincronizados; infere
+BUTTON/LIST; erros: nó inexistente, nó não-choice, body vazio, 0/>10 itens); `connect_to_bot`
+(grava `next.intent` objeto + `action:'bot'`; default `-start`; as 4 guardas). **+ smoke MCP
+real:** repetir o cenário da prova (menu *Atendimento* → Financeiro + cross-bot Cadastro) ponta
+a ponta, `validate` limpo, `describe_node` mostrando o cross-bot, `revert`. Efêmero ou
+estendendo o smoke da Fase 4 — **não deixar `_smoke-*.ts` no repo**. Gate: suíte cheia verde
+antes de commitar.
+
+**Riscos/pendências:** (a) schema array-de-objetos do `items` no MCP (`z`) — confirmar que casa
+com o cliente; (b) sincronização buttons↔choices: garantir que `set_menu` deixa exatamente N
+slots (testar o `validate` logo após); (c) sobrescrita de `next` (guarda c) e cross-bot num
+choiceNode (guarda a) precisam de teste explícito.
 
 ### Fase 5 — Produto (direcional, NÃO detalhar agora)
 

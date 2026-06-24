@@ -4,8 +4,10 @@ import { actionToNodeKind, triggerLabel } from '../utils/nodeMeta'
 import {
   createIntentTemplate, isCreatableKind, type CreatableKind,
 } from '../utils/intentTemplates'
-import { updateActionFields, setChoices, listMessages } from '../utils/editIntent'
-import { applyConnect } from '../utils/editFlow'
+import {
+  updateActionFields, setChoices, listMessages, addButtonListMessage, addChoice,
+} from '../utils/editIntent'
+import { applyConnect, setNextRef } from '../utils/editFlow'
 import { validateFlow } from '../utils/validateFlow'
 
 /**
@@ -158,6 +160,57 @@ export function setNodeChoices(store: FlowStore, ref: string, destinations: stri
 }
 
 /**
+ * `set_menu(node, body, items, header?, footer?, title?)` — cria a mensagem
+ * BUTTON/LIST de um nó de Escolha com todos os itens de uma vez (envolve
+ * `addButtonListMessage`) e cria, em sincronia, N slots de escolha VAZIOS
+ * (`buttons[i] ↔ choices[i]`) — deixando o `validate` limpo. Os DESTINOS são
+ * definidos à parte (`set_choices`/`connect`): separa conteúdo (itens) de
+ * topologia (destinos), cobrindo o caso comum de o destino ainda não existir.
+ * BUTTON vs LIST é inferido (algum item com descrição OU 4+ itens → LIST).
+ */
+export function setMenu(
+  store: FlowStore, ref: string, body: string,
+  items: { text: string; description?: string }[],
+  header = '', footer = '', title = '',
+): string {
+  const intent = resolveIntent(store, ref)
+  if (isError(intent)) return `⚠️ erro: ${intent.error}`
+  const cond = intent.conditions[0]
+  if (cond?.action.type !== 'choice') {
+    return `⚠️ erro: "${intent.name}" não é um nó de escolha — set_menu só se aplica a choiceNode`
+  }
+  // A tool é para CRIAR o menu; recusa duplicar (editar é remover+recriar) para não
+  // deixar duas mensagens de botões silenciosas com mapeamento ambíguo. A pré-condição
+  // cobre as DUAS metades do mesmo estado: a mensagem de botões E os destinos (choices).
+  // Sem checar os choices, um set_choices feito antes do set_menu seria apagado em
+  // silêncio pelo reset abaixo. Slots vazios pós-set_menu (`['','']`) não contam.
+  const hasMenuMessage = cond.assistant_says
+    .flatMap(s => s.messages)
+    .some(m => (m.type === 'BUTTON' || m.type === 'LIST') && m.messageConfig)
+  const hasChoices = Array.isArray(cond.action.choices) && cond.action.choices.some(Boolean)
+  if (hasMenuMessage || hasChoices) {
+    return `⚠️ erro: "${intent.name}" já tem menu/destinos definidos (remova antes de recriar)`
+  }
+
+  // 'described' (sempre LIST) quando algum item traz descrição; senão 'plain'
+  // (BUTTON, ou LIST a partir de 4 itens — regra de buildButtonList).
+  const variant = items.some(it => (it.description ?? '').trim()) ? 'described' : 'plain'
+  store.beginMutation()
+  const result = addButtonListMessage(intent, {
+    header, body, footer, title, variant,
+    items: items.map(it => ({ text: it.text, description: it.description ?? '' })),
+  }, 0)
+  if (!result.ok) return `⚠️ erro: ${result.reason}`
+  // Sincroniza os destinos com os itens: N slots vazios (opção sem destino),
+  // preenchidos depois por set_choices/connect. addChoice faz push('') sem aparar.
+  cond.action.choices = []
+  for (let i = 0; i < items.length; i++) addChoice(intent, 0)
+  store.save()
+  const msgType = variant === 'described' || items.length >= 4 ? 'LIST' : 'BUTTON'
+  return `menu ${msgType} com ${items.length} itens em "${intent.name}" (destinos a definir via set_choices/connect)`
+}
+
+/**
  * `connect(origem, destino)` — liga origem→destino preenchendo a 1ª vaga livre
  * (`next` ou slot de escolha; envolve `applyConnect`). Aceita id ou nome em ambos.
  */
@@ -171,6 +224,46 @@ export function connectNodes(store: FlowStore, sourceRef: string, targetRef: str
   if (!result.ok) return `⚠️ erro: ${result.reason}`
   store.save()
   return `${source.name}→${target.name} (${result.kind})`
+}
+
+/**
+ * `connect_to_bot(node, botId, intentId?)` — redireciona o `next` de um nó para
+ * uma intenção de OUTRO bot (envolve `setNextRef`, que grava `next.intent={botId,id}`
+ * com `action:'bot'`). Os IDs vêm JÁ resolvidos pelos resolvers (`find_bot`/
+ * `list_intents`) — a tool NÃO auto-resolve nem valida remotamente (regra: nunca
+ * inventar ID). `intentId` omitido → `${botId}-start` (a entrada do outro bot, o
+ * caso comum). Opera na 1ª condição (spike = condição única).
+ */
+export function connectToBot(
+  store: FlowStore, ref: string, botId: string, intentId?: string,
+): string {
+  const intent = resolveIntent(store, ref)
+  if (isError(intent)) return `⚠️ erro: ${intent.error}`
+  const cond = intent.conditions[0]
+  if (!cond) return `⚠️ erro: "${intent.name}" não tem condições`
+  // (a) nó de escolha conecta por destinos (choices), não pelo next.
+  if (cond.action.type === 'choice') {
+    return `⚠️ erro: "${intent.name}" é um nó de escolha — conecte por set_choices; connect_to_bot é para o next de nós de mensagem/ação`
+  }
+  // (a.1) botId vazio fura a guarda (b) (≠ mainBotId) e cairia em `action:'intent'`
+  // no setNextRef (isCrossBot exige botId não-vazio) → next interno órfão com
+  // confirmação mentindo "outro bot". Exige um botId resolvido (find_bot).
+  if (!botId.trim()) {
+    return `⚠️ erro: botId vazio — resolva o bot de destino com find_bot (NUNCA invente o ID)`
+  }
+  // (b) mesmo bot → seria next interno apontando p/ um id possivelmente ausente do
+  // flow (next órfão). Redireciona para a tool certa.
+  if (botId === store.mainBotId) {
+    return `⚠️ erro: botId é o próprio bot — use connect para destinos internos`
+  }
+  const targetId = intentId?.trim() || `${botId}-start`
+  // (c) sobrescreve um next existente: redirecionar é uma ação deliberada (≠ connect,
+  // que recusa vaga ocupada). (d) sem validação remota: confia no ID resolvido.
+  const hadNext = !!cond.next?.intent
+  store.beginMutation()
+  setNextRef(cond, { botId, id: targetId }, store.mainBotId)
+  store.save()
+  return `${intent.name}→outro bot (${targetId})${hadNext ? ' (destino anterior substituído)' : ''}`
 }
 
 /**

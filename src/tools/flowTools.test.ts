@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { FlowStore } from './flowStore'
 import {
-  createNode, setActionField, setNodeChoices, connectNodes, validate, revert,
-  listNodes, describeNode,
+  createNode, setActionField, setNodeChoices, setMenu, connectNodes, connectToBot,
+  validate, revert, listNodes, describeNode,
 } from './flowTools'
 import type { BotFlowJson } from '../types'
 
@@ -185,6 +185,158 @@ describe('Amostra 3 — 3 nós conectados (create + connect + choices + validate
     const conn = connectNodes(store, menuId, 'spike_fim')
     expect(conn).toMatch(/^⚠️ erro:/)
     expect(validate(store)).toMatch(/✅ fluxo válido/)
+  })
+})
+
+describe('Fase 4b — set_menu (cria os itens de um choiceNode)', () => {
+  it('cria menu BUTTON com 2 itens + 2 slots de choices vazios sincronizados (validate limpo)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_menu_b'))![1]
+
+    const msg = setMenu(store, menuId, 'Como posso ajudar?', [
+      { text: 'Falar com Financeiro' },
+      { text: 'Quero me cadastrar' },
+    ])
+    expect(msg).toMatch(/menu BUTTON com 2 itens em "spike_menu_b"/)
+
+    const node = reload().list.find(i => i.id === menuId)!
+    const cond = node.conditions[0]
+    const buttons = cond.assistant_says.flatMap(s => s.messages)
+      .find(m => m.type === 'BUTTON')!.messageConfig!.buttons
+    expect(buttons).toHaveLength(2)
+    expect(buttons.map(b => b.text)).toEqual(['Falar com Financeiro', 'Quero me cadastrar'])
+    // slots sincronizados (buttons[i] ↔ choices[i]), ainda vazios (destino a definir)
+    expect(cond.action.choices).toEqual(['', ''])
+    // sem ERROS e — por estar sincronizado — sem o aviso de dessincronização deste nó
+    const report = validate(store)
+    expect(report).not.toMatch(/❌/)
+    expect(report).not.toMatch(/spike_menu_b/)
+  })
+
+  it('infere LIST quando um item traz descrição', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_menu_list'))![1]
+    const msg = setMenu(store, menuId, 'Escolha:', [
+      { text: 'Ver pedido', description: 'status da entrega' },
+      { text: 'Outro' },
+    ], 'Cabeçalho', 'Rodapé', 'Título da lista')
+    expect(msg).toMatch(/menu LIST com 2 itens/)
+    const node = reload().list.find(i => i.id === menuId)!
+    const m = node.conditions[0].assistant_says.flatMap(s => s.messages).find(x => x.type === 'LIST')!
+    expect(m.messageConfig!.title).toBe('Título da lista')
+    expect(m.messageConfig!.header).toBe('Cabeçalho')
+  })
+
+  it('depois de set_menu, set_choices preenche os destinos sem dessincronizar', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_menu_dest'))![1]
+    const aId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_dest_a'))![1]
+    createNode(store, 'endNode', 'spike_dest_b')
+    setMenu(store, menuId, 'Menu', [{ text: 'A' }, { text: 'B' }])
+    setNodeChoices(store, menuId, [aId, 'spike_dest_b'])
+    const report = validate(store)
+    expect(report).not.toMatch(/❌/)
+    expect(report).not.toMatch(/spike_menu_dest/)
+  })
+
+  it('recusa nó que não é de escolha', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_naomenu'))![1]
+    expect(setMenu(store, id, 'x', [{ text: 'A' }])).toMatch(/não é um nó de escolha/)
+  })
+
+  it('recusa recriar menu em nó que já tem um', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_menu_dup'))![1]
+    setMenu(store, menuId, 'Menu', [{ text: 'A' }])
+    expect(setMenu(store, menuId, 'Outro', [{ text: 'B' }])).toMatch(/já tem menu\/destinos/)
+  })
+
+  it('recusa quando o nó já tem destinos (choices) — não os apaga em silêncio', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_menu_pre'))![1]
+    createNode(store, 'endNode', 'spike_menu_pre_dest')
+    // set_choices ANTES do set_menu (ordem não-prescrita): grava 1 destino real
+    setNodeChoices(store, menuId, ['spike_menu_pre_dest'])
+    const destId = reload().list.find(i => i.id === menuId)!.conditions[0].action.choices![0]
+    expect(setMenu(store, menuId, 'Menu', [{ text: 'A' }])).toMatch(/já tem menu\/destinos/)
+    // o destino pré-existente continua intacto (não foi zerado)
+    expect(reload().list.find(i => i.id === menuId)!.conditions[0].action.choices).toEqual([destId])
+  })
+
+  it('valida body vazio e contagem de itens (delegado ao buildButtonList)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_menu_val'))![1]
+    expect(setMenu(store, menuId, '', [{ text: 'A' }])).toMatch(/corpo/)
+    expect(setMenu(store, menuId, 'Menu', [])).toMatch(/ao menos 1 item/)
+    const onze = Array.from({ length: 11 }, (_, i) => ({ text: `item ${i}` }))
+    expect(setMenu(store, menuId, 'Menu', onze)).toMatch(/no máximo 10 itens/)
+  })
+})
+
+describe('Fase 4b — connect_to_bot (redirect cross-bot)', () => {
+  // bot diferente do principal do fixture (o alvo cross-bot real da Parte 10).
+  const OTHER_BOT = '8df3c1e7-a8c9-4bad-ac5a-2855462da840'
+
+  it('grava next.intent objeto + action:"bot" com default {botId}-start', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_redir'))![1]
+    const msg = connectToBot(store, id, OTHER_BOT)
+    expect(msg).toBe(`spike_redir→outro bot (${OTHER_BOT}-start)`)
+
+    const cond = reload().list.find(i => i.id === id)!.conditions[0]
+    expect(cond.next!.intent).toEqual({ botId: OTHER_BOT, id: `${OTHER_BOT}-start` })
+    expect(cond.next!.action).toBe('bot')
+    // describe_node rotula como cross-bot
+    expect(describeNode(store, id)).toContain('→outro bot')
+  })
+
+  it('usa o intentId explícito quando informado', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_redir2'))![1]
+    connectToBot(store, id, OTHER_BOT, 'intent-alvo-123')
+    const cond = reload().list.find(i => i.id === id)!.conditions[0]
+    expect(cond.next!.intent).toEqual({ botId: OTHER_BOT, id: 'intent-alvo-123' })
+  })
+
+  it('(guarda a) recusa nó de escolha', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_redir_choice'))![1]
+    expect(connectToBot(store, id, OTHER_BOT)).toMatch(/é um nó de escolha/)
+  })
+
+  it('(guarda b) recusa quando botId é o próprio bot', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_redir_self'))![1]
+    expect(connectToBot(store, id, store.mainBotId)).toMatch(/é o próprio bot/)
+  })
+
+  it('(guarda c) sobrescreve um next existente e avisa na confirmação', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_redir_over'))![1]
+    createNode(store, 'endNode', 'spike_redir_alvo')
+    connectNodes(store, id, 'spike_redir_alvo') // cria um next interno
+    const msg = connectToBot(store, id, OTHER_BOT)
+    expect(msg).toMatch(/destino anterior substituído/)
+    const cond = reload().list.find(i => i.id === id)!.conditions[0]
+    expect(cond.next!.intent).toEqual({ botId: OTHER_BOT, id: `${OTHER_BOT}-start` })
+    expect(cond.next!.action).toBe('bot')
+  })
+
+  it('recusa nó inexistente sem efeito colateral', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const before = readFileSync(flowPath, 'utf8')
+    expect(connectToBot(store, 'nao-existe', OTHER_BOT)).toMatch(/^⚠️ erro: nó não encontrado/)
+    expect(readFileSync(flowPath, 'utf8')).toBe(before)
+  })
+
+  it('recusa botId vazio sem gravar next órfão (não fura a guarda do próprio bot)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_redir_vazio'))![1]
+    expect(connectToBot(store, id, '')).toMatch(/botId vazio/)
+    expect(connectToBot(store, id, '   ')).toMatch(/botId vazio/)
+    // nenhum next foi gravado
+    expect(reload().list.find(i => i.id === id)!.conditions[0].next?.intent).toBeUndefined()
   })
 })
 
