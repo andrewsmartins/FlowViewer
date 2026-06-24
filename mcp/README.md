@@ -64,6 +64,25 @@ arquivo na 1ª escrita.
 | `connect` | Liga origem→destino na 1ª vaga livre. |
 | `validate` | Relatório de validade (erros bloqueiam export; avisos informam). |
 | `revert` | Desfaz tudo desde a 1ª mutação da sessão. |
+| `find_team` / `list_teams` | Resolve/lista os times da loja → `objectId` (transfer). |
+| `find_user` | Resolve um vendedor (usuário supervisionado) → `objectId`. Busca server-side. |
+| `find_bot` / `list_bots` | Resolve/lista os bots ativos da conta → `botId` (redirect cross-bot). |
+| `list_api_integrations` | APIs (endpoints) do bot → `apiName`. |
+| `list_entities` | Listas (entities) do bot → `@entity` / nó Loja física. |
+| `list_intents` | Intenções de **outro** bot (nome \| id); com nome, resolve via match. |
+
+### Resolvers (Fase 4) — token e segurança
+
+As 6 famílias de resolver (8 tools) são **read-only contra a API OmniChat** e
+resolvem **nome → ID real** (mata ID alucinado). O `OMNI_TOKEN` é lido do
+[`flow-viewer.env`](../flow-viewer.env) na raiz no startup (o `.mcp.json` é
+commitado e só injeta `FLOW_FILE`) — o token vive na camada de tools, **nunca
+chega ao modelo nem é logado**. Token ausente → "configure OMNI_TOKEN"; **401/403
+→ "renove o OMNI_TOKEN", sem retry** (token de sessão Parse expira rápido). O
+`botId` vem do flow file (`store.mainBotId`). Match ambíguo/parcial devolve
+candidatos e o modelo **para e pergunta** — nunca auto-escolhe.
+
+Smoke read-only real: `npx tsx scripts/smoke-phase4-resolvers.ts [nomeDoTime]`.
 
 ## Limitações conhecidas (spike → Fase 3)
 
@@ -71,6 +90,3 @@ arquivo na 1ª escrita.
   (`intentGroupNode`, 2+ condições) só parcialmente endereçáveis.
 - `setDataNode` (`bulkUpdate`) e o conteúdo de mensagem (LIST/BUTTON) ainda **não**
   são editáveis por tool.
-- Resolução de **nome → ID** de time/usuário/API (campos `value`/`apiName`) chega
-  na **Fase 4** (resolvers sobre a API OmniChat). Até lá o agente não deve inventar
-  IDs — deve parar e perguntar.

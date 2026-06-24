@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve, isAbsolute } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
@@ -11,6 +11,8 @@ import {
   validate, revert, listNodes, describeNode,
   ACTION_FIELDS, type ActionFieldName,
 } from '../src/tools/flowTools'
+import { Resolvers } from '../src/tools/resolvers'
+import type { FetchLike } from '../src/utils/pushFlow'
 import { manifest, describeNodeType } from './nodeCatalog'
 
 /**
@@ -52,6 +54,32 @@ console.error(
   `(${store.flow.list.length} nós, bot ${store.mainBotId || '<sem início>'})`,
 )
 
+// --- Token da API OmniChat (resolvers da Fase 4) -----------------------------
+// O `.mcp.json` é COMMITADO, então o token NÃO pode morar nele. O servidor lê o
+// `OMNI_TOKEN` por conta própria: env do processo (caso o shell já tenha exportado)
+// → fallback para `flow-viewer.env` na raiz (gitignored). O token vive só aqui (na
+// camada de tools), NUNCA chega ao modelo e NUNCA é logado — logamos só se há token.
+function loadOmniToken(): string {
+  if (process.env.OMNI_TOKEN) return process.env.OMNI_TOKEN
+  const envPath = resolve(repoRoot, 'flow-viewer.env')
+  if (!existsSync(envPath)) return ''
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const match = /^\s*OMNI_TOKEN\s*=\s*(.*)$/.exec(line)
+    if (match) return match[1].trim().replace(/^["']|["']$/g, '')
+  }
+  return ''
+}
+
+const omniToken = loadOmniToken()
+// Adapta o `fetch` global do Node ao `FetchLike` da camada de tools (só os campos
+// que ela usa). As funções de fetch lançam em falha; o resolver classifica o erro.
+const nodeFetch: FetchLike = async (url, init) => {
+  const res = await fetch(url, init)
+  return { ok: res.ok, status: res.status, text: () => res.text(), json: () => res.json() }
+}
+const resolvers = new Resolvers(store, { fetch: nodeFetch, token: omniToken })
+console.error(`[flow-mcp] OMNI_TOKEN ${omniToken ? 'carregado' : 'AUSENTE (resolvers da API vão pedir configuração)'}.`)
+
 // --- Instruções sempre no contexto do agente --------------------------------
 const instructions = [
   'Editor de fluxos de bot OmniChat por FERRAMENTAS. Você constrói e edita nós',
@@ -63,8 +91,10 @@ const instructions = [
   '',
   'Regras:',
   '- Referencie nós por id OU nome exato (nome ambíguo é erro — use o id).',
-  '- Nunca invente IDs de time/usuário/API (campos value, apiName). Nesta fase eles não',
-  '  são resolvidos automaticamente; pare e pergunte ao humano.',
+  '- NUNCA invente IDs de time/usuário/bot/API/lista (campos value, apiName, next.intent).',
+  '  Resolva o nome → ID pelos resolvers (find_team/find_user/find_bot/list_*) e só então',
+  '  grave o ID com set_action_field. Se o resolver devolver candidatos ou ambiguidade,',
+  '  PARE e pergunte ao humano — nunca auto-escolha.',
   '- describe_node_type(kind) detalha os campos de cada tipo (sem kind, lista todos).',
   '',
   'Tipos de nó criáveis:',
@@ -149,6 +179,60 @@ server.registerTool('revert', {
   description: 'Desfaz tudo desde a 1ª mutação da sessão (snapshot de storage).',
   inputSchema: {},
 }, async () => reply(revert(store)))
+
+// --- Tools de resolução nome → ID (Fase 4, read-only contra a API) -----------
+// Resolvem nomes legíveis em IDs reais vindos da API (mata ID alucinado). O token
+// vive na camada de tools (lido do flow-viewer.env), nunca chega aqui ao modelo.
+server.registerTool('find_team', {
+  title: 'Resolver time',
+  description: 'Resolve o nome de um time da loja para o id (transfer). Ambíguo/candidatos → pare e pergunte.',
+  inputSchema: { name: z.string().describe('nome (ou parte) do time') },
+}, async ({ name }) => reply(await resolvers.findTeam(name)))
+
+server.registerTool('list_teams', {
+  title: 'Listar times',
+  description: 'Mapa compacto dos times da loja (nome | id).',
+  inputSchema: {},
+}, async () => reply(await resolvers.listTeams()))
+
+server.registerTool('find_user', {
+  title: 'Resolver usuário',
+  description: 'Resolve o nome de um vendedor (usuário supervisionado) para o id. Busca no servidor.',
+  inputSchema: { name: z.string().describe('nome (ou parte) do vendedor') },
+}, async ({ name }) => reply(await resolvers.findUser(name)))
+
+server.registerTool('find_bot', {
+  title: 'Resolver bot',
+  description: 'Resolve o nome de um bot ativo da conta para o botId (redirect cross-bot).',
+  inputSchema: { name: z.string().describe('nome (ou parte) do bot') },
+}, async ({ name }) => reply(await resolvers.findBot(name)))
+
+server.registerTool('list_bots', {
+  title: 'Listar bots',
+  description: 'Mapa compacto dos bots ativos da conta (nome | botId).',
+  inputSchema: {},
+}, async () => reply(await resolvers.listBots()))
+
+server.registerTool('list_api_integrations', {
+  title: 'Listar APIs',
+  description: 'APIs (endpoints) cadastradas no bot (nome | id | tipo) — para o campo apiName.',
+  inputSchema: {},
+}, async () => reply(await resolvers.listApiIntegrations()))
+
+server.registerTool('list_entities', {
+  title: 'Listar listas',
+  description: 'Listas (entities) do bot (nome | id | tipo) — variável @entity e nó Loja física.',
+  inputSchema: {},
+}, async () => reply(await resolvers.listEntities()))
+
+server.registerTool('list_intents', {
+  title: 'Listar intenções de outro bot',
+  description: 'Intenções de OUTRO bot (nome | id); com nome, resolve via match. Para o bot atual use list_nodes.',
+  inputSchema: {
+    botId: z.string().describe('botId do outro bot (resolva pelo find_bot)'),
+    name: z.string().optional().describe('nome da intenção a resolver (opcional)'),
+  },
+}, async ({ botId, name }) => reply(await resolvers.listIntents(botId, name)))
 
 // --- Conecta o transporte stdio ----------------------------------------------
 const transport = new StdioServerTransport()
