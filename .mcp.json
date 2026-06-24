@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "omnichat-flow-editor": {
+      "command": "npx",
+      "args": ["-y", "tsx", "mcp/server.ts"],
+      "env": {
+        "FLOW_FILE": "public/masterFlow.json"
+      }
+    }
+  }
+}

@@ -326,5 +326,8 @@ export function applyNodeDelete(json: BotFlowJson, nodeId: string): EditResult {
  * patches aplicados pelas edições aparecem na saída (estratégia preserve-and-patch).
  */
 export function serializeFlow(json: BotFlowJson): string {
-  return JSON.stringify(json, null, 2)
+  // Trailing newline: evita diff espúrio de 1 linha quando a FlowStore (MCP)
+  // sobrescreve um arquivo de fluxo que terminava em \n, e deixa o download da
+  // UI POSIX-friendly. Os consumidores fazem JSON.parse, nunca comparam bytes.
+  return JSON.stringify(json, null, 2) + '\n'
 }

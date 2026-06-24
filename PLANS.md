@@ -1,27 +1,54 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-23
+## 🔄 Handoff — 2026-06-24 (madrugada)
 
-**Foco da próxima sessão:** **decidir e abrir os PRs** das duas branches de feature empilhadas. A feature do editor do nó Pedido está **concluída, testada (manualmente pelo Andy) e commitada** — era a última fase planejada do editor. Não há mais fase de código pendente.
+**Foco da próxima sessão:** **decidir o macro-passo e executá-lo** — (A) **merge da
+`feat/mcp-tools-spike` para `main`** (Fases 1/3/4/4b prontas, commitadas e verdes — fecha a spike)
+ou (B) **Fase 2 (`NODE_CATALOG`)**, o refactor adiado (toca o DetailPanel, 383 testes; `/interrogar`
+antes, suíte verde como gate). O Andy ainda **não escolheu** entre A e B — perguntar ao retomar.
 
-**Onde paramos:** branch `feat/order-node-editor` (saiu de `feat/error-action-section`, **não** de `main`). Editor do nó Pedido implementado de ponta a ponta e commitado em `5c43d69` (v0.26.0): `orderType` no `updateActionFields`, `OrderActionSection` + draft/parse/serialização no `DetailPanel`, `ORDER_LABELS` derivado de `ORDER_ACTIONS` no `OrderNode`, 3 testes de round-trip, CHANGELOG + bump `package.json`. `tsc` limpo, 379 testes verdes, build OK.
+**Onde paramos:** branch **`feat/mcp-tools-spike`**, **working tree LIMPO**. **Fase 4b commitada**
+(`e26eaa8`) com os 2 fixes do `/code-review` já dentro. As tools `set_menu`/`connect_to_bot`
+([flowTools.ts](src/tools/flowTools.ts), fiadas em [mcp/server.ts](mcp/server.ts)) fecham o ciclo
+de construção agente↔fluxo. **435 testes verdes**, `tsc` + `mcp:typecheck` limpos.
 
-**Fios soltos:**
-- **PRs empilhados (decisão principal):** `feat/order-node-editor` foi criada a partir de `feat/error-action-section`, que **continua sem PR/merge** (feature "Em caso de erro", v0.25.0, commit `495b47e`). Um PR desta branch → `main` levaria as duas features juntas (v0.25 + v0.26). Decidir: PR único, ou mergear `feat/error-action-section` primeiro e depois rebasear/abrir o PR do Pedido.
-- **Seção "Nó Pedido — … (planejado)" no corpo do PLANS.md está STALE** (a feature foi entregue, mas o rótulo segue "(planejado)"). Não arquivei nesta sessão: PLANS está ~212 linhas, abaixo do limiar de 600. Arquivar (verbatim → `docs/PLANS-ARCHIVE.md` + linha no Histórico) quando o PLANS crescer, ou já agora se preferir manter o corpo fiel.
-- **CHANGELOG acumula backlog em `[Não lançado]`** (v0.15→v0.26 nunca recortadas em headings versionados). Segui o padrão existente (bump `package.json` + entrada em `[Não lançado]`); recortar os headings versionados é uma limpeza à parte, não bloqueia nada.
-- **Validação manual no viewer:** Andy confirmou que o editor do Pedido funciona.
+**Fios soltos / meio-feito:** nada em aberto na Fase 4b — está fechada e commitada. O único
+trabalho pendente é a **escolha A vs B** e sua execução.
 
-**Armadilhas desta sessão:**
-- A ferramenta **Bash NÃO é PowerShell**: a sintaxe de here-string `@'...'@` é só do PowerShell; no Bash ela injetou um `@` literal no início do subject do commit. Tive de `--amend` com here-doc real (`<<'EOF'`). Para commits multi-linha via Bash tool, usar here-doc; via PowerShell tool, usar `@'...'@`.
-- Decisão de design já cristalizada no código: `generateOrder` **preserva** `action.variable` (preserve-and-patch) — a serialização só passa `variable` no modo `addToCart`.
+**Armadilhas desta sessão (gotchas — não redescobrir):**
+1. **MCP em execução roda o código ANTIGO.** O servidor MCP sobe no boot do Claude Code via
+   `.mcp.json`; mudanças nas tools (ex.: `set_menu`/`connect_to_bot`) **só aparecem após reiniciar
+   o Claude Code**. Smoke de tools recém-mexidas: via `tsx` efêmero (funções reais), não via MCP ao vivo.
+2. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** (`public/masterFlow.json`). Rodar a prova
+   via MCP deixa um diff **só de EOL** (conteúdo idêntico) — restaurar com `git checkout -- public/masterFlow.json`.
+3. **smoke efêmero:** não deixar `_smoke-*.ts` no repo. Boilerplate de token/fetch para reusar:
+   [scripts/smoke-phase4-resolvers.ts](scripts/smoke-phase4-resolvers.ts).
+4. **Bash ≠ here-string PowerShell** (`git commit -F - <<'EOF'`); **`mcp/tsconfig.json` inclui só
+   `mcp/`** — não alargar o glob (puxa DOM e quebra).
+5. **Code-review da 4b fechou 2 edges** (já no `e26eaa8`, não reabrir): `connect_to_bot` recusa
+   `botId` vazio (furava a guarda do próprio bot → next interno órfão); `set_menu` recusa nó com
+   `choices` já preenchidos (evita wipe silencioso). Guarda de `set_menu` agora cobre mensagem
+   de botões **E** choices; mensagem de erro mudou para "já tem menu/destinos".
 
-**Próximo passo imediato:** rodar `git log --oneline main..feat/order-node-editor` para ver os commits que iriam no PR e então decidir a estratégia de PR (única vs. mergear a base primeiro).
+**Próximo passo imediato:** perguntar ao Andy **A ou B**. Se **A**: abrir PR da
+`feat/mcp-tools-spike` → `main` (revisar o range completo Fases 1/3/4/4b; conferir que `main` não
+divergiu). Se **B**: `/interrogar` a Fase 2 antes de tocar o DetailPanel, suíte verde como gate.
 
-**Ponteiros:** commit `5c43d69` (feature) e `495b47e` (base "Em caso de erro"). PLANS.md § "Nó Pedido — … (planejado)" (design, agora entregue). CHANGELOG `[Não lançado] > Adicionado` (topo). Arquivos: [DetailPanel.tsx](src/components/DetailPanel.tsx), [editIntent.ts](src/utils/editIntent.ts), [OrderNode.tsx](src/components/nodes/OrderNode.tsx).
+**Threads parados (ortogonais, não perder):** editor do nó **Pedido** (planejado no corpo §"Nó
+Pedido", **não** implementado); **PRs/merge** das v0.25–v0.27 ainda na branch
+`feat/order-node-editor`, não mergeadas em `main`.
 
-**Skills sugeridas:** `gh` CLI para abrir o(s) PR(s); `/code-review` se quiser uma revisão extra antes do PR (o código já está commitado e testado).
+**Ponteiros:** PLANS §"Fase 4b" (decisões); commit `e26eaa8`; `setMenu`/`connectToBot` em
+[flowTools.ts](src/tools/flowTools.ts); utils reusados `addButtonListMessage`
+([editIntent.ts:456](src/utils/editIntent.ts#L456)) e `setNextRef`
+([editFlow.ts:140](src/utils/editFlow.ts#L140)).
+
+**Skills sugeridas ao retomar:** `/interrogar` antes da Fase 2 (refactor arriscado); `/code-review`
+antes de qualquer commit novo; `/verify` se for validar o MCP ao vivo (lembrar do reinício, gotcha 1).
+
+**Arquivamento:** PLANS ~615 linhas (≈ limiar 600), mas as Fases 1/3/4/4b **ainda não mergeadas**
+(spike aberta) → seguem vivas, **não arquivar**. Revisar arquivamento quando a spike entrar na `main`.
 
 <!-- HANDOFF:END -->
 
@@ -89,6 +116,339 @@ Alvo: o modelo `BotIntent[]` é a fonte de verdade; o canvas é uma projeção e
   Nunca reconstruir campos não editados — **preservar e aplicar patch**, não
   serializar do zero.
 
+## Agente de IA que constrói nós (Claude Code CLI + servidor MCP local)
+
+> Promovido do handoff em 2026-06-23 após interrogatório (skill `interrogar`). Esta é a
+> **feature-foco** das próximas sessões; o handoff no topo aponta pra cá. O masterFlow
+> (parado/completo na Parte 12) deixa de ser o foco.
+
+**Objetivo (1 frase):** um agente de IA que **constrói e edita nós do fluxo operando
+ferramentas** (nunca escrevendo JSON cru), via **Claude Code CLI + um servidor MCP local**
+sobre o arquivo de fluxo, estruturado desde já para virar produto depois.
+
+**Decisões-âncora (travadas no design original — NÃO reabrir):**
+- O agente **opera tools, nunca escreve JSON cru**. As tools envolvem as funções que já
+  existem; a validade fica no código, não na memória do modelo.
+- O **servidor MCP é a peça durável** — o mesmo conjunto de tools é reusado no
+  caminho-produto; só troca o cliente.
+- **Local:** Claude Code lança o MCP como **subprocesso por stdio** — zero portas, zero
+  rede de entrada. Único tráfego é **de saída** (API Anthropic + API OmniChat). O gh-pages
+  **NÃO** fala com o MCP — site e agente são ilhas que só se cruzam pelo **arquivo de fluxo
+  em disco** (a UI lê o arquivo só sob demanda via "Carregar exemplo"/import — ela NÃO o lê
+  ao vivo; ver [ImportDialog.tsx:27](src/components/ImportDialog.tsx#L27)).
+- **Token** vive na **camada de tools** (`OMNI_TOKEN` de `flow-viewer.env`), nunca chega ao
+  modelo, nunca é logado. **Resolver por nome → gravar por ID** (o ID sempre vem de resposta
+  real da API ⇒ mata referência alucinada).
+- **Modelo:** default `claude-sonnet-4-6`; subir p/ `claude-opus-4-8` se errar a sequência
+  em pedidos compostos.
+
+**Ordem revista (interrogatório 2026-06-23, Q1 — spike-primeiro).** O refactor do catálogo
+(antiga Fase A) foi **adiado para depois do spike**: provar o conceito contra fluxos reais
+antes do refactor caro que toca o [DetailPanel.tsx](src/components/DetailPanel.tsx) (~3500
+linhas, 383 testes — o arquivo mais arriscado). De-risca e respeita "amostra mínima antes de
+escalar". Nova ordem: **1 spike → 2 catálogo → 3 MCP → 4 resolvers → 5 produto.**
+
+### Fase 1 — Spike: camada de tools sobre o arquivo de fluxo (sem IA) ✅ concluída
+
+> **Resultado (2026-06-23, branch `feat/mcp-tools-spike`):** entregue em
+> [src/tools/flowStore.ts](src/tools/flowStore.ts) (storage: load/save/snapshot/revert + `.bak`,
+> agnóstico de git) + [src/tools/flowTools.ts](src/tools/flowTools.ts) (tools com retorno
+> compacto: `create_node`/`set_action_field`/`set_choices`/`connect`/`validate`/`revert` +
+> leitura `list_nodes`/`describe_node`). **15 testes** round-trip em
+> [src/tools/flowTools.test.ts](src/tools/flowTools.test.ts) (fixture `public/masterFlow.json`),
+> `tsc` limpo, suíte cheia verde (398 testes). Code-review aplicado: gate de tipo
+> (array só em `multipleFields`), guarda de fluxo sem início, e rótulo cross-bot
+> (`next.action==='bot'` → "outro bot"). **Pendente:** ainda há um sharp edge conhecido —
+> `set_action_field`/`connect` operam por `condIdx` (default 0); nós-grupo (`intentGroupNode`,
+> 2+ condições) só são parcialmente endereçáveis. OK para a spike (nós de condição única);
+> generalizar quando a Fase 3 (MCP) ou um caso real exigir.
+
+**Objetivo:** camada de tools fina (TS puro) que carrega/muta/salva o arquivo de fluxo,
+lendo as fontes de verdade **espalhadas que já existem** (sem refactor ainda). Provar
+`create_node`+`set_field`+`connect`+`validate` contra fluxos reais **antes** de plugar
+qualquer modelo.
+
+**Tools (envolvem o que já existe):**
+- `create_node(kind)` → `createIntentTemplate`/`createConditionForKind` ([intentTemplates.ts](src/utils/intentTemplates.ts)) — cria nó com defaults do kind.
+- `set_action_field(...)` → `updateActionFields`/`addTextMessage` ([editIntent.ts](src/utils/editIntent.ts)).
+- `set_choices(...)` → `setChoices` ([editIntent.ts](src/utils/editIntent.ts)).
+- `connect(...)` → `applyConnect` ([editFlow.ts](src/utils/editFlow.ts)).
+- `validate()` → `validateFlow` ([validateFlow.ts](src/utils/validateFlow.ts)) — devolve `{errors, warnings}`.
+- `revert()` → restaura o snapshot de sessão (camada de storage).
+- **Leitura:** `list_nodes()` (mapa compacto: nome, id, kind, category, alvo) + `describe_node(id)` (campos de um nó, compacto).
+
+**Decisões (com o porquê):**
+1. **`validate` é tool separada; mutações salvam sem gate (Q2).** Validar a cada escrita
+   reprovaria estados intermediários válidos (nó criado mas ainda não conectado). O agente
+   chama `validate` quando quer (tipicamente no fim). `validateFlow` já separa `errors`
+   (bloqueiam export) de `warnings` (informam); nó órfão **não** é erro, ref quebrada **é**
+   — mas "resolver por nome→ID" praticamente elimina ref quebrada.
+2. **Undo próprio na camada de storage: snapshot por sessão + `revert` (Q3).** A primeira
+   mutação da sessão copia o estado; `revert` volta ao início. **NÃO depende de git** (o
+   produto não comita — o usuário final não tem repo). Local = `.bak` ao lado; produto =
+   versão anterior no storage do fluxo. **1 snapshot, não pilha** — o mais simples que cobre
+   interrupção/caminho-errado; subir para N níveis depois é só guardar mais snapshots, sem
+   mudar a interface do `revert`.
+3. **Retorno = confirmação compacta, nunca JSON cru (Q4).** `create_node`→"criado nó X
+   (id …) kind=…"; `connect`→"X→Y"; `validate`→relatório. Mantém o anchor (o modelo não
+   raciocina sobre JSON bruto) e o contexto enxuto (em 42 nós, repetir nodes inteiros
+   estoura contexto).
+4. **Leitura: `list_nodes` + `describe_node`, ambos compactos (Q5).** Dois usos distintos:
+   **orientar-se** (mapa do fluxo) vs **inspecionar antes de editar** (campos de um nó). Só
+   `list_nodes` levaria a edição cega; um `get_flow` inteiro incha contexto e ainda falta
+   detalhe de campo. Mesma filosofia "listar barato / descrever sob demanda" dos resolvers
+   (Fase 4) e do `describe_node_type` (Fase 3).
+
+**Como será testado (Q9):** unitário round-trip em vitest (`load → muta → save → reload →
+assert`) usando `public/masterFlow.json` como fixture — cobre a **orquestração**
+load/save/snapshot/revert que as funções subjacentes (já testadas) não cobrem. Amostra
+mínima escalando: 1 nó simples → 1 nó com bloco `error` + captura múltipla → 3 nós
+conectados. Sem IA nesta fase.
+
+### Fase 2 — Centralizar `NODE_CATALOG` (refactor/limpeza, com valor próprio)
+
+**Objetivo:** consolidar a verdade hoje espalhada (NodeKind [types.ts:130](src/types.ts#L130),
+`actionToNodeKind` [nodeMeta.ts](src/utils/nodeMeta.ts), defaults
+[intentTemplates.ts](src/utils/intentTemplates.ts)/[captureFields.ts](src/utils/captureFields.ts),
+const do [DetailPanel.tsx](src/components/DetailPanel.tsx)) num único `NODE_CATALOG`. Alimenta
+o DetailPanel (limpeza com valor próprio) **e** o manifesto enxuto + `describe_node_type` da
+Fase 3.
+
+**Por que depois do spike:** toca o arquivo mais arriscado (DetailPanel, 383 testes) — só
+pagar esse custo depois que o spike provar que o caminho agente/MCP entrega valor. No spike,
+o manifesto/catálogo é escrito **à mão, mínimo**; esta fase vira a fonte derivada. Gate:
+suíte verde antes e depois.
+
+### Fase 3 — Empacotar como servidor MCP (stdio) ✅ concluída
+
+> **Resultado (2026-06-23, branch `feat/mcp-tools-spike`):** servidor em
+> [mcp/server.ts](mcp/server.ts) expõe as **9 tools** da Fase 1 via
+> `@modelcontextprotocol/sdk` por stdio; manifesto enxuto em
+> [mcp/nodeCatalog.ts](mcp/nodeCatalog.ts) (1 linha/kind nas `instructions` +
+> `describe_node_type(kind)` sob demanda). Config do Claude Code em
+> [.mcp.json](.mcp.json) (`npx tsx mcp/server.ts`, `FLOW_FILE=public/masterFlow.json`).
+> Arquivo de fluxo resolvido por `FLOW_FILE` (env) → 1º arg → default; **1 `FlowStore`
+> por processo** (snapshot/revert pela sessão). Typecheck isolado via
+> [mcp/tsconfig.json](mcp/tsconfig.json) (`npm run mcp:typecheck`) limpo; suíte cheia
+> verde (398 testes); verificado ponta a ponta por cliente MCP stdio (handshake +
+> `tools/list` + ciclo `create→set→connect→validate→revert`, revert restaura 1:1).
+> Doc em [mcp/README.md](mcp/README.md). **Limitações herdadas da spike** (documentadas
+> no README): `condIdx` default 0 (nós-grupo parciais); `setDataNode`/conteúdo de
+> mensagem ainda sem tool; resolução nome→ID fica para a Fase 4. **Pendente:** ainda
+> sem IA de fato exercitando o MCP — o próximo passo natural é abrir o Claude Code no
+> repo e construir um nó por conversa (ou seguir para a Fase 4/2).
+
+**Objetivo:** expor a camada de tools como servidor MCP que o Claude Code lança por stdio +
+config do Claude Code + **manifesto enxuto** (14 kinds, 1 linha cada, campos que cada um
+pede) sempre no contexto + tool `describe_node_type(kind)` sob demanda.
+
+**Decisões (Q6):** **mesmo repo** (pasta `mcp/` no FlowViewer), importando `src/utils`
+**direto** — confirmado TS puro/Node-safe ([intentTemplates.ts](src/utils/intentTemplates.ts)/
+[editIntent.ts](src/utils/editIntent.ts)/[editFlow.ts](src/utils/editFlow.ts) só importam
+tipos, zero React/DOM) — rodando via **`tsx`** (sem build separado), SDK
+`@modelcontextprotocol/sdk` por stdio. A camada de tools segue **fonte única**, reusável
+pelo backend de produto depois. Extrair para pacote de monorepo só quando houver 2
+consumidores reais (Fase 5) — estrutura à frente da necessidade hoje.
+
+### Fase 4 — Resolvers sobre a API OmniChat ✅ concluída
+
+> **Resultado (2026-06-24, branch `feat/mcp-tools-spike`, commits `2f2c33b` docs + `01deed6`
+> feat):** **8 tools read-only** em [src/tools/resolvers.ts](src/tools/resolvers.ts) (classe
+> `Resolvers`: helpers de normalização/match/erro+AUTH/cache) expostas no
+> [mcp/server.ts](mcp/server.ts): `find_team`/`list_teams`, `find_user`, `find_bot`/`list_bots`,
+> `list_api_integrations`, `list_entities`, `list_intents`. Cada uma envolve uma função de fetch
+> já existente (não reescrita); `fetchSupervisedUsers` ganhou param `search` opcional (decisão 6).
+> Token lido de `flow-viewer.env` no startup do MCP (nunca chega ao modelo). **23 testes** com
+> `fetch` injetado + **smoke read-only real verde ponta a ponta** ([scripts/smoke-phase4-resolvers.ts](scripts/smoke-phase4-resolvers.ts)):
+> `find_team("Financeiro")`→`S1Cl3fbnFG` (= ID da Parte 8), `find_bot("Cadastro")` acha o alvo
+> cross-bot da Parte 10, `find_user` confirma o `search` server-side. Suíte cheia verde (421);
+> tsc do app e `mcp:typecheck` limpos. Code-review (alto esforço) só achou concordância pt-BR
+> (corrigida). **`getBotId()` não foi criado** — `FlowStore.mainBotId` já existia e foi reusado.
+> **Riscos (a)/(b)/(c) fechados.** Próximo natural: Fase 2 (`NODE_CATALOG`) ou exercitar o MCP
+> completo (criar nó + resolver alvo + conectar) com IA real.
+
+> **Decisões fechadas no interrogatório de 2026-06-24** (skill `interrogar`). Substituem o
+> esboço anterior (Q7/Q8) — em especial o **pré-load eager** foi revertido para **sob demanda**.
+
+**Objetivo (1 frase):** tools read-only que resolvem **nome → ID** batendo na API OmniChat,
+**reusando as funções de fetch já existentes e testadas** ([teams.ts](src/utils/teams.ts),
+[users.ts](src/utils/users.ts), [endpoints.ts](src/utils/endpoints.ts),
+[entities.ts](src/utils/entities.ts), `fetchServerIntents` em [pushFlow.ts](src/utils/pushFlow.ts)) —
+o agente devolve o ID e grava pelo `set_action_field` existente, **sem nunca inventar ID**.
+
+**Conjunto de resolvers (núcleo 5 + intents):** `find_team`/`list_teams`, `find_user`,
+`find_bot`/`list_bots`, `list_api_integrations`, `list_entities`, `list_intents`. **Dropado
+`list_variables`** (`variables.ts` é catálogo **estático** `@customer.*`; as dinâmicas `@team`/
+`@entity` já são cobertas por `find_team`/`list_entities`). Ordem: **`find_team` primeiro** (caso
+mais comum — transfer; exercita o passo extra `retailerId` de `teams.ts`) e serve de **gate**
+(round-trip read-only real verde) antes de abrir os outros no mesmo PR (todos o mesmo formato).
+
+**Decisões (com o porquê):**
+1. **Fonte do `botId`: derivado do flow file** (`flowStore.getBotId()` lê o id do intent
+   `-start`, ou `next.intent.botId`). Fonte única — nunca diverge do fluxo sendo editado;
+   evita 2ª config (env) que poderia apontar pra loja errada em silêncio. Quase todos os
+   fetches precisam dele (`endpoints`/`entities` por `botId` direto; `teams`/`users` resolvem
+   `retailerId` a partir dele — `find_user` é a exceção: é "supervisionados pela conta do
+   token", sem `botId`). **Edge:** flow novo sem intents → sem `botId` → resolver falha com
+   mensagem clara.
+2. **Resolvers read-only devolvem o ID; o modelo passa ao `set_action_field` (inalterado).**
+   A garantia "mata ID alucinado" é **prática, não mecânica**: o resolver é a **única fonte**
+   de ID, então o modelo não tem de onde alucinar. Descartado o **gate de IDs resolvidos na
+   sessão** (quebraria em IDs reais já presentes no flow importado — Parte 8 tem times/usuários
+   reais — e exigiria estado de sessão) e as **tools resolve-and-write** (multiplicariam tools
+   por campo e duplicariam o `set_action_field` genérico). Casa com a filosofia
+   `list_nodes`/`describe_node` (leitura separada da escrita).
+3. **Erros = mensagens claras + AUTH especial; sem enum formal.** O modelo lê o **texto** e
+   decide. A única distinção de comportamento na camada: **401/403 → "renove o `OMNI_TOKEN`",
+   sem retry** (token de sessão Parse é curto — é a falha real #1; descoberta preguiçosamente
+   na 1ª chamada, com mensagem clara — não há pré-load pra "falhar rápido no startup", e erro
+   de boot em subprocesso stdio é difícil de surfaçar). `NOT_FOUND`/ambíguo → devolve
+   **candidatos** para o modelo desambiguar com o humano. Lista vazia / erro genérico → só
+   mensagem boa. **Token ausente** (não expirado) → "configure `OMNI_TOKEN` em
+   `flow-viewer.env`" (mesma família AUTH). Descartada a **taxonomia formal 4-subtipos** (o
+   modelo se comporta igual a partir de uma boa mensagem; enum vira cerimônia single-user).
+4. **Cache sob demanda, por sessão, sem TTL.** Nenhum pré-load no startup. A 1ª chamada de
+   cada resolver dispara o fetch (a tool tem o token, lido do `flow-viewer.env` no boot do
+   MCP — **nunca chega ao modelo**) e cacheia; as seguintes batem no cache. Resolvers são
+   read-only contra a API e edições locais não afetam as listas remotas → **sem invalidação**
+   na sessão. Um caminho de código só (lazy+cache). **Reverte o esboço eager** — o ganho do
+   eager (falha rápida em token ruim, consciência imediata) é marginal e já coberto pela
+   mensagem AUTH na 1ª chamada.
+5. **Matching nome→ID: normalizado exato + `contains` para candidatos.** Normaliza (minúscula
+   + sem acento — pt-BR). **Exato único → devolve o ID.** Senão, devolve quem **contém** a
+   query como **candidatos** (serve o usuário que só sabe *parte* do nome — `contains` é
+   estritamente melhor que Levenshtein nesse caso; fuzzy só corrige typo de nome já conhecido,
+   ganho raro porque o modelo copia o nome que o humano deu). **Ambíguo (>1)** → devolve os
+   empatados; **o modelo PARA e pergunta, nunca auto-escolhe** (é o que protege contra gravar
+   o alvo errado em silêncio). Mesmo helper para `find_team`/`find_user`/`find_bot` e o match
+   dentro do `list_intents`.
+6. **`find_user` filtra server-side.** `fetchSupervisedUsers` ([users.ts:51](src/utils/users.ts#L51))
+   hoje busca `search:'.*'` com **cap de 100** e filtra em memória — trunca em loja grande
+   (alvo-produto) e pode perder o alvo. Estender o util com um param `search` opcional e mandar
+   o nome para a cloud function filtrar no servidor; cache por query (`users:<nome>`).
+7. **`list_intents` é o complemento cross-bot** (recebe um `botId`, reusa `fetchServerIntents`
+   read-only, devolve `{id, name}` compacto). Para o bot atual o modelo usa `list_nodes`
+   (local); `list_intents` resolve o caso "redireciona para a intenção X de *outro* bot" (além
+   do `-start` da Parte 10): `find_bot(nome) → botId → list_intents(botId) → acha → grava
+   next.intent {id, botId}`.
+
+**Onde mora o código:** novo módulo na camada de tools (`src/tools/`) que envolve as funções
+de fetch existentes (match + cache + mensagens de erro); exposto como tools MCP em
+[mcp/server.ts](mcp/server.ts). Mantém a **fonte única** reusável pelo backend de produto
+(Fase 5). Reusar `sessionHeaders`/`Deps` de [teams.ts](src/utils/teams.ts) (o `buildHeaders` de
+`pushFlow.ts` é equivalente — não unificar agora, só reusar o que cada util já tem).
+
+**Como será testado (decisão):** **unit com `fetch` injetado** (sem rede, igual a
+`teams.test`/`users.test`) cobrindo match exato único / candidatos / ambiguidade / lista vazia /
+401 AUTH (mensagem, sem retry) / cache (2 chamadas = 1 fetch) — escalando do `find_team` para os
+demais. **+ 1 smoke read-only manual** contra a API real do bot de testes (`find_team` lista os
+times) como rede de segurança contra drift do contrato da API interna (risco registrado).
+**Sandbox dispensável:** os resolvers só **leem** da API; a escrita é local no flow file (já com
+`.bak`+`revert`), então operar `public/masterFlow.json` direto segue seguro.
+
+**Riscos/pendências:** (a) API interna não documentada pode mudar — o smoke read-only é a rede
+de segurança; (b) `find_user` >100 mitigado por server-side search, mas confirmar que a cloud
+function respeita `search` no smoke; (c) flow file sem `botId` (flow novo vazio) → mensagem
+clara em vez de stack trace.
+
+### Fase 4b — Fechar gaps de construção descobertos na prova foco A (set_menu + connect_to_bot)
+
+> Origem: a prova "agente↔fluxo com IA real" (2026-06-24) exercitou o pipeline completo e
+> expôs DOIS gaps na camada de escrita. Decisões fechadas no interrogatório (skill
+> `interrogar`) na mesma data.
+
+**Contexto da descoberta:** a prova mandou construir um menu "Atendimento" (opção Financeiro →
+transfer; opção Cadastro → redirect cross-bot). Funcionou o esperado: `create_node`,
+`find_team` (resolveu `Financeiro`→`S1Cl3fbnFG`), `find_bot` (**PAROU na ambiguidade** — 3
+candidatos, salvaguarda ok), `transferNode` completo, `validate`, `revert`. Mas dois buracos:
+1. **`choiceNode` não é construível do zero** — nasce com `choices=[]` e **0 botões**;
+   `set_choices` só mapeia destinos sobre botões **existentes** e `connect` recusa ("sem vaga
+   livre"). Não há tool que crie os itens/labels do menu.
+2. **redirect cross-bot não tem tool de escrita** — `find_bot`/`list_intents` resolvem o ID,
+   mas `connect` só liga interno (recusou o `…-start` do outro bot) e `set_action_field` não
+   cobre `next.intent`. O ID resolvido fica órfão.
+
+**Descoberta-chave:** a lógica das duas correções **já existe e é testada** nos utils — falta
+só **expor como tool + fiar no MCP** (não há algoritmo novo):
+- `addButtonListMessage` ([editIntent.ts:456](src/utils/editIntent.ts#L456)) cria a mensagem
+  BUTTON/LIST com itens + validação (1-10 itens, body obrigatório, LIST com 4+).
+- `setNextRef` ([editFlow.ts:140](src/utils/editFlow.ts#L140)) grava `next.intent={botId,id}`
+  com `action:'bot'` (serialização confirmada em export real). Nenhuma das duas está importada
+  hoje no [flowTools.ts](src/tools/flowTools.ts).
+
+**Objetivo (1 frase):** expor duas tools de escrita — `set_menu` (itens de um choiceNode) e
+`connect_to_bot` (redirect cross-bot) — sobre funções já existentes, **fechando o ciclo de
+construção agente↔fluxo**.
+
+**Decisões (com o porquê):**
+1. **`set_menu` cria o menu inteiro de uma vez** (não item-por-item), assinatura **completa**:
+   `set_menu(node, body, items:[{text, description?}], header?, footer?, title?)`. Envolve
+   `addButtonListMessage`; infere BUTTON vs LIST (`described` OU 4+ itens → LIST, regra que
+   `buildButtonList` já aplica). **Por quê menu inteiro:** o agente raciocina em "menu com
+   opções X,Y,Z", não em N chamadas; validação embutida. **Por quê assinatura completa:**
+   fidelidade ao `messageConfig` real (header/footer/title opcionais expostos).
+2. **`set_menu` cria só os ITENS; destinos à parte.** Cria N slots de `choices` **vazios
+   sincronizados** com os botões (validate limpo — sem "N botões para 0 escolhas"). Destinos
+   seguem via `set_choices`/`connect` (já funcionam). **Por quê:** separa conteúdo (botões) de
+   topologia (choices) — o modelo posicional existente —; cobre o caso comum de o destino
+   ainda não existir quando o menu é criado.
+3. **`connect_to_bot(node, botId, intentId?)` — tool nova dedicada**, não estender `connect`.
+   Recebe os IDs **já resolvidos** (find_bot/list_intents) e grava via `setNextRef`
+   (`action:'bot'`). `intentId` opcional → default `${botId}-start` (entrada do outro bot, caso
+   comum). **Por quê não estender connect:** connect resolve o alvo no flow **atual**; cross-bot
+   o alvo não está no flow e precisaria do `botId` separado → viraria outra tool disfarçada.
+   Mantém a salvaguarda de ambiguidade **nos resolvers** (a tool não auto-resolve).
+4. **4 guardas da `connect_to_bot`** (caminho infeliz): (a) **origem de escolha**
+   (`action.type==='choice'`) → recusa ("use `set_choices`; cross-bot é do `next`"); (b)
+   **`botId===mainBotId`** → recusa ("mesmo bot: use `connect`" — evita `next` interno órfão);
+   (c) **`next` já preenchido → SOBRESCREVE** com confirmação (semântica "defina o destino",
+   ação deliberada, coerente com `setNextRef` — diferente do `connect`, que recusa vaga
+   ocupada); (d) **sem validação remota do `intentId`** (a tool não chama a API do outro bot;
+   confia nos resolvers + regra "nunca inventar ID"; default `-start` cobre o caso sem
+   `list_intents`).
+
+**Onde mora o código:** duas funções novas em [flowTools.ts](src/tools/flowTools.ts)
+(`setMenu`/`connectToBot`) envolvendo `addButtonListMessage`/`setNextRef` (importar dos utils —
+hoje não importadas). Fiar em [mcp/server.ts](mcp/server.ts) como `set_menu`/`connect_to_bot`
+(mesmo padrão das tools existentes; `set_menu` precisa de schema de `items` = array de objetos).
+
+**Como será testado:** **unit em [flowTools.test.ts](src/tools/flowTools.test.ts)** (não
+retestar os utils, já cobertos): `set_menu` (cria botões + `choices` sincronizados; infere
+BUTTON/LIST; erros: nó inexistente, nó não-choice, body vazio, 0/>10 itens); `connect_to_bot`
+(grava `next.intent` objeto + `action:'bot'`; default `-start`; as 4 guardas). **+ smoke MCP
+real:** repetir o cenário da prova (menu *Atendimento* → Financeiro + cross-bot Cadastro) ponta
+a ponta, `validate` limpo, `describe_node` mostrando o cross-bot, `revert`. Efêmero ou
+estendendo o smoke da Fase 4 — **não deixar `_smoke-*.ts` no repo**. Gate: suíte cheia verde
+antes de commitar.
+
+**Riscos/pendências:** (a) schema array-de-objetos do `items` no MCP (`z`) — confirmar que casa
+com o cliente; (b) sincronização buttons↔choices: garantir que `set_menu` deixa exatamente N
+slots (testar o `validate` logo após); (c) sobrescrita de `next` (guarda c) e cross-bot num
+choiceNode (guarda a) precisam de teste explícito.
+
+### Fase 5 — Produto (direcional, NÃO detalhar agora)
+
+Cliente Claude Code → **backend** com tool runner do SDK (ou MCP connector); o **frontend
+executa as tools via relay** (WebSocket/SSE) para a **key ficar no servidor**. Backend em
+nuvem (Render/Fly/Workers), **nunca** no roteador de casa; gh-pages segue só frontend.
+
+**Não detalhar agora (Q10):** depende de decisões de produto ainda não tomadas (hosting,
+transporte do relay, modelo de auth do usuário final) — detalhar seria especulação que
+envelhece mal. O que importa preservar **já são anchors**: camada de tools agnóstica de
+transporte, token na camada de tools, **storage abstrato** (reforçado pela Q3). Enquanto as
+Fases 1–4 respeitarem isso, a Fase 5 segue viável.
+
+**Riscos/pendências:**
+- Pureza Node das funções confirmada hoje (só tipos) — re-verificar se o spike puxar novas
+  deps de browser para `src/utils`.
+- API interna não documentada (risco já registrado) — o round-trip real é a rede de
+  segurança.
+- O refactor do `NODE_CATALOG` (Fase 2) arrisca os 383 testes do DetailPanel — por isso
+  adiado para pós-spike e feito com a suíte verde como gate.
+- Threads ortogonais que não podem se perder: editor do nó **Pedido** (planejado, não
+  implementado), **PRs/merge** das v0.25–v0.27 pendentes, **commit** do CSAT v0.27.0
+  pendente.
+
 ## masterFlow.json — fluxo de exemplo canônico (construído por partes)
 
 > Iniciado 2026-06-22. Arquivo: [masterFlow.json](masterFlow.json) na raiz.
@@ -119,12 +479,20 @@ Alvo: o modelo `BotIntent[]` é a fonte de verdade; o canvas é uma projeção e
   5. **Chamada de API** (`external`) → `acao_api` (`external: {type:"request", apiName:<placeholder>}` + bloco `error` com `next.redirect: waitInteraction` — caminho infeliz). **Placeholder obrigatório:** o bot de testes não tem nenhuma API configurada (todos os `apiName` vêm `[]`/`null`), então não existe ID real pra referenciar.
   6. **Transferência** (`transfer`) → `Menu_Transferencia` → 6 nós, um por `TransferType` (`search4group`, `direct4group`, `search4user`, `direct4user`, `directFromBranch`, `direct4userPrevious`). `value` = **IDs reais** do retailer do bot de testes (`5rFc8fXg1G`) onde aplicável: time real nos `*4group`, usuário real nos `*4user`; `directFromBranch`/`direct4userPrevious` → `value` null (resolvido em runtime).
   7. **Aguardar interação** (`waitForInteraction`) → `acao_aguardar` (`next.redirect: waitInteraction`).
-  - **IDs reais (decisão do Andy):** buscados ao vivo no retailer `5rFc8fXg1G`. Times: `search4group` → `UrAnEmtASL` (Andrews Teste 1), `direct4group` → `S1Cl3fbnFG` (Financeiro). Usuários: `search4user` → `H8eCHFdDdc`, `direct4user` → `7AetrEiHgI`. `directFromBranch`/`direct4userPrevious` → `value: null` (runtime). API → placeholder `apiName: "API_EXEMPLO"` (bot não tem API configurada). setData usa `@customer.name`/`@customer.email` (reais) + `@custom.origem`.
+  - **IDs reais (decisão do Andy):** buscados ao vivo no retailer `5rFc8fXg1G`. Times: `search4group` → `UrAnEmtASL` (Andrews Teste 1), `direct4group` → `S1Cl3fbnFG` (Financeiro). Usuários: `search4user` → `H8eCHFdDdc`, `direct4user` → `Kq1BchVtk9`. `directFromBranch`/`direct4userPrevious` → `value: null` (runtime). API → placeholder `apiName: "API_EXEMPLO"` (bot não tem API configurada). setData usa `@customer.name`/`@customer.email` (reais) + `@custom.origem`.
   - **Desvio de fidelidade (transfer = folha):** os 6 nós de transferência **não encadeiam** para `encerrar` — o `next` é folha (`{redirect:"waitInteraction", type:"context"}`), como no `transfer` real dos samples: transferir entrega ao humano e o bot para ali. Encadear para `endConversation` seria contraditório.
   - `captureData`/`setData`/`store`/`external`/`transfer` carregam bloco `error` (caminho infeliz: `next.redirect:waitInteraction`, `type:error`, `intent` = `-start`), espelhado dos samples. Cada nó-exemplo tem `name` = referência + uma `TEXT` curta. `category: "Teste por Ação"`.
   - **Estrutura final:** `Menu_Acoes` ─[Capturar]→ `acao_captura_um`→`acao_captura_varios`→encerrar · ─[Editar]→ `acao_editar_um`→`acao_editar_varios`→encerrar · ─[Loja]→ `acao_loja`→encerrar · ─[API]→ `acao_api`→encerrar · ─[Transferência]→ `Menu_Transferencia`→ 6 nós (folhas) · ─[Aguardar]→ `acao_aguardar`→encerrar.
 - **Parte 9 — um encerramento por grupo de categoria (limpeza do desenho):** o `encerrar` compartilhado recebia ~22 arestas de todos os ramos (emaranhado no Dagre). Dividido em **3 sinks locais** `endConversation` (todos `category: "Encerramento"`, despedida própria): `encerrar_cabecalho` (mantém o id `f19f108f…`, 1 entrada: cadeia Cabeçalho via `teste_flow`), `encerrar_tipo` (16 entradas: 8 grupos × 2 condições do "Teste por Tipo") e `encerrar_acao` (5 entradas: ramos não-transfer do "Teste por Ação"). Repontamento feito pela **categoria da intenção de origem**. **36 intenções no total.** As transferências seguem folhas (não encerram).
 - **Parte 10 — 7ª opção "Transferência para outro bot" no `Menu_Transferencia`:** **não** é um `transferType`. Forma real (samples `sample02`/`sample03`): nó `acao_transfer_outro_bot` com `action.type: "none"` e `next` especial `{redirect:"waitInteraction", action:"bot", type:"context", intent:{id:"<outroBotId>-start", botId:"<outroBotId>"}}` — folha (entrega ao outro bot e este para, como as transferências humanas). Bot-alvo = **ID real** "Andrews - Cadastro de clientes" (`8df3c1e7-a8c9-4bad-ac5a-2855462da840`), outro bot do mesmo retailer (`5rFc8fXg1G`). O viewer já renderiza nativamente como nó sintético **"Outro Bot"** (`ExternalBotNode`, detectado por `parseFlow.ts` via `next.action==='bot'`), com aresta tracejada. `Menu_Transferencia` agora tem 7 itens (limite WhatsApp LIST = 10). **37 intenções no total.**
+- **Parte 11 — ajustes de `context` + `keywords` (concluída):** 3 nós de entrada de categoria ganharam aresta de contexto saindo do `Menu_Testes` (`de947f17…`) e palavra-chave: `teste_contexto_palavra_chave` (context `mensagem_boas_vindas`→`Menu_Testes`, keyword `teste`→`cabeçalho`), `Menu_Tipos_Condicao` (context→`Menu_Testes`, +keyword `tipo`), `Menu_Acoes` (context→`Menu_Testes`, +keyword `ações`). Continua **37 intenções**. ⚠️ **O arquivo real é `public/masterFlow.json`** (servido pelo Vite); `dist/masterFlow.json` é saída de build (regenerada, não editar à mão). Não há cópia na raiz — os build scripts antigos usavam path da raiz que resolvia para `public/`.
+- **Parte 12 — nós faltantes: Pedido, CSAT e mensagem BUTTON (✅ concluída):** fecha a cobertura dos `NodeKind`. **Objetivo:** exemplificar os 2 ActionTypes ainda ausentes (`order`, `captureCsat`) + o único tipo de mensagem não usado (`BUTTON`). **5 nós novos → 42 intenções.** **Resultado (2026-06-23):** criados `acao_pedido_gerar` (order/generateOrder) → `acao_pedido_carrinho` (order/addToCart, `variable:"@custom.produto"`) → `encerrar_acao`; `acao_csat_nota` (captureCsat/supportRate) → `acao_csat_comentario` (captureCsat/supportRateComment) → `encerrar_acao`; e `teste_botoes` (choice + msg `BUTTON`, 2 botões → `encerrar_cabecalho`) inserido entre `teste_flow` e `encerrar_cabecalho`. `Menu_Acoes` 6→8 itens (choices[6]=Pedido, choices[7]=CSAT). **Entradas dos sinks: `encerrar_acao` 5→7** (as 2 cadeias só somam 2 entradas — o handoff dizia 5→9 por erro de conta) e **`encerrar_cabecalho` 1→2** (os 2 botões do `teste_botoes`; `teste_flow` deixou de apontar pra lá). order/csat carregam bloco `error`→start; choice não. Validação por script 100% verde (ids únicos, alvos válidos, action→NodeKind via `nodeMeta.ts`). Pendente: visual no viewer + push real. **Decisões (interrogatório 2026-06-23):**
+  1. **Escopo (completo):** Pedido = 2 nós (`generateOrder` "Gerar pedido" sem campos; `addToCart` "Adicionar item" com `action.variable`); CSAT = 2 nós (`captureDataType: supportRate` nota; `supportRateComment` comentário); BUTTON = 1 nó.
+  2. **Pedido e CSAT** entram como 2 novos itens do `Menu_Acoes` (6→8 itens, limite 10), cada um cadeia de 2 nós → `encerrar_acao` (padrão "submenu só na Transferência"). Ordem: Pedido `acao_pedido_gerar`→`acao_pedido_carrinho`→encerrar; CSAT `acao_csat_nota`→`acao_csat_comentario`→encerrar.
+  3. **BUTTON** (não é ActionType — é `choice` com `messages[].type:"BUTTON"`, máx. 3 botões) vai no **fim da cadeia "Teste Cabeçalho"** (`teste_flow`→`teste_botoes`→`encerrar_cabecalho`), bucket dos tipos de mensagem. 2 botões, ambos → `encerrar_cabecalho`.
+  4. **`addToCart`** usa `action.variable = "@custom.produto"` (variável custom autoexplicativa, não ID de objeto — fiel sem depender de catálogo real, estilo `@custom.origem` da Parte 8).
+  5. **Caminho infeliz:** nós `order`/`csat` carregam bloco `error`→start (estão em `ACTION_KINDS_WITH_ERROR`); `choice` (BUTTON) não. Formas confirmadas no editor (`intentTemplates.ts`: `orderType:generateOrder`, `captureDataType:supportRate`) e no spec (`MODELO-INTENCAO-OMNICHAT.md:102`: `captureCsat`→`supportRate`/`supportRateComment`).
+  - **Risco/teste:** mesma validação das partes anteriores (ids únicos, alvos válidos, action→NodeKind, contagem de entradas dos encerramentos). Pendente: visual no viewer + push real (BUTTON e CSAT nunca foram exercitados contra a API; `order` depende de catálogo no bot, que o de testes não tem).
 
 **Como foi testado:** parse JSON OK + simulação do grafo `parseFlow` (action→NodeKind e validação de que todo `next.intent.id`/`choices[]` existe na lista, ids únicos, menus 100% conectados). IDs de time/usuário da Parte 8 obtidos ao vivo (read-only, retailer `5rFc8fXg1G`, token de sessão). Pendente: validar visualmente no viewer e, se for dar push, confirmar contra a API real (em especial o nó de API com `apiName` placeholder e o `context`).
 
@@ -155,6 +523,31 @@ Alvo: o modelo `BotIntent[]` é a fonte de verdade; o canvas é uma projeção e
 **Como será testado (decisão: unitário, sem Playwright):** round-trip em `editIntent.test`/`intentTemplates.test` — (a) parse `addToCart` com `variable` → draft; (b) parse `generateOrder`; (c) serialização grava `variable` só em `addToCart`; (d) alternância de modo preserva o valor; (e) `orderType` gravado correto. O risco real é o JSON do `action`, 100% coberto por unitário. UI (dropdown mostra/esconde campo) é baixo risco → validação visual manual no viewer como passo final.
 
 **Riscos/pendências:** sem fonte para validar se a `variable` existe de fato (só não-vazio); termo "Adicionar item" vs. termo oficial da plataforma (confirmar na tela do construtor se possível).
+
+## Nó Captura CSAT — dropdown "Tipo de captura CSAT" (✅ entregue v0.27.0, commit pendente)
+
+> Interrogatório + implementação 2026-06-23. Era espelho **mais simples** que o nó Pedido: um único dropdown de enum, sem picker de variável e sem gate. Entregue: `CSAT_CAPTURE_TYPES` (fonte única), `CsatActionSection`, branch de serialização `csatNode`, `CsatNode` derivando o pill, +5 testes de round-trip. `tsc` limpo, 383 testes verdes, build OK.
+
+**Objetivo (1 frase):** dar ao nó Captura CSAT um editor com dropdown "Tipo de captura CSAT" — **Dados avaliação CSAT - Nota** (`captureDataType: supportRate`) e **Dados avaliação CSAT - Comentário** (`captureDataType: supportRateComment`).
+
+**Decisões (com o porquê):**
+1. **O dropdown grava SÓ `action.captureDataType`.** Confronto dos 3 JSONs de exemplo do Andy: a única diferença consistente entre Nota e Comentário é `captureDataType`. O `action.error.next.intentBot` varia de forma independente (apareceu `""` e preenchido para o *mesmo* `supportRateComment`) → é **ruído de captura**, não correlacionado ao tipo. O bloco `error` é gerenciado pela feature "Em caso de erro" (v0.25.0) e fica **preservado verbatim** (preserve-and-patch). Tudo o mais idêntico.
+2. **Rótulos: pill curto, dropdown longo, fonte única.** Nova `CSAT_CAPTURE_TYPES` com `{ value, labelDropdown, labelPill }`. Dropdown: "Dados avaliação CSAT - Nota/Comentário" (texto pedido pelo Andy). Pill do canvas mantém o curto atual ("Nota da avaliação" / "Comentário da avaliação") — espaço apertado no nó pede leitura rápida. `CsatNode.tsx` deriva `CSAT_LABELS` (pill) dessa fonte; o dropdown usa `labelDropdown`. Evita strings soltas sem espremer o texto longo no pill.
+3. **Anti-corrupção:** `captureDataType` desconhecido de import (fora de `supportRate`/`supportRateComment`) preservado como `<option>` extra selecionada — igual a `storeType`/`orderType`/`captureDataType` legado. Round-trip não corrompe fluxos que não criamos.
+4. **Sem gate no "Aplicar"** — diferente de Pedido/Loja, o CSAT sempre tem valor válido (nasce em `supportRate`, [intentTemplates.ts:139](src/utils/intentTemplates.ts#L139)); o dropdown nunca fica vazio. Default de nó novo **inalterado** (`supportRate`).
+
+**Plano de implementação (mirror da `StoreActionSection`, ainda mais enxuto):**
+- `editIntent.ts updateActionFields` já trata `captureDataType` ([:737](src/utils/editIntent.ts#L737)) — reusável. **Atenção:** lá faz `fields.captureDataType || null`; para CSAT o valor é sempre não-vazio, então OK.
+- Draft: novo campo `csatCaptureType: string` (ou reusar `captureDataType` do draft com cuidado — preferir campo próprio para não colidir com a lógica de sentinela/multipleFields da Captura).
+- Parse (buildDraft, ~[:462](src/components/DetailPanel.tsx#L462)): derivar `csatCond` (mirror `storeCond` ~[:413](src/components/DetailPanel.tsx#L413)); `csatCaptureType: csatCond?.action.captureDataType || 'supportRate'`.
+- Serialização: **branch próprio** `if (kind === 'csatNode')` → `updateActionFields(intent,'csat',{captureDataType: draft.csatCaptureType},ci)`. NÃO usar o branch da Captura (que escreve `captureDataTypesCategory`/`multipleFields`/sentinela — irrelevante p/ CSAT). NÃO tocar no `error`.
+- Novo `CsatActionSection` (mirror `StoreActionSection`): dropdown `CSAT_CAPTURE_TYPES` (usando `labelDropdown`) + `<option>` legado p/ valor desconhecido. Sem `VariablePicker`, sem aviso âmbar.
+- Render do `CsatActionSection` quando `kind === 'csatNode'`.
+- `CsatNode.tsx`: derivar `CSAT_LABELS` (pill) de `CSAT_CAPTURE_TYPES.labelPill`.
+
+**Como será testado (decisão: unitário round-trip + visual):** casos em `editIntent.test`/`intentTemplates.test` — (a) parse `supportRate` → draft; (b) parse `supportRateComment`; (c) serialização grava o `captureDataType` certo **e preserva o bloco `error` intacto**; (d) `captureDataType` desconhecido sobrevive ao round-trip. Validação visual manual no viewer no fim. Sem Playwright (projeto não usa; UI é baixo risco).
+
+**Riscos/pendências:** confirmar na tela oficial do construtor OmniChat se "Dados avaliação CSAT - Nota/Comentário" é o termo exato exibido (texto fornecido pelo Andy; ajustar se a plataforma usar outro).
 
 ## Melhorias paralelas (independentes das fases)
 

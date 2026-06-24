@@ -44,15 +44,20 @@ function displayName(u: { name?: string; lastName?: string; objectId: string }):
 
 /**
  * Lista os vendedores supervisionados pela conta do token. Carrega uma página
- * (`USERS_PAGE_LIMIT`) com `search:'.*'` (todos) e devolve `{ objectId, name }`
- * ordenado por nome para o picker; ignora entradas sem `objectId`. Lança (sem
- * expor o token) se a leitura falhar.
+ * (`USERS_PAGE_LIMIT`) e devolve `{ objectId, name }` ordenado por nome; ignora
+ * entradas sem `objectId`. Lança (sem expor o token) se a leitura falhar.
+ *
+ * `search` opcional manda a cloud function filtrar NO SERVIDOR (decisão 6 da
+ * Fase 4): o resolver `find_user` passa o nome buscado, evitando o truncamento
+ * em loja grande do filtro-em-memória do picker (que usa o default `.*` = todos
+ * e corta em `USERS_PAGE_LIMIT`). A função aceita regex (campo `search` do Parse).
  */
-export async function fetchSupervisedUsers(deps: Deps): Promise<StoreUser[]> {
+export async function fetchSupervisedUsers(deps: Deps & { search?: string }): Promise<StoreUser[]> {
+  const search = deps.search ?? '.*'
   const res = await deps.fetch(`${PARSE}/functions/getSupervisedUsersV2`, {
     method: 'POST',
     headers: sessionHeaders(deps.token),
-    body: JSON.stringify({ offset: 0, limit: USERS_PAGE_LIMIT, search: '.*' }),
+    body: JSON.stringify({ offset: 0, limit: USERS_PAGE_LIMIT, search }),
   })
   if (!res.ok) {
     throw new Error(`não foi possível listar os vendedores da loja (status ${res.status})`)
