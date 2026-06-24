@@ -1,60 +1,54 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-24 (noite)
+## 🔄 Handoff — 2026-06-24 (madrugada)
 
-**Foco da próxima sessão:** **`/code-review` do diff da Fase 4b → commitar**. Se ok, decidir o
-próximo macro-passo: (A) **merge da `feat/mcp-tools-spike` para `main`** (Fases 1/3/4/4b prontas —
-fecha a spike) ou (B) **Fase 2 (`NODE_CATALOG`)**, o refactor adiado (toca o DetailPanel, 383
-testes; `/interrogar` antes, suíte verde como gate).
+**Foco da próxima sessão:** **decidir o macro-passo e executá-lo** — (A) **merge da
+`feat/mcp-tools-spike` para `main`** (Fases 1/3/4/4b prontas, commitadas e verdes — fecha a spike)
+ou (B) **Fase 2 (`NODE_CATALOG`)**, o refactor adiado (toca o DetailPanel, 383 testes; `/interrogar`
+antes, suíte verde como gate). O Andy ainda **não escolheu** entre A e B — perguntar ao retomar.
 
-**Onde paramos:** branch **`feat/mcp-tools-spike`**. **Fase 4b IMPLEMENTADA mas NÃO commitada**
-(working tree sujo). Fechou os 2 gaps que a prova "agente↔fluxo com IA real" (início desta sessão)
-expôs: `choiceNode` nascia sem botões e redirect cross-bot não tinha tool de escrita. Duas tools
-novas **expondo lógica já testada dos utils** (sem algoritmo novo): `setMenu` (envolve
-`addButtonListMessage` + sincroniza N slots de `choices`) e `connectToBot` (envolve `setNextRef` +
-4 guardas) em [flowTools.ts](src/tools/flowTools.ts); fiadas como `set_menu`/`connect_to_bot` em
-[mcp/server.ts](mcp/server.ts). **+12 testes** (total **433**, verde), `tsc` + `mcp:typecheck`
-limpos. CHANGELOG + PLANS §"Fase 4b" atualizados.
+**Onde paramos:** branch **`feat/mcp-tools-spike`**, **working tree LIMPO**. **Fase 4b commitada**
+(`e26eaa8`) com os 2 fixes do `/code-review` já dentro. As tools `set_menu`/`connect_to_bot`
+([flowTools.ts](src/tools/flowTools.ts), fiadas em [mcp/server.ts](mcp/server.ts)) fecham o ciclo
+de construção agente↔fluxo. **435 testes verdes**, `tsc` + `mcp:typecheck` limpos.
 
-**Fios soltos / meio-feito:** só o **commit** (aguardando `/code-review`). Arquivos sujos:
-`flowTools.ts`, `mcp/server.ts`, `flowTools.test.ts`, `CHANGELOG.md`, `PLANS.md`. Nada de código
-incompleto. Mensagem de commit sugerida: `feat(tools): Fase 4b — set_menu + connect_to_bot`.
+**Fios soltos / meio-feito:** nada em aberto na Fase 4b — está fechada e commitada. O único
+trabalho pendente é a **escolha A vs B** e sua execução.
 
 **Armadilhas desta sessão (gotchas — não redescobrir):**
 1. **MCP em execução roda o código ANTIGO.** O servidor MCP sobe no boot do Claude Code via
-   `.mcp.json`; `set_menu`/`connect_to_bot` **não aparecem como tools MCP até reiniciar o Claude
-   Code**. Por isso o smoke da 4b foi via `tsx` efêmero (funções reais), não via MCP ao vivo.
-2. **`set_menu` cria só os ITENS**, não os destinos — cria N slots de `choices` vazios
-   sincronizados (`buttons[i]↔choices[i]`); destinos seguem por `set_choices`/`connect`. Infere
-   BUTTON vs LIST (item com descrição OU 4+ itens → LIST).
-3. **`connect_to_bot` recebe IDs JÁ resolvidos** (find_bot/list_intents) — não auto-resolve;
-   `intentId` omitido → `${botId}-start`. 4 guardas: recusa nó-choice, recusa botId do próprio
-   bot, **sobrescreve** next existente, sem validação remota.
-4. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** (`public/masterFlow.json`). A prova via
-   MCP no início desta sessão deixou um diff **só de EOL** (conteúdo idêntico) — restaurei com
-   `git checkout -- public/masterFlow.json`. Se rodar a prova via MCP de novo, reaparece: checar
-   `git diff` (vazio = só EOL) e restaurar.
-5. (mantida) **smoke efêmero:** não deixar `_smoke-*.ts` no repo (apaguei o `_smoke-phase4b.ts`).
-   Boilerplate de token/fetch para reusar: [scripts/smoke-phase4-resolvers.ts](scripts/smoke-phase4-resolvers.ts).
-6. (mantidas) **Bash ≠ here-string PowerShell** (`git commit -F - <<'EOF'`); **`mcp/tsconfig.json`
-   inclui só `mcp/`** — não alargar o glob (puxa DOM e quebra).
+   `.mcp.json`; mudanças nas tools (ex.: `set_menu`/`connect_to_bot`) **só aparecem após reiniciar
+   o Claude Code**. Smoke de tools recém-mexidas: via `tsx` efêmero (funções reais), não via MCP ao vivo.
+2. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** (`public/masterFlow.json`). Rodar a prova
+   via MCP deixa um diff **só de EOL** (conteúdo idêntico) — restaurar com `git checkout -- public/masterFlow.json`.
+3. **smoke efêmero:** não deixar `_smoke-*.ts` no repo. Boilerplate de token/fetch para reusar:
+   [scripts/smoke-phase4-resolvers.ts](scripts/smoke-phase4-resolvers.ts).
+4. **Bash ≠ here-string PowerShell** (`git commit -F - <<'EOF'`); **`mcp/tsconfig.json` inclui só
+   `mcp/`** — não alargar o glob (puxa DOM e quebra).
+5. **Code-review da 4b fechou 2 edges** (já no `e26eaa8`, não reabrir): `connect_to_bot` recusa
+   `botId` vazio (furava a guarda do próprio bot → next interno órfão); `set_menu` recusa nó com
+   `choices` já preenchidos (evita wipe silencioso). Guarda de `set_menu` agora cobre mensagem
+   de botões **E** choices; mensagem de erro mudou para "já tem menu/destinos".
 
-**Próximo passo imediato:** rodar `/code-review` sobre o working tree; aplicar achados; commitar
-a Fase 4b. Depois perguntar ao Andy: merge da spike ou Fase 2.
+**Próximo passo imediato:** perguntar ao Andy **A ou B**. Se **A**: abrir PR da
+`feat/mcp-tools-spike` → `main` (revisar o range completo Fases 1/3/4/4b; conferir que `main` não
+divergiu). Se **B**: `/interrogar` a Fase 2 antes de tocar o DetailPanel, suíte verde como gate.
 
 **Threads parados (ortogonais, não perder):** editor do nó **Pedido** (planejado no corpo §"Nó
 Pedido", **não** implementado); **PRs/merge** das v0.25–v0.27 ainda na branch
-`feat/order-node-editor`, não mergeadas em `main`; e o merge da **`feat/mcp-tools-spike`**
-(Fases 1/3/4/4b prontas) para `main` quando fechar a spike.
+`feat/order-node-editor`, não mergeadas em `main`.
 
-**Ponteiros:** PLANS §"Fase 4b" (decisões A1-3/B1/4-guardas); `setMenu`/`connectToBot` em
+**Ponteiros:** PLANS §"Fase 4b" (decisões); commit `e26eaa8`; `setMenu`/`connectToBot` em
 [flowTools.ts](src/tools/flowTools.ts); utils reusados `addButtonListMessage`
 ([editIntent.ts:456](src/utils/editIntent.ts#L456)) e `setNextRef`
 ([editFlow.ts:140](src/utils/editFlow.ts#L140)).
 
-**Skills sugeridas ao retomar:** `/code-review` antes de commitar (PRIMEIRO passo); `/interrogar`
-antes da Fase 2 (refactor arriscado).
+**Skills sugeridas ao retomar:** `/interrogar` antes da Fase 2 (refactor arriscado); `/code-review`
+antes de qualquer commit novo; `/verify` se for validar o MCP ao vivo (lembrar do reinício, gotcha 1).
+
+**Arquivamento:** PLANS ~615 linhas (≈ limiar 600), mas as Fases 1/3/4/4b **ainda não mergeadas**
+(spike aberta) → seguem vivas, **não arquivar**. Revisar arquivamento quando a spike entrar na `main`.
 
 <!-- HANDOFF:END -->
 
