@@ -1,47 +1,60 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-23
+## 🔄 Handoff — 2026-06-24
 
-**Foco da próxima sessão:** iniciar a **Fase 1 (spike)** da feature **"Agente de IA que
-constrói nós (Claude Code CLI + servidor MCP local)"** — camada de tools fina (TS puro) sobre
-o arquivo de fluxo, **sem IA ainda**: provar `create_node`+`set_action_field`+`connect`+
-`validate` contra fluxos reais.
+**Foco da próxima sessão:** **exercitar o servidor MCP da Fase 3 com o Claude de verdade**
+(operando as tools `mcp__omnichat-flow-editor__*`) — está **bloqueado por reload**: o
+`.mcp.json` foi criado nesta sessão e o Claude Code só lê/aprova servidores MCP no **startup**.
+Depois disso, **commitar a Fase 3** (`/code-review` antes).
 
-**Onde paramos:** branch `feat/order-node-editor`. Sessão foi **só design/interrogatório
-(zero código)**. Promovi o antigo handoff "Plano A" a uma **seção de feature no corpo** do
-PLANS (§ "Agente de IA que constrói nós…", logo após "Arquitetura alvo"), com as **5 fases
-detalhadas e interrogadas** (Q1–Q10, todas com rastro `(Q#)` no texto). Encolhi este handoff
-para ponteiro. Nada commitado além do edit do PLANS.md.
+**Onde paramos:** branch **`feat/mcp-tools-spike`**. **Fase 3 implementada e verificada, mas
+NÃO commitada** (working tree sujo). Entregue: [mcp/server.ts](mcp/server.ts) (9 tools via
+`@modelcontextprotocol/sdk` por stdio), [mcp/nodeCatalog.ts](mcp/nodeCatalog.ts) (manifesto
+enxuto nas `instructions` + `describe_node_type`), [mcp/tsconfig.json](mcp/tsconfig.json),
+[mcp/README.md](mcp/README.md), [.mcp.json](.mcp.json) na raiz, `package.json` (deps
+`@modelcontextprotocol/sdk`/`zod`/`tsx` + scripts `mcp`/`mcp:typecheck`), CHANGELOG e a marca
+✅ na § "Fase 3" do corpo. **Typecheck do mcp limpo, suíte cheia verde (398 testes)**,
+verificado ponta a ponta por um **cliente MCP stdio programático** (handshake + `tools/list` +
+ciclo `create→set_action_field→connect→validate→revert`, revert restaura 1:1 sobre cópia
+temporária). **Falta o teste com IA real.**
 
-**Decisões-chave do interrogatório (estão na seção, não reabrir):** ordem **spike-primeiro**
-(1 spike → 2 catálogo → 3 MCP → 4 resolvers → 5 produto); `validate` é tool separada (sem
-gate por escrita); undo = snapshot por sessão + `revert` na camada de storage (**não** depende
-de git); retorno compacto (sem JSON cru); leitura via `list_nodes`+`describe_node`; MCP no
-mesmo repo via `tsx`; resolvers com falha explícita + pré-load eager no startup.
+**Fios soltos / meio-feito:**
+- **Decisão aberta (a 1ª pergunta ao retomar):** qual `FLOW_FILE` usar no teste com IA real.
+  Eu ia perguntar (cópia sandbox `public/masterFlow.sandbox.json` / fixture versionado /
+  fluxo novo do zero) e o usuário interrompeu com `/handoff`. **Recomendo a cópia sandbox** —
+  o `.mcp.json` hoje aponta `FLOW_FILE=public/masterFlow.json` (o fixture **versionado** de 42
+  nós); operar nele de verdade muta/grava o arquivo (com `.bak`, e dá `revert`, mas arrisca
+  commitar lixo).
+- Limitações herdadas da spike (no README): `condIdx` default 0 (nós-grupo parciais);
+  `setDataNode`/conteúdo de mensagem ainda sem tool; resolução nome→ID só na Fase 4.
 
 **Armadilhas desta sessão (não redescobrir):**
-1. **A UI NÃO lê o arquivo de fluxo ao vivo** — `public/masterFlow.json` só é buscado sob
-   demanda no botão "Carregar exemplo" ([ImportDialog.tsx:27](src/components/ImportDialog.tsx#L27));
-   depois tudo é estado React em memória. O agente e a UI são ilhas que só se cruzam pelo
-   arquivo. (Corrigiu uma premissa errada minha sobre "raio de explosão".)
-2. **A rede de segurança não pode depender de git** — o produto (Fase 5) não tem repo; por
-   isso o undo vive na camada de tools (snapshot agnóstico de ambiente), não em `git checkout`.
-3. As funções a envolver são **TS puro/Node-safe** (intentTemplates/editIntent/editFlow só
-   importam tipos) — o MCP importa `src/utils` direto, sem build de browser.
+1. **Servidor MCP recém-adicionado NÃO entra na sessão corrente** — `.mcp.json` é lido no
+   startup do Claude Code; criar no meio da sessão não injeta as tools (confirmado: ToolSearch
+   não as acha). Reiniciar / `/mcp` + aprovar o servidor `omnichat-flow-editor`.
+2. **Script ESM no scratchpad não resolve o `node_modules` do repo** — a resolução de bare
+   imports parte da pasta do script, não do cwd. Rodar scripts de verificação de dentro do
+   repo (criei e removi `verify-mcp.mjs` na raiz).
+3. **`mcp/tsconfig.json` deve incluir só `mcp/`** (`["**/*.ts"]`) — o `tsc` segue os imports
+   sozinho. Glob amplo sobre `src/utils` puxava arquivos de DOM (`exportImage`/`uploadMedia`)
+   e quebrava o typecheck.
+4. **Stdio: log só em stderr** (`console.error`) — stdout é o canal do protocolo MCP.
+5. (mantida) **Bash tool ≠ here-string PowerShell** — `git commit -m @'…'@` injeta `@` solto;
+   usar `git commit -F - <<'EOF' … EOF`.
 
-**Próximo passo imediato:** começar a Fase 1 pela tool mais simples — `create_node(kind)`
-envolvendo `createIntentTemplate` ([intentTemplates.ts](src/utils/intentTemplates.ts)) + o
-load/save/snapshot da camada de storage, com teste round-trip em vitest usando
-`public/masterFlow.json` como fixture (amostra mínima: 1 nó simples).
+**Próximo passo imediato:** reiniciar o Claude Code no projeto → aprovar `omnichat-flow-editor`
+→ confirmar com `/mcp` (9 tools) → decidir o `FLOW_FILE` (recomendo criar a cópia sandbox e
+ajustar o `.mcp.json`) → pedir em linguagem natural a criação de um nó e observar o agente
+operar as tools. Depois `/code-review` + commit da Fase 3.
 
-**Threads parados (não perder, ortogonais):** editor do nó **Pedido** (planejado no corpo,
-não implementado); **PRs/merge** das v0.25–v0.27 pendentes; **commit** do CSAT v0.27.0
-pendente; masterFlow parado/completo na Parte 12.
+**Threads parados (não perder, ortogonais):** editor do nó **Pedido** (planejado no corpo §"Nó
+Pedido", **não** implementado); **PRs/merge** das v0.25–v0.27 ainda na branch
+`feat/order-node-editor`, não mergeadas em `main`.
 
-**Skills sugeridas ao retomar:** `/interrogar` só se surgir decisão nova de design não
-coberta (Q1–Q10 já fecharam o desenho); `/code-review` antes de commitar a Fase 1; `/verify`
-ou os `smoke-*.mjs` para validar.
+**Skills sugeridas ao retomar:** `/verify` para exercitar o MCP ponta a ponta com IA real;
+`/code-review` antes de commitar a Fase 3; `/interrogar` se a Fase 4 (resolvers) abrir decisão
+nova.
 
 <!-- HANDOFF:END -->
 
@@ -212,7 +225,24 @@ pagar esse custo depois que o spike provar que o caminho agente/MCP entrega valo
 o manifesto/catálogo é escrito **à mão, mínimo**; esta fase vira a fonte derivada. Gate:
 suíte verde antes e depois.
 
-### Fase 3 — Empacotar como servidor MCP (stdio)
+### Fase 3 — Empacotar como servidor MCP (stdio) ✅ concluída
+
+> **Resultado (2026-06-23, branch `feat/mcp-tools-spike`):** servidor em
+> [mcp/server.ts](mcp/server.ts) expõe as **9 tools** da Fase 1 via
+> `@modelcontextprotocol/sdk` por stdio; manifesto enxuto em
+> [mcp/nodeCatalog.ts](mcp/nodeCatalog.ts) (1 linha/kind nas `instructions` +
+> `describe_node_type(kind)` sob demanda). Config do Claude Code em
+> [.mcp.json](.mcp.json) (`npx tsx mcp/server.ts`, `FLOW_FILE=public/masterFlow.json`).
+> Arquivo de fluxo resolvido por `FLOW_FILE` (env) → 1º arg → default; **1 `FlowStore`
+> por processo** (snapshot/revert pela sessão). Typecheck isolado via
+> [mcp/tsconfig.json](mcp/tsconfig.json) (`npm run mcp:typecheck`) limpo; suíte cheia
+> verde (398 testes); verificado ponta a ponta por cliente MCP stdio (handshake +
+> `tools/list` + ciclo `create→set→connect→validate→revert`, revert restaura 1:1).
+> Doc em [mcp/README.md](mcp/README.md). **Limitações herdadas da spike** (documentadas
+> no README): `condIdx` default 0 (nós-grupo parciais); `setDataNode`/conteúdo de
+> mensagem ainda sem tool; resolução nome→ID fica para a Fase 4. **Pendente:** ainda
+> sem IA de fato exercitando o MCP — o próximo passo natural é abrir o Claude Code no
+> repo e construir um nó por conversa (ou seguir para a Fase 4/2).
 
 **Objetivo:** expor a camada de tools como servidor MCP que o Claude Code lança por stdio +
 config do Claude Code + **manifesto enxuto** (14 kinds, 1 linha cada, campos que cada um

@@ -22,11 +22,18 @@ import { validateFlow } from '../utils/validateFlow'
  * (Fase 5): só muda o cliente que chama estas funções.
  */
 
-/** Campos de `action` que a tool `set_action_field` sabe gravar (subconjunto de updateActionFields). */
-export type ActionFieldName =
-  | 'captureDataType' | 'captureDataTypesCategory' | 'multipleFields'
-  | 'transferType' | 'value' | 'variable' | 'storeType' | 'orderType'
-  | 'apiName' | 'externalType'
+/**
+ * Campos de `action` que a tool `set_action_field` sabe gravar (subconjunto de
+ * updateActionFields). FONTE ÚNICA: o array `as const` é a verdade; o type deriva
+ * dele e o servidor MCP importa o MESMO array para o `z.enum` — assim o schema
+ * de runtime e o type de compilação não podem divergir (drift vira erro de tipo).
+ */
+export const ACTION_FIELDS = [
+  'captureDataType', 'captureDataTypesCategory', 'multipleFields',
+  'transferType', 'value', 'variable', 'storeType', 'orderType',
+  'apiName', 'externalType',
+] as const
+export type ActionFieldName = (typeof ACTION_FIELDS)[number]
 
 /**
  * Resolve uma referência de nó (id OU nome exato) para a intenção do modelo.
