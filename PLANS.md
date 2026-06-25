@@ -1,54 +1,46 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-25 (rumo A escolhido; design da tool `set_message` FECHADO por interrogatório — implementação pendente)
+## 🔄 Handoff — 2026-06-25 (`set_message` VERIFICADA ponta-a-ponta; release v0.29.0 + PR `docs/chat-poc-plan` → main)
 
-**Foco da próxima sessão:** **implementar a tool MCP `set_message`** (rumo A), seguindo o plano já
-consolidado em PLANS § "Tool de texto da mensagem (`set_message`)". O design está TRAVADO — é só
-codar os 3 passos abaixo, sem reabrir decisões.
+**Foco da próxima sessão:** acompanhar o **merge do PR `docs/chat-poc-plan` → main** (release
+**v0.29.0**). Após o merge, rodar `/handoff` para **arquivar** as features concluídas (set_message +
+Caixinha de chat passos 1–4) de PLANS.md → [docs/PLANS-ARCHIVE.md](docs/PLANS-ARCHIVE.md): o PLANS já
+passa de 480 linhas, perto do limiar de ~600.
 
-**Onde paramos:** branch **`docs/chat-poc-plan`**. Esta sessão **NÃO escreveu código**: rodou
-`/handon` (confirmou que o PoC da caixinha, passos 1–4, está completo e verificado), o Andy escolheu
-o **rumo A**, e rodou `/interrogar` no desenho da tool de texto. As 6 decisões + alternativa rejeitada
-foram gravadas no `PLANS.md` (seção nova "Tool de texto da mensagem (`set_message`)", logo após a
-seção "Caixinha de chat"). **Essa edição do `PLANS.md` ainda NÃO está commitada** (única mudança na
-árvore). Resumo das decisões: nova tool `set_message(node, text, condIdx?=0)` idempotente (0 TEXT→cria,
-1→sobrescreve, N>1→erro), **só TEXT**, sem `msgIdx`, aceita qualquer nó exceto `choiceNode`, texto
-vazio→recusa. NÃO estender `set_action_field` (texto vive em `assistant_says`, não em `action.*`).
+**Onde paramos:** branch **`docs/chat-poc-plan`** (11 commits à frente da main; **sem upstream até
+esta sessão**). Rodei o **`/verify` ponta-a-ponta da `set_message` pela caixinha** — o aceite que
+faltava → **PASS**: dirigindo o **socket WS real** (`backend/server.ts` em porta isolada, MCP spawnado
+**fresco** por turno), "crie um nó de mensagem com texto X" gravou `content==X` no `work.flow.json`
+(42→43 intents); probe de idempotência confirmou **sobrescrita sem duplicar** (1 balão TEXT). Depois:
+bump **0.28.0 → 0.29.0** (MINOR — `set_message` + PoC da caixinha + sidebar acumulados no
+`[Não lançado]`), commit do release e abertura do PR.
 
 **Fios soltos / meio-feito:**
-- **`PLANS.md` editado e não commitado** — a seção do plano da `set_message`. Commitar junto com a
-  implementação (ou antes, como `docs:`).
-- **Nenhum código da `set_message` escrito ainda** — os 3 passos (flowTools → mcp/server → testes)
-  estão todos pendentes.
+- **PR aberto, aguardando merge.** Nenhum código pendente na feature — só o ciclo de review/merge.
+- **Achado do verify — NÃO vamos mexer (decisão do Andy, 2026-06-25):** no `create_node` o agente
+  chuta `messageNode` antes de acertar `defaultNode`, e o erro do `create_node`
+  ([flowTools.ts:95](src/tools/flowTools.ts#L95)) **não enumera** os kinds válidos. É atrito de
+  discovery, não bug. Rename `defaultNode`→`messageNode` seria interno e API-safe (o kind nunca vai ao
+  JSON), mas ~152 ocorrências/30 arquivos + papel-duplo de fallback — **descartado**.
 
-**Armadilhas desta sessão (confirmadas por leitura do código):**
-1. `addTextMessage` ([editIntent.ts:159](src/utils/editIntent.ts#L159)) e `updateMessageText`
-   ([editIntent.ts:140](src/utils/editIntent.ts#L140)) **já existem e são testadas** — a `set_message`
-   só as embrulha; não reimplementar lógica de mensagem.
-2. O `defaultNode` nasce com `assistant_says:[{channel:'any', messages:[]}]` (says existe, **0
-   mensagens**) — então nó recém-criado cai no caminho de **criação** (`addTextMessage`, push em
-   `says[0].messages`). O caminho de edição (1 TEXT→`updateMessageText`) precisa montar a `MessageRef`
-   varrendo `listMessages(intent)` filtrando `condIdx` + `type==='TEXT'`.
-3. **Molde a copiar:** `setActionField` em [flowTools.ts:113](src/tools/flowTools.ts#L113) (resolve nó,
-   `beginMutation`/`save`, confirmação compacta, gate de tipo) e seu registro em
-   [mcp/server.ts:144](mcp/server.ts#L144) (zod + `reply`). A linha "Trabalho típico" das
-   `instructions` ([mcp/server.ts:88](mcp/server.ts#L88)) precisa citar `set_message` senão o agente
-   não a descobre.
-4. `choiceNode` é detectado por `cond.action.type === 'choice'` — recusar ali (apontar `set_menu`).
+**Armadilhas confirmadas:**
+1. **Gotcha #2 NÃO atinge a caixinha:** o backend sobe o MCP **fresco a cada turno**
+   (`settingSources:[]`, `npx -y tsx mcp/server.ts` — [server.ts:108-117](backend/server.ts#L108-L117))
+   ⇒ lê o código de disco **atual**. Reiniciar o Claude Code só importa para as tools MCP **desta
+   sessão** (presas no código do boot). Por isso o verify rodou sem restart.
+2. O cliente WS de verificação precisa resolver o pacote `ws` → rodar de dentro de `d:/Fluxo` (não do
+   scratchpad). Idempotência é sobre **balões TEXT**: 0→cria, 1→sobrescreve, N>1→erro.
 
-**Próximo passo imediato:** implementar `setMessage(store, ref, text, condIdx=0)` em
-[flowTools.ts](src/tools/flowTools.ts) (passo 1), exportando-a junto das demais.
+**Próximo passo imediato:** revisar/mergear o PR. Depois do merge: `/handoff` arquiva PLANS e segue
+para a Fase 5 (produto) ou o próximo gap de tool.
 
-**Ponteiros:** plano completo em PLANS § "Tool de texto da mensagem (`set_message`)" (decisões 1–6 +
-como testar); funções-base `addTextMessage`/`updateMessageText`/`listMessages` em
-[editIntent.ts](src/utils/editIntent.ts); molde de tool+registro em [flowTools.ts](src/tools/flowTools.ts)
-e [mcp/server.ts](mcp/server.ts); testes em [flowTools.test.ts](src/tools/flowTools.test.ts). PoC da
-caixinha (já pronto) em PLANS § "Caixinha de chat".
+**Ponteiros:** PR `docs/chat-poc-plan`→`main` (release v0.29.0); CHANGELOG `[0.29.0]`; commits da
+feature `18bf0e7`→`d92d962`; PLANS §"Tool de texto da mensagem (`set_message`)" e §"Caixinha de chat na
+página" (subir local: `npm run dev` + `npm run ws:dev`).
 
-**Skills sugeridas ao retomar:** `/verify` após a mudança no MCP (aceite ponta-a-ponta pela caixinha:
-"crie um nó com texto X" → `content==X`); `/code-review` antes de commitar. (`/interrogar` já feito —
-não repetir.)
+**Skills sugeridas ao retomar:** `/handoff` (arquivar PLANS após o merge). `/verify`, `/code-review`,
+`/interrogar` e os passos de implementação já cumpridos nesta feature — não repetir.
 
 <!-- HANDOFF:END -->
 
