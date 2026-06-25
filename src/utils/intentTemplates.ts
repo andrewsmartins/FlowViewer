@@ -1,4 +1,5 @@
-import type { Action, BotIntent, Condition, ErrorAction, NodeKind } from '../types'
+import type { Action, BotIntent, Condition, ErrorAction } from '../types'
+import { actionTypeOf, ACTION_KINDS_WITH_ERROR, type CreatableKind } from './nodeCatalog'
 
 /**
  * Templates canônicos de BotIntent para criação de nós na paleta.
@@ -6,52 +7,16 @@ import type { Action, BotIntent, Condition, ErrorAction, NodeKind } from '../typ
  * A forma segue exatamente o payload que a tela oficial da OmniChat envia no
  * POST /v1/{botId}/intents/{id} (capturado em 2026-06-11): todos os campos
  * presentes, com null/[]/'' como defaults explícitos. Ver PLANS.md.
+ *
+ * NOTA (Fase 2): os fatos por tipo de nó (kinds criáveis, rótulos, action.type,
+ * caminho de erro) agora vivem em `nodeCatalog.ts` — re-exportados abaixo para
+ * preservar os imports existentes. Este arquivo guarda só a LÓGICA de como um nó
+ * nasce (`buildKindAction` e os create*Template).
  */
-
-/**
- * Tipos de nó que podem ser criados pela paleta — um para cada um dos 11
- * ActionTypes da plataforma (Modelo B). `externalBotNode` (redirect p/ outro bot)
- * e `startNode` (início do fluxo) NÃO são criáveis. Os 5 últimos foram somados
- * na Fase 6: endConversation, external (API), order, captureCsat e store.
- */
-export const CREATABLE_KINDS = [
-  'defaultNode', 'choiceNode', 'captureNode', 'transferNode', 'waitNode', 'setDataNode',
-  'endNode', 'apiCallNode', 'orderNode', 'csatNode', 'storeNode',
-] as const
-
-export type CreatableKind = (typeof CREATABLE_KINDS)[number]
-
-/**
- * Rótulos amigáveis dos tipos criáveis. Fonte única — consumido pela paleta
- * (NodePalette) e pelo seletor de tipo ao adicionar condição (DetailPanel).
- */
-export const CREATABLE_KIND_LABELS: Record<CreatableKind, string> = {
-  defaultNode:  'Mensagem',
-  choiceNode:   'Escolha',
-  captureNode:  'Captura',
-  transferNode: 'Transferência',
-  waitNode:     'Aguardar interação',
-  setDataNode:  'Editar informação',
-  endNode:      'Encerrar conversa',
-  apiCallNode:  'Chamada de API',
-  orderNode:    'Pedido',
-  csatNode:     'Captura CSAT',
-  storeNode:    'Loja física',
-}
-
-const ACTION_TYPE_BY_KIND: Record<CreatableKind, string> = {
-  defaultNode:  'none',
-  choiceNode:   'choice',
-  captureNode:  'captureData',
-  transferNode: 'transfer',
-  waitNode:     'waitForInteraction',
-  setDataNode:  'setData',
-  endNode:      'endConversation',
-  apiCallNode:  'external',          // chamada de API (≠ externalBotNode, que é outro bot)
-  orderNode:    'order',
-  csatNode:     'captureCsat',
-  storeNode:    'store',
-}
+export {
+  CREATABLE_KINDS, CREATABLE_KIND_LABELS, ACTION_KINDS_WITH_ERROR, isCreatableKind,
+  type CreatableKind,
+} from './nodeCatalog'
 
 function canonicalAction(type: string): Action {
   return {
@@ -92,16 +57,6 @@ function canonicalError(botId: string): ErrorAction {
   }
 }
 
-/**
- * Os 7 tipos de NÓ DE AÇÃO que materializam `action.error` no template (a
- * plataforma aceita `action.error` em todos eles). Os 4 tipos estruturais
- * (none/choice/wait/end) não têm caminho de erro. Fonte única — o painel
- * (`DetailPanel`) reusa este Set para gated da seção "Em caso de erro".
- */
-export const ACTION_KINDS_WITH_ERROR: ReadonlySet<NodeKind> = new Set<NodeKind>([
-  'captureNode', 'setDataNode', 'storeNode', 'apiCallNode', 'transferNode', 'orderNode', 'csatNode',
-])
-
 /** Condição canônica mínima (action `none` por padrão) — também usada ao adicionar condições no painel. */
 export function createConditionTemplate(actionType = 'none'): Condition {
   return canonicalCondition(canonicalAction(actionType))
@@ -115,7 +70,7 @@ export function createConditionTemplate(actionType = 'none'): Condition {
  * para os dois caminhos nascerem idênticos.
  */
 function buildKindAction(kind: CreatableKind, botId: string): Action {
-  const action = canonicalAction(ACTION_TYPE_BY_KIND[kind])
+  const action = canonicalAction(actionTypeOf(kind))
   if (kind === 'choiceNode') action.choices = []
   // Editar informação nasce com uma linha vazia: o gate de save (DetailPanel)
   // obriga a preencher variável e valor antes de aplicar.
@@ -189,11 +144,6 @@ export function createIntentTemplate(kind: CreatableKind, botId: string, name: s
     updatedAt: now,
     advanced: { active: false, endpointId: null },
   }
-}
-
-/** Verifica se um tipo de nó vindo da paleta é criável. */
-export function isCreatableKind(kind: string): kind is CreatableKind {
-  return (CREATABLE_KINDS as readonly string[]).includes(kind)
 }
 
 /**
