@@ -1,17 +1,22 @@
 interface ThemeToggleProps {
   isDark: boolean
   onToggle: () => void
+  expanded?: boolean
 }
 
-export function ThemeToggle({ isDark, onToggle }: ThemeToggleProps) {
+export function ThemeToggle({ isDark, onToggle, expanded }: ThemeToggleProps) {
+  const label = isDark ? 'Modo claro' : 'Modo escuro'
   return (
     <button
       onClick={onToggle}
-      className={`p-1.5 rounded-lg transition-colors ${isDark ? 'text-slate-500 hover:text-slate-300 hover:bg-slate-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
+      className={`flex items-center h-10 rounded-xl transition-colors ${
+        expanded ? 'w-full justify-start px-3 gap-3' : 'w-10 justify-center'
+      } ${isDark ? 'text-zinc-400 hover:text-white hover:bg-white/10' : 'text-zinc-400 hover:text-white hover:bg-white/10'}`}
       aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
-      title={isDark ? 'Modo claro' : 'Modo escuro'}
+      title={expanded ? undefined : label}
     >
-      {isDark ? <SunIcon /> : <MoonIcon />}
+      <span className="shrink-0">{isDark ? <SunIcon /> : <MoonIcon />}</span>
+      {expanded && <span className="text-xs font-medium truncate">{label}</span>}
     </button>
   )
 }
