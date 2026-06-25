@@ -1,65 +1,54 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-25 (passo 4 CONCLUÍDO e VERIFICADO ponta-a-ponta — PoC da caixinha completo)
+## 🔄 Handoff — 2026-06-25 (rumo A escolhido; design da tool `set_message` FECHADO por interrogatório — implementação pendente)
 
-**Foco da próxima sessão:** o PoC da caixinha de chat (passos 1–4) **está completo e verificado**.
-Não há próximo passo do build pendente. Decidir entre dois rumos (recomendo o **A** se for continuar
-o PoC útil; **B** se for pausar/bancar):
-- **A) Fechar o gap "agente não grava o texto do `defaultNode` via MCP"** — hoje "crie um nó de
-  mensagem com texto X" cria o nó mas NÃO grava o texto (a superfície de tools do MCP não expõe o
-  texto da mensagem; `set_action_field` cobre campos de `action`, não `assistant_says`). É o gatilho
-  da Fase 5 ("quando o MCP for validar/enumerar valores de campo") e casa com a dívida de sub-enums
-  da Fase 2. Tornaria o PoC genuinamente útil. Usar `/interrogar` antes (toca a superfície de tools).
-- **B) Abrir PR da branch `docs/chat-poc-plan` → `main` + bump de versão** — o CHANGELOG já tem,
-  sob "Não lançado", a sidebar expansível + o PoC da caixinha. Banca o trabalho num release.
+**Foco da próxima sessão:** **implementar a tool MCP `set_message`** (rumo A), seguindo o plano já
+consolidado em PLANS § "Tool de texto da mensagem (`set_message`)". O design está TRAVADO — é só
+codar os 3 passos abaixo, sem reabrir decisões.
 
-**Onde paramos:** branch **`docs/chat-poc-plan`**, **árvore limpa**. Passo 4 commitado (`70b4250`) +
-correção de doc (`3064af5`). Entregue: [backend/server.ts](backend/server.ts) (`flow-updated` carrega
-o fluxo inteiro + aceita `{ prompt, flow }` p/ flush antes do turno), [src/hooks/useChatSocket.ts](src/hooks/useChatSocket.ts)
-(1 sessão WS/Agent SDK, streaming + tools, input travado), [src/components/ChatPanel.tsx](src/components/ChatPanel.tsx)
-(caixinha flutuante), [src/App.tsx](src/App.tsx) (flush no ENVIAR via `serializeFlow`; lock = shield
-`fixed inset-0` cobrindo a barra + guarda `agentRunning` no keydown; `flow-updated`→`parseFlow` com
-guard; "desfazer último turno" = Ctrl+Z existente), [vite.config.ts](vite.config.ts) (proxy WS
-`/agent-ws`). Gate por `import.meta.env.DEV`. **`/verify` PASS** nas DUAS superfícies: backend via
-cliente WS (streaming + tools + `flow-updated` com fluxo inteiro; **teste diferencial provou que o
-flush é recarregado**) e GUI via Playwright (conecta pelo proxy → lock no turno → canvas 59→60 com o
-nó novo). `tsc` (app+backend) limpo; **457 testes verdes**. Code-review: corrigidos lock furado
-(barra/atalhos) e lock preso (`onerror`).
+**Onde paramos:** branch **`docs/chat-poc-plan`**. Esta sessão **NÃO escreveu código**: rodou
+`/handon` (confirmou que o PoC da caixinha, passos 1–4, está completo e verificado), o Andy escolheu
+o **rumo A**, e rodou `/interrogar` no desenho da tool de texto. As 6 decisões + alternativa rejeitada
+foram gravadas no `PLANS.md` (seção nova "Tool de texto da mensagem (`set_message`)", logo após a
+seção "Caixinha de chat"). **Essa edição do `PLANS.md` ainda NÃO está commitada** (única mudança na
+árvore). Resumo das decisões: nova tool `set_message(node, text, condIdx?=0)` idempotente (0 TEXT→cria,
+1→sobrescreve, N>1→erro), **só TEXT**, sem `msgIdx`, aceita qualquer nó exceto `choiceNode`, texto
+vazio→recusa. NÃO estender `set_action_field` (texto vive em `assistant_says`, não em `action.*`).
 
 **Fios soltos / meio-feito:**
-- ⚠️ **Gap do texto do `defaultNode`** (rumo A acima) — é a pendência funcional mais concreta do PoC.
-- **Guard de parse com fluxo INVÁLIDO** não foi exercitado ao vivo (difícil induzir pela superfície);
-  coberto por código+tipos. Só o caminho feliz do guard (parse OK→re-render) foi rodado no `/verify`.
-- Branch `docs/chat-poc-plan` ainda **não mergeada**; CHANGELOG sob "Não lançado" (rumo B).
-- Limpeza de branches órfãs — pendente, não bloqueia.
-- StrictMode (dev) pode abrir 2 conexões WS no mount (o cleanup fecha a 1ª) — inofensivo, não tratado.
-- Scripts de verify em scratchpad (`verify-ws.mjs`, `verify-ui.mjs`) — **não versionados** (efêmeros).
+- **`PLANS.md` editado e não commitado** — a seção do plano da `set_message`. Commitar junto com a
+  implementação (ou antes, como `docs:`).
+- **Nenhum código da `set_message` escrito ainda** — os 3 passos (flowTools → mcp/server → testes)
+  estão todos pendentes.
 
-**Armadilhas (carregar adiante):**
-1. **MCP sobe NOVO a cada turno** (o Agent SDK re-spawna mesmo no `resume`) — só o **contexto**
-   persiste, não o subprocesso. Logo `fromFile` lê o flush no boot e **`reloadFromFile` (decisão 6)
-   ficou redundante** neste caminho (mantido p/ Fase 5). **Verificado por teste diferencial.**
-2. `sdk.d.ts` do Agent SDK tem erros de tipos internos — usar `--skipLibCheck` em `tsc` que cubra
-   `backend/` (o `mcp:typecheck` não cobre `backend/`).
-3. `ws` é devDep; cliente de teste fora da árvore usa `createRequire('d:/Fluxo/package.json')`.
-4. Backend de teste sobe com `run_in_background`; porta isolada (4044 etc.) evita colisão. O proxy do
-   Vite mira a **4000** — para testar a GUI via proxy, o backend precisa estar na 4000.
-5. `query()` exige `settingSources: []` (não subir 2º MCP). `save()`/`serializeFlow` normalizam
-   CRLF→LF + `\n` final; o **flush reusa `serializeFlow`** → formato idêntico ao do MCP.
-6. **Flush vazio é proibido** (front só manda `flow` se houver fluxo; backend ignora string vazia) —
-   gravar "" corromperia o reload.
+**Armadilhas desta sessão (confirmadas por leitura do código):**
+1. `addTextMessage` ([editIntent.ts:159](src/utils/editIntent.ts#L159)) e `updateMessageText`
+   ([editIntent.ts:140](src/utils/editIntent.ts#L140)) **já existem e são testadas** — a `set_message`
+   só as embrulha; não reimplementar lógica de mensagem.
+2. O `defaultNode` nasce com `assistant_says:[{channel:'any', messages:[]}]` (says existe, **0
+   mensagens**) — então nó recém-criado cai no caminho de **criação** (`addTextMessage`, push em
+   `says[0].messages`). O caminho de edição (1 TEXT→`updateMessageText`) precisa montar a `MessageRef`
+   varrendo `listMessages(intent)` filtrando `condIdx` + `type==='TEXT'`.
+3. **Molde a copiar:** `setActionField` em [flowTools.ts:113](src/tools/flowTools.ts#L113) (resolve nó,
+   `beginMutation`/`save`, confirmação compacta, gate de tipo) e seu registro em
+   [mcp/server.ts:144](mcp/server.ts#L144) (zod + `reply`). A linha "Trabalho típico" das
+   `instructions` ([mcp/server.ts:88](mcp/server.ts#L88)) precisa citar `set_message` senão o agente
+   não a descobre.
+4. `choiceNode` é detectado por `cond.action.type === 'choice'` — recusar ali (apontar `set_menu`).
 
-**Próximo passo imediato:** decidir rumo A vs. B (ver "Foco"). Se A: começar por `/interrogar` no
-desenho da tool de texto da mensagem (estender `set_action_field` vs. nova `set_message`), conferindo
-`src/utils/editIntent.ts` (onde mora `assistant_says`) e a superfície atual em [mcp/server.ts](mcp/server.ts).
+**Próximo passo imediato:** implementar `setMessage(store, ref, text, condIdx=0)` em
+[flowTools.ts](src/tools/flowTools.ts) (passo 1), exportando-a junto das demais.
 
-**Ponteiros:** plano em PLANS § "Caixinha de chat" (decisões 1–8, com a correção empírica na decisão 8);
-commits `70b4250` (passo 4) e `3064af5` (docs); arquivos do passo 4 listados em "Onde paramos";
-gap do texto + dívida de sub-enums em PLANS § "Fase 2 › Riscos/dívida nomeada".
+**Ponteiros:** plano completo em PLANS § "Tool de texto da mensagem (`set_message`)" (decisões 1–6 +
+como testar); funções-base `addTextMessage`/`updateMessageText`/`listMessages` em
+[editIntent.ts](src/utils/editIntent.ts); molde de tool+registro em [flowTools.ts](src/tools/flowTools.ts)
+e [mcp/server.ts](mcp/server.ts); testes em [flowTools.test.ts](src/tools/flowTools.test.ts). PoC da
+caixinha (já pronto) em PLANS § "Caixinha de chat".
 
-**Skills sugeridas ao retomar:** `/interrogar` (rumo A, antes de codar a tool de texto); `/verify`
-após qualquer mudança no MCP; `/code-review` antes de commitar.
+**Skills sugeridas ao retomar:** `/verify` após a mudança no MCP (aceite ponta-a-ponta pela caixinha:
+"crie um nó com texto X" → `content==X`); `/code-review` antes de commitar. (`/interrogar` já feito —
+não repetir.)
 
 <!-- HANDOFF:END -->
 
@@ -381,6 +370,60 @@ flowchart TB
 - **Arquivo de trabalho é descartável e fora do versionado canônico** (nunca tocar
   `public/masterFlow.json` — gotcha #2/#3); `serializeFlow` normaliza CRLF→LF, então versionar o
   `work.flow.json` é opcional.
+
+### Tool de texto da mensagem (`set_message`) — fechar o gap do `defaultNode` (planejada)
+
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-06-25. Decisões TRAVADAS abaixo —
+> registro do raciocínio; não reabrir sem novo interrogatório. É o **rumo A** do handoff do PoC da
+> caixinha: hoje "crie um nó de mensagem com texto X" cria o nó mas **NÃO grava o texto** — a
+> superfície de tools do MCP não expõe `assistant_says`. Toca a dívida de sub-enums da Fase 2 só de
+> raspão (não mexe em enums de campo); é o primeiro pedaço concreto do gatilho da Fase 5.
+
+**Objetivo (1 frase):** uma tool MCP `set_message` que grava/edita o texto da mensagem de um nó
+(o que falta para o agente construir um `defaultNode` *com conteúdo*), embrulhando `addTextMessage`/
+`updateMessageText` que já existem em [editIntent.ts](src/utils/editIntent.ts) e ainda não estão
+expostas em [flowTools.ts](src/tools/flowTools.ts) nem no [mcp/server.ts](mcp/server.ts).
+
+**Decisões (com o porquê):**
+1. **Nova tool `set_message`, idempotente** — NÃO estender `set_action_field`. O texto vive em
+   `cond.assistant_says[].messages[].content`, estrutura distinta de `action.*`; juntar as duas no
+   mesmo enum misturaria semânticas. Semântica: na condição-alvo, **0 mensagens TEXT → cria**
+   (`addTextMessage`); **1 → sobrescreve** (`updateMessageText` pela ref); **N>1 → erro** ("edição
+   de múltiplos balões não é suportada por aqui"). Idempotente (re-rodar não duplica) e à prova de
+   surpresa (nunca edita o balão errado em silêncio; pior caso é erro honesto).
+2. **Escopo só TEXT.** `IMAGE/FILE/VIDEO` (URL S3), `COLLECTION` (id) e `TEMPLATE` (id) exigem
+   referência real que o agente não pode sintetizar (regra-âncora resolver-por-nome→gravar-por-id) e
+   demandariam resolvers próprios. `BUTTON/LIST` é território do `set_menu`. É a amostra mínima do gap.
+3. **Assinatura `set_message(node, text, condIdx?=0)`, sem `msgIdx`.** Espelha o `set_action_field`.
+   O gap é *criação* (balão único) → não precisa de índice de mensagem. `msgIdx` (mirar um balão
+   específico em nó multi-balão) fica como **extensão aditiva futura** se a Fase 5 pedir — não quebra.
+   Edição fina multi-balão já tem dono: o DetailPanel da UI.
+4. **Aceita qualquer nó EXCETO `choiceNode`.** `assistant_says` existe em toda condição e nós de ação
+   (transfer/capture/api/…) podem ter um balão de texto junto da ação (ex.: "aguarde, vou te
+   transferir"). Só o `choiceNode` é recusado (→ erro apontando `set_menu`), porque ali o
+   `assistant_says` é *estruturalmente* a mensagem BUTTON/LIST cujos botões mapeiam para
+   `action.choices` — um TEXT solto viraria balão órfão.
+5. **Texto vazio/só espaços → recusa** (espelha `set_menu`, que rejeita corpo vazio). "Limpar" é
+   remoção (outra operação, fora do escopo); o verbo "set" nunca grava balão vazio. Container fixo
+   `'condition'` (a mensagem normal) — o caminho de erro (`action.error.assistant_says`) fica fora.
+6. **Descoberta pelo agente:** registrar a tool em `mcp/server.ts` (descrição + zod) **e** citá-la na
+   linha "Trabalho típico" das `instructions` (`create_node → set_message / set_action_field / …`),
+   senão o agente não sabe que ela existe. Conferir se `describe_node_type(defaultNode)` precisa
+   mencionar o texto.
+
+**Como será testado (decisão 5 do interrogatório — aceite ponta-a-ponta):**
+- **Unit** em [flowTools.test.ts](src/tools/flowTools.test.ts), no padrão existente: criar `defaultNode`
+  → `set_message` (assert `content`) → `set_message` de novo (assert sobrescreve, idempotente) →
+  N>1 TEXT → erro → `choiceNode` → erro → texto vazio → erro → nó de ação (transfer) → ok.
+- **`mcp:typecheck`** limpo (registro da tool + `ACTION_FIELDS`/imports).
+- **`/verify` ponta-a-ponta pela caixinha:** "crie um nó de mensagem com texto X" → assert que o
+  `content` do nó novo no `work.flow.json` é X. **É o critério de aceite do gap** (prova que sumiu).
+
+**Riscos/pendências:**
+- A tool não edita um balão específico de nó multi-balão (decisão 3) — aceito no PoC; `msgIdx` é a
+  saída aditiva.
+- Localizar a "única TEXT" para o caminho de edição: varrer `listMessages` filtrando `condIdx` +
+  `type==='TEXT'` e montar a `MessageRef` — detalhe de implementação, sem decisão pendente.
 
 ## Melhorias paralelas (independentes das fases)
 
