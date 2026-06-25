@@ -19,7 +19,7 @@ import { useTeams } from '../contexts/TeamsContext'
 import type { Collection } from '../utils/collections'
 import { templateVarCount, type MessageTemplate } from '../utils/messageTemplates'
 import { setNextRef, type EditResult } from '../utils/editFlow'
-import { CREATABLE_KINDS, CREATABLE_KIND_LABELS, ACTION_KINDS_WITH_ERROR, type CreatableKind } from '../utils/intentTemplates'
+import { CREATABLE_KINDS, CREATABLE_KIND_LABELS, ACTION_KINDS_WITH_ERROR, type CreatableKind } from '../utils/nodeCatalog'
 import { CAPTURE_FIELDS, CAPTURE_CATEGORY, MULTIPLE_FIELDS_SENTINEL, FREE_CAPTURE } from '../utils/captureFields'
 
 // Nó "Loja física": hoje só uma ação ("Selecionar a primeira loja" → storeType 'first').
@@ -68,6 +68,10 @@ function firstStringOf(v: unknown): string {
   return ''
 }
 
+// Badge do nó no canvas (Sistema B): label CURTO + cor de tema, por NodeKind.
+// PROPOSITALMENTE distinto do label descritivo do NODE_CATALOG (Sistema P, ex.:
+// "Aguarda" aqui vs "Aguardar interação" na paleta). Consumidor único (esta badge)
+// e cor = tema ⇒ fica fora do catálogo (decisão Fase 2). NÃO consolidar no catálogo.
 const KIND_LABELS_LIGHT: Record<NodeKind, { label: string; color: string }> = {
   startNode:       { label: 'Início',          color: 'bg-emerald-100 text-emerald-700' },
   choiceNode:      { label: 'Escolha',          color: 'bg-blue-100 text-blue-700' },
