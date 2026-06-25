@@ -1039,7 +1039,7 @@ export default function App() {
         canPush={hasFlow && !!report && report.errors.length === 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        themeToggle={<ThemeToggle isDark={isDark} onToggle={toggleTheme} />}
+        onThemeToggle={toggleTheme}
         onImport={() => setImportOpen(true)}
         onNewFlow={() => setNewFlowOpen(true)}
         onExport={handleExport}

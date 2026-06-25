@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
+import { ThemeToggle } from './ThemeToggle'
 import type { ValidationReport } from '../utils/validateFlow'
 
 export type ExportFormat = 'json' | 'png' | 'svg'
@@ -21,8 +22,8 @@ interface SidebarProps {
   /** Popover do token controlado pelo App (o picker pode abri-lo via aviso). */
   tokenOpen: boolean
   onTokenOpenChange: (open: boolean) => void
-  /** Toggle de tema (sol/lua), renderizado pelo App. */
-  themeToggle: ReactNode
+  /** Callback para alternar o tema (sol/lua). */
+  onThemeToggle: () => void
   onUndo: () => void
   onRedo: () => void
   onImport: () => void
@@ -55,10 +56,11 @@ function useClickOutside(onOutside: () => void) {
  * popovers que ele abre (Exportar, Token, validação) acompanham o tema do app.
  */
 export function Sidebar(props: SidebarProps) {
-  const { version, report, hasFlow, exporting, canUndo, canRedo, canPush, sessionToken, onSessionTokenChange, tokenOpen, onTokenOpenChange, themeToggle, onUndo, onRedo, onImport, onNewFlow, onExport, onPush, onRestore } = props
+  const { version, report, hasFlow, exporting, canUndo, canRedo, canPush, sessionToken, onSessionTokenChange, tokenOpen, onTokenOpenChange, onThemeToggle, onUndo, onRedo, onImport, onNewFlow, onExport, onPush, onRestore } = props
   const isDark = useTheme()
   const [exportOpen, setExportOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const exportRef = useClickOutside(() => setExportOpen(false))
   const tokenRef = useClickOutside(() => onTokenOpenChange(false))
   const reportRef = useClickOutside(() => setReportOpen(false))
@@ -70,21 +72,39 @@ export function Sidebar(props: SidebarProps) {
   const popoverCls = `absolute left-full ml-2 z-40 rounded-lg border shadow-lg overflow-hidden ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`
   const menuItemCls = `w-full text-left px-3 py-2 text-xs font-medium transition-colors ${isDark ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'}`
 
+  // Atalho para não repetir expanded={expanded} em cada RailButton
+  const Rail = (p: Omit<Parameters<typeof RailButton>[0], 'expanded'>) =>
+    <RailButton {...p} expanded={expanded} />
+
+  const btnRowCls = `flex items-center h-10 rounded-xl transition-colors ${expanded ? 'w-full justify-start px-3 gap-3' : 'w-10 justify-center'}`
+
   return (
-    <nav className="flex flex-col items-center gap-1 w-14 shrink-0 py-3 bg-zinc-950 rounded-r-2xl shadow-lg shadow-black/40 z-20">
+    <nav className={`flex flex-col items-center gap-1 shrink-0 py-3 bg-zinc-950 rounded-r-2xl shadow-lg shadow-black/40 z-20 overflow-hidden transition-all duration-200 ${expanded ? 'w-52 px-2' : 'w-14'}`}>
       {/* Identidade */}
-      <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-400 text-zinc-900 mb-1" title="FlowViewer" aria-hidden>
+      <div className={`flex items-center rounded-xl bg-amber-400 text-zinc-900 mb-1 shrink-0 ${expanded ? 'w-full h-10 px-3 gap-3' : 'justify-center w-10 h-10'}`} title="FlowViewer" aria-hidden>
         <FlowMark />
+        {expanded && <span className="text-xs font-bold truncate">FlowViewer</span>}
       </div>
 
-      <Divider />
+      {/* Botão expandir/recolher */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        title={expanded ? 'Recolher menu' : 'Expandir menu'}
+        aria-label={expanded ? 'Recolher menu' : 'Expandir menu'}
+        className={`${btnRowCls} text-zinc-400 hover:text-white hover:bg-white/10`}
+      >
+        <ChevronIcon expanded={expanded} />
+        {expanded && <span className="text-xs font-medium truncate">Recolher menu</span>}
+      </button>
+
+      <Divider expanded={expanded} />
 
       {/* Documento */}
-      <RailButton label="Novo fluxo" icon={<PlusIcon />} onClick={onNewFlow} />
-      <RailButton label="Importar" icon={<UploadIcon />} onClick={onImport} />
+      <Rail label="Novo fluxo" icon={<PlusIcon />} onClick={onNewFlow} />
+      <Rail label="Importar" icon={<UploadIcon />} onClick={onImport} />
 
-      <div className="relative" ref={exportRef}>
-        <RailButton
+      <div className={`relative ${expanded ? 'w-full' : ''}`} ref={exportRef}>
+        <Rail
           label="Exportar"
           icon={<DownloadIcon />}
           onClick={() => setExportOpen(o => !o)}
@@ -106,35 +126,42 @@ export function Sidebar(props: SidebarProps) {
         )}
       </div>
 
-      <RailButton label="Restaurar" icon={<RestoreIcon />} onClick={onRestore} />
+      <Rail label="Restaurar" icon={<RestoreIcon />} onClick={onRestore} />
 
-      <Divider />
+      <Divider expanded={expanded} />
 
       {/* Enviar (ação de destaque — push para a OmniChat) */}
-      <RailButton label="Enviar" icon={<SendIcon />} onClick={onPush} disabled={!canPush} accent />
+      <Rail label="Enviar" icon={<SendIcon />} onClick={onPush} disabled={!canPush} accent />
 
-      <Divider />
+      <Divider expanded={expanded} />
 
       {/* Edição */}
-      <RailButton label="Desfazer" icon={<UndoIcon />} onClick={onUndo} disabled={!canUndo} />
-      <RailButton label="Refazer" icon={<RedoIcon />} onClick={onRedo} disabled={!canRedo} />
+      <Rail label="Desfazer" icon={<UndoIcon />} onClick={onUndo} disabled={!canUndo} />
+      <Rail label="Refazer" icon={<RedoIcon />} onClick={onRedo} disabled={!canRedo} />
 
       {/* Rodapé */}
-      <div className="mt-auto flex flex-col items-center gap-1">
+      <div className={`mt-auto flex flex-col gap-1 ${expanded ? 'items-stretch w-full' : 'items-center'}`}>
         {hasFlow && report && (
-          <div className="relative" ref={reportRef}>
+          <div className={`relative ${expanded ? 'w-full' : ''}`} ref={reportRef}>
             <button
               onClick={() => issueCount > 0 && setReportOpen(o => !o)}
-              title={issueCount ? 'Ver problemas do fluxo' : 'Fluxo válido'}
+              title={expanded ? undefined : (issueCount ? 'Ver problemas do fluxo' : 'Fluxo válido')}
               aria-label="Status de validação"
-              className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors hover:bg-white/10 ${
+              className={`${btnRowCls} hover:bg-white/10 ${
                 report.errors.length ? 'text-rose-400' : report.warnings.length ? 'text-amber-400' : 'text-emerald-400'
               }`}
             >
-              {report.errors.length ? <XCircleIcon /> : report.warnings.length ? <AlertIcon /> : <CheckCircleIcon />}
-              {issueCount > 0 && (
-                <span className={`absolute top-1 right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full text-[9px] font-bold text-white ${report.errors.length ? 'bg-rose-500' : 'bg-amber-500'}`}>
-                  {issueCount}
+              <span className="relative shrink-0">
+                {report.errors.length ? <XCircleIcon /> : report.warnings.length ? <AlertIcon /> : <CheckCircleIcon />}
+                {issueCount > 0 && (
+                  <span className={`absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full text-[9px] font-bold text-white ${report.errors.length ? 'bg-rose-500' : 'bg-amber-500'}`}>
+                    {issueCount}
+                  </span>
+                )}
+              </span>
+              {expanded && (
+                <span className="text-xs font-medium truncate">
+                  {report.errors.length ? 'Erros no fluxo' : report.warnings.length ? 'Avisos no fluxo' : 'Fluxo válido'}
                 </span>
               )}
             </button>
@@ -151,17 +178,24 @@ export function Sidebar(props: SidebarProps) {
           </div>
         )}
 
-        <div className="relative" ref={tokenRef}>
+        <div className={`relative ${expanded ? 'w-full' : ''}`} ref={tokenRef}>
           <button
             onClick={() => onTokenOpenChange(!tokenOpen)}
-            title={sessionToken ? 'Token de sessão definido (clique para editar)' : 'Definir token de sessão (push, restore e times)'}
+            title={expanded ? undefined : (sessionToken ? 'Token de sessão definido (clique para editar)' : 'Definir token de sessão (push, restore e times)')}
             aria-label="Token"
-            className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
+            className={`${btnRowCls} ${
               sessionToken ? 'text-emerald-400 hover:bg-white/10' : 'text-zinc-400 hover:text-white hover:bg-white/10'
             }`}
           >
-            <KeyIcon />
-            <span className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ${sessionToken ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+            <span className="relative shrink-0">
+              <KeyIcon />
+              <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${sessionToken ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+            </span>
+            {expanded && (
+              <span className="text-xs font-medium truncate">
+                {sessionToken ? 'Token definido' : 'Definir token'}
+              </span>
+            )}
           </button>
           {tokenOpen && (
             <div className={`${popoverCls} w-[280px] bottom-0 p-3 flex flex-col gap-2`}>
@@ -196,14 +230,15 @@ export function Sidebar(props: SidebarProps) {
           href="https://github.com/andrewsmartins/FlowViewer"
           target="_blank"
           rel="noopener noreferrer"
-          title="Documentação"
+          title={expanded ? undefined : 'Documentação'}
           aria-label="Documentação"
-          className="flex items-center justify-center w-10 h-10 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+          className={`${btnRowCls} text-zinc-400 hover:text-white hover:bg-white/10`}
         >
           <HelpIcon />
+          {expanded && <span className="text-xs font-medium truncate">Documentação</span>}
         </a>
 
-        {themeToggle}
+        <ThemeToggle isDark={isDark} onToggle={onThemeToggle} expanded={expanded} />
 
         <span className="text-[10px] font-medium text-zinc-500 tabular-nums mt-0.5" title="Versão da plataforma">v{version}</span>
       </div>
@@ -212,16 +247,18 @@ export function Sidebar(props: SidebarProps) {
 }
 
 /** Botão de ícone padrão do rail (tooltip + aria-label; estados accent/active/disabled). */
-function RailButton({ label, icon, onClick, disabled, active, accent }: {
-  label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; active?: boolean; accent?: boolean
+function RailButton({ label, icon, onClick, disabled, active, accent, expanded }: {
+  label: string; icon: ReactNode; onClick: () => void; disabled?: boolean; active?: boolean; accent?: boolean; expanded?: boolean
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      title={label}
+      title={expanded ? undefined : label}
       aria-label={label}
-      className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+      className={`flex items-center h-10 rounded-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+        expanded ? 'w-full justify-start px-3 gap-3' : 'w-10 justify-center'
+      } ${
         accent
           ? 'bg-emerald-600 text-white enabled:hover:bg-emerald-500'
           : active
@@ -229,13 +266,14 @@ function RailButton({ label, icon, onClick, disabled, active, accent }: {
             : 'text-zinc-400 enabled:hover:text-white enabled:hover:bg-white/10'
       }`}
     >
-      {icon}
+      <span className="shrink-0">{icon}</span>
+      {expanded && <span className="text-xs font-medium truncate">{label}</span>}
     </button>
   )
 }
 
-function Divider() {
-  return <div className="w-6 h-px bg-white/10 my-1.5" />
+function Divider({ expanded }: { expanded?: boolean }) {
+  return <div className={`h-px bg-white/10 my-1.5 transition-all duration-200 ${expanded ? 'w-full' : 'w-6'}`} />
 }
 
 function FlowMark() {
@@ -245,6 +283,17 @@ function FlowMark() {
       <rect x="8" y="17" width="8" height="4" rx="1" />
       <line x1="6.5" y1="7" x2="6.5" y2="10" /><line x1="17.5" y1="7" x2="17.5" y2="10" />
       <line x1="6.5" y1="10" x2="17.5" y2="10" /><line x1="12" y1="10" x2="12" y2="17" />
+    </svg>
+  )
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+    >
+      <polyline points="9 18 15 12 9 6" />
     </svg>
   )
 }
