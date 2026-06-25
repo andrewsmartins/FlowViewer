@@ -1,63 +1,65 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-25 (passo 3 VERIFICADO ponta-a-ponta — `/verify` PASS)
+## 🔄 Handoff — 2026-06-25 (passo 4 CONCLUÍDO e VERIFICADO ponta-a-ponta — PoC da caixinha completo)
 
-**Foco da próxima sessão:** **passo 4 do build** — Integrar a caixinha de chat no FlowViewer React:
-componente `ChatPanel`, lock do canvas durante o turno, flush canvas→arquivo no ENVIAR (reusa export),
-`flow-updated`→`parseFlow` com guard de parse, snapshot por turno + "desfazer último turno".
-Plano em PLANS § "Caixinha de chat na página — PoC local do agente construtor" (decisões 4, 5, 7).
-**Primeiro item concreto do passo 4: incluir o `flowJson` COMPLETO no evento `flow-updated`** — ver
-"Fios soltos" abaixo; é pré-requisito do re-render do canvas React.
+**Foco da próxima sessão:** o PoC da caixinha de chat (passos 1–4) **está completo e verificado**.
+Não há próximo passo do build pendente. Decidir entre dois rumos (recomendo o **A** se for continuar
+o PoC útil; **B** se for pausar/bancar):
+- **A) Fechar o gap "agente não grava o texto do `defaultNode` via MCP"** — hoje "crie um nó de
+  mensagem com texto X" cria o nó mas NÃO grava o texto (a superfície de tools do MCP não expõe o
+  texto da mensagem; `set_action_field` cobre campos de `action`, não `assistant_says`). É o gatilho
+  da Fase 5 ("quando o MCP for validar/enumerar valores de campo") e casa com a dívida de sub-enums
+  da Fase 2. Tornaria o PoC genuinamente útil. Usar `/interrogar` antes (toca a superfície de tools).
+- **B) Abrir PR da branch `docs/chat-poc-plan` → `main` + bump de versão** — o CHANGELOG já tem,
+  sob "Não lançado", a sidebar expansível + o PoC da caixinha. Banca o trabalho num release.
 
-**Onde paramos:** branch **`docs/chat-poc-plan`**, **árvore limpa**. Passo 3 **commitado** (`64320c0`)
-— [backend/server.ts](backend/server.ts) (HTTP + WebSocket, Agent SDK com `resume` por `session_id`,
-streama `text`/`tool`/`flow-updated`/`done`/`error`) e [backend/index.html](backend/index.html) (UI dark
-mínima). Nesta sessão **rodei `/verify` com prompt real** (`npm run ws:dev` → porta 4000) e deu **PASS**:
-o Agent SDK com auth de assinatura (sem key) dirigiu o MCP stdio, streamou tools (`create_node`,
-`list_nodes`…), o arquivo de trabalho mudou no disco (42→43 nós, nó `Teste` persistido), o **lock**
-("Turno em andamento") segurou a 2ª mensagem, e o **`resume`** disparou no 2º turno (log
-`turno iniciado (resume …)`). O **maior risco do PoC está derriscado.**
+**Onde paramos:** branch **`docs/chat-poc-plan`**, **árvore limpa**. Passo 4 commitado (`70b4250`) +
+correção de doc (`3064af5`). Entregue: [backend/server.ts](backend/server.ts) (`flow-updated` carrega
+o fluxo inteiro + aceita `{ prompt, flow }` p/ flush antes do turno), [src/hooks/useChatSocket.ts](src/hooks/useChatSocket.ts)
+(1 sessão WS/Agent SDK, streaming + tools, input travado), [src/components/ChatPanel.tsx](src/components/ChatPanel.tsx)
+(caixinha flutuante), [src/App.tsx](src/App.tsx) (flush no ENVIAR via `serializeFlow`; lock = shield
+`fixed inset-0` cobrindo a barra + guarda `agentRunning` no keydown; `flow-updated`→`parseFlow` com
+guard; "desfazer último turno" = Ctrl+Z existente), [vite.config.ts](vite.config.ts) (proxy WS
+`/agent-ws`). Gate por `import.meta.env.DEV`. **`/verify` PASS** nas DUAS superfícies: backend via
+cliente WS (streaming + tools + `flow-updated` com fluxo inteiro; **teste diferencial provou que o
+flush é recarregado**) e GUI via Playwright (conecta pelo proxy → lock no turno → canvas 59→60 com o
+nó novo). `tsc` (app+backend) limpo; **457 testes verdes**. Code-review: corrigidos lock furado
+(barra/atalhos) e lock preso (`onerror`).
 
 **Fios soltos / meio-feito:**
-- ⚠️ **`flow-updated` manda só `{ nodeCount }`, NÃO o JSON inteiro** — [server.ts:112-114](backend/server.ts#L112-L114).
-  A decisão 3 do plano exige o JSON completo embutido para a UI fazer `parseFlow`. OK para a UI HTML
-  mínima do passo 3, mas o **passo 4 (canvas React) precisa do `flowJson` completo no evento** — é o
-  primeiro item a implementar.
-- ⚠️ **Agente não consegue setar o texto de um `defaultNode`** ("sem campos configuráveis" via MCP) —
-  "crie um nó de mensagem com texto X" tem sucesso pela metade (cria o nó, não grava o texto). Não é
-  bug do passo 3, é gap da superfície de tools do MCP; casa com a dívida de sub-enums adiada na Fase 2.
-- [scripts/smoke-chat-poc.mjs](scripts/smoke-chat-poc.mjs) — já está **tracked** (dúvida "commitar ou
-  apagar" resolvida). Fio fechado.
+- ⚠️ **Gap do texto do `defaultNode`** (rumo A acima) — é a pendência funcional mais concreta do PoC.
+- **Guard de parse com fluxo INVÁLIDO** não foi exercitado ao vivo (difícil induzir pela superfície);
+  coberto por código+tipos. Só o caminho feliz do guard (parse OK→re-render) foi rodado no `/verify`.
+- Branch `docs/chat-poc-plan` ainda **não mergeada**; CHANGELOG sob "Não lançado" (rumo B).
 - Limpeza de branches órfãs — pendente, não bloqueia.
+- StrictMode (dev) pode abrir 2 conexões WS no mount (o cleanup fecha a 1ª) — inofensivo, não tratado.
+- Scripts de verify em scratchpad (`verify-ws.mjs`, `verify-ui.mjs`) — **não versionados** (efêmeros).
 
-**Armadilhas desta sessão (não estão no PLANS ainda):**
-1. `sdk.d.ts` do Agent SDK tem erros de tipos internos — usar `--skipLibCheck` em qualquer
-   `tsc` que cubra o `backend/`. O `mcp:typecheck` (tsconfig do MCP) não cobre `backend/`.
-2. `resume` no SDK exige o `session_id` do evento `system/init` (campo `msg.session_id`). O servidor
-   guarda por conexão WS e passa como `{ resume: sessionId }` no próximo `query()`. Mesmo ao resumir,
-   repassar `mcpServers` e `settingSources: []` pois o subprocesso é novo. **Verificado funcionando.**
-3. `ws` é devDep (`npm install --save-dev ws @types/ws`). Cliente de teste fora da árvore do projeto
-   não resolve `ws` por bare specifier — usar `createRequire('d:/Fluxo/package.json')`.
-4. Servidor de teste deve subir com `run_in_background` do Bash (o `&` do Git Bash não sobrevive
-   entre chamadas de tool). Porta isolada (ex.: 4042) evita colisão.
+**Armadilhas (carregar adiante):**
+1. **MCP sobe NOVO a cada turno** (o Agent SDK re-spawna mesmo no `resume`) — só o **contexto**
+   persiste, não o subprocesso. Logo `fromFile` lê o flush no boot e **`reloadFromFile` (decisão 6)
+   ficou redundante** neste caminho (mantido p/ Fase 5). **Verificado por teste diferencial.**
+2. `sdk.d.ts` do Agent SDK tem erros de tipos internos — usar `--skipLibCheck` em `tsc` que cubra
+   `backend/` (o `mcp:typecheck` não cobre `backend/`).
+3. `ws` é devDep; cliente de teste fora da árvore usa `createRequire('d:/Fluxo/package.json')`.
+4. Backend de teste sobe com `run_in_background`; porta isolada (4044 etc.) evita colisão. O proxy do
+   Vite mira a **4000** — para testar a GUI via proxy, o backend precisa estar na 4000.
+5. `query()` exige `settingSources: []` (não subir 2º MCP). `save()`/`serializeFlow` normalizam
+   CRLF→LF + `\n` final; o **flush reusa `serializeFlow`** → formato idêntico ao do MCP.
+6. **Flush vazio é proibido** (front só manda `flow` se houver fluxo; backend ignora string vazia) —
+   gravar "" corromperia o reload.
 
-**Armadilhas herdadas ainda válidas:**
-5. `query()` exige `settingSources: []` para não carregar `.mcp.json` e subir 2º MCP.
-6. Smoke rodou aninhado no Claude Code — auth funcionou mesmo assim; prova 100% fiel = terminal limpo
-   fora do CC (incremental, não bloqueia).
-7. `save()` normaliza CRLF→LF (invariante do `serializeFlow`).
+**Próximo passo imediato:** decidir rumo A vs. B (ver "Foco"). Se A: começar por `/interrogar` no
+desenho da tool de texto da mensagem (estender `set_action_field` vs. nova `set_message`), conferindo
+`src/utils/editIntent.ts` (onde mora `assistant_says`) e a superfície atual em [mcp/server.ts](mcp/server.ts).
 
-**Próximo passo imediato:** No passo 4, começar editando [server.ts:111-115](backend/server.ts#L111-L115)
-para mandar o `flowJson` completo (não só `nodeCount`) no `flow-updated`; depois o componente React
-`ChatPanel` consome o evento → `parseFlow` com guard → re-render + destrava o canvas.
+**Ponteiros:** plano em PLANS § "Caixinha de chat" (decisões 1–8, com a correção empírica na decisão 8);
+commits `70b4250` (passo 4) e `3064af5` (docs); arquivos do passo 4 listados em "Onde paramos";
+gap do texto + dívida de sub-enums em PLANS § "Fase 2 › Riscos/dívida nomeada".
 
-**Ponteiros:** plano em PLANS § "Caixinha de chat" (decisões 4=UX; 5=lock/flush; 6=reloadFromFile;
-7=snapshot+guard; 8=WS+resume); [backend/server.ts](backend/server.ts);
-[backend/index.html](backend/index.html); commit passo 3: `64320c0`; passo 2: `18bf0e7`.
-
-**Skills sugeridas ao retomar:** `/code-review` antes de commitar o passo 4; `/verify` com a UI React
-integrada (manda mensagem → canvas re-renderiza com o nó novo + destrava).
+**Skills sugeridas ao retomar:** `/interrogar` (rumo A, antes de codar a tool de texto); `/verify`
+após qualquer mudança no MCP; `/code-review` antes de commitar.
 
 <!-- HANDOFF:END -->
 
