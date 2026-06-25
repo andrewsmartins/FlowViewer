@@ -1,9 +1,8 @@
 import type { BotIntent } from '../types'
 import { FlowStore } from './flowStore'
 import { actionToNodeKind, triggerLabel } from '../utils/nodeMeta'
-import {
-  createIntentTemplate, isCreatableKind, type CreatableKind,
-} from '../utils/intentTemplates'
+import { createIntentTemplate } from '../utils/intentTemplates'
+import { isCreatableKind, type CreatableKind } from '../utils/nodeCatalog'
 import {
   updateActionFields, setChoices, listMessages, addButtonListMessage, addChoice,
 } from '../utils/editIntent'

@@ -9,14 +9,10 @@ import { actionTypeOf, ACTION_KINDS_WITH_ERROR, type CreatableKind } from './nod
  * presentes, com null/[]/'' como defaults explícitos. Ver PLANS.md.
  *
  * NOTA (Fase 2): os fatos por tipo de nó (kinds criáveis, rótulos, action.type,
- * caminho de erro) agora vivem em `nodeCatalog.ts` — re-exportados abaixo para
- * preservar os imports existentes. Este arquivo guarda só a LÓGICA de como um nó
- * nasce (`buildKindAction` e os create*Template).
+ * caminho de erro) vivem em `nodeCatalog.ts`. Este arquivo guarda só a LÓGICA de
+ * como um nó nasce (`buildKindAction` e os create*Template), importando do catálogo
+ * o que precisa. Consumidores de fatos kind-level importam direto de `nodeCatalog`.
  */
-export {
-  CREATABLE_KINDS, CREATABLE_KIND_LABELS, ACTION_KINDS_WITH_ERROR, isCreatableKind,
-  type CreatableKind,
-} from './nodeCatalog'
 
 function canonicalAction(type: string): Action {
   return {

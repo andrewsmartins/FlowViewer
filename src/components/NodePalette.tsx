@@ -1,6 +1,6 @@
 import { Panel } from '@xyflow/react'
 import { useTheme } from '../contexts/ThemeContext'
-import { CREATABLE_KIND_LABELS as KIND_LABELS, type CreatableKind } from '../utils/intentTemplates'
+import { CREATABLE_KIND_LABELS as KIND_LABELS, type CreatableKind } from '../utils/nodeCatalog'
 import { nodeColor } from '../utils/nodeVisual'
 
 /** MIME type interno usado no drag & drop da paleta para o canvas. */
