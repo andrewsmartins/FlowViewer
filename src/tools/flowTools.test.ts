@@ -4,10 +4,10 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { FlowStore } from './flowStore'
 import {
-  createNode, setActionField, setNodeChoices, setMenu, connectNodes, connectToBot,
+  createNode, setActionField, setMessage, setNodeChoices, setMenu, connectNodes, connectToBot,
   validate, revert, listNodes, describeNode,
 } from './flowTools'
-import type { BotFlowJson } from '../types'
+import type { BotFlowJson, BotMessage } from '../types'
 
 /**
  * Teste de orquestração da spike (Fase 1, PLANS.md): exercita a camada de
@@ -271,6 +271,80 @@ describe('Fase 4b — set_menu (cria os itens de um choiceNode)', () => {
     expect(setMenu(store, menuId, 'Menu', [])).toMatch(/ao menos 1 item/)
     const onze = Array.from({ length: 11 }, (_, i) => ({ text: `item ${i}` }))
     expect(setMenu(store, menuId, 'Menu', onze)).toMatch(/no máximo 10 itens/)
+  })
+})
+
+describe('set_message — texto (TEXT) da mensagem de um nó', () => {
+  /** Mensagens TEXT da 1ª condição de um nó, lidas do disco. */
+  function textMessages(id: string): BotMessage[] {
+    const node = reload().list.find(i => i.id === id)!
+    return node.conditions[0].assistant_says.flatMap(s => s.messages).filter(m => m.type === 'TEXT')
+  }
+
+  it('cria o balão de texto num defaultNode recém-criado (0 TEXT → cria)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_msg'))![1]
+
+    const msg = setMessage(store, id, 'Olá, tudo bem?')
+    expect(msg).toMatch(/mensagem criada em "spike_msg"/)
+
+    const texts = textMessages(id)
+    expect(texts).toHaveLength(1)
+    expect(texts[0].content).toBe('Olá, tudo bem?')
+  })
+
+  it('sobrescreve o texto existente sem duplicar (1 TEXT → idempotente)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_msg_idem'))![1]
+
+    setMessage(store, id, 'primeira versão')
+    const msg = setMessage(store, id, 'versão final')
+    expect(msg).toMatch(/mensagem atualizada em "spike_msg_idem"/)
+
+    const texts = textMessages(id)
+    expect(texts).toHaveLength(1) // não duplicou
+    expect(texts[0].content).toBe('versão final')
+  })
+
+  it('recusa quando há N>1 balões de texto (não edita o errado em silêncio)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_msg_multi'))![1]
+    setMessage(store, id, 'balão 1')
+    // injeta um 2º balão TEXT (estado que a UI pode produzir, fora do alcance da tool)
+    const intent = store.flow.list.find(i => i.id === id)!
+    intent.conditions[0].assistant_says[0].messages.push({ type: 'TEXT', content: 'balão 2', fileName: '' })
+
+    expect(setMessage(store, id, 'novo')).toMatch(/2 balões de texto.*não é suportada/)
+  })
+
+  it('recusa nó de escolha (aponta set_menu)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'spike_msg_choice'))![1]
+    expect(setMessage(store, id, 'x')).toMatch(/é um nó de escolha — use set_menu/)
+  })
+
+  it('recusa texto vazio ou só espaços sem mutar o arquivo', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 'spike_msg_vazio'))![1]
+    const before = readFileSync(flowPath, 'utf8')
+    expect(setMessage(store, id, '')).toMatch(/não pode ficar vazio/)
+    expect(setMessage(store, id, '   ')).toMatch(/não pode ficar vazio/)
+    expect(readFileSync(flowPath, 'utf8')).toBe(before)
+  })
+
+  it('aceita um balão de texto junto da ação num nó de ação (transfer)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'transferNode', 'spike_msg_transfer'))![1]
+    const msg = setMessage(store, id, 'Aguarde, vou te transferir.')
+    expect(msg).toMatch(/mensagem criada/)
+    expect(textMessages(id)[0].content).toBe('Aguarde, vou te transferir.')
+  })
+
+  it('recusa nó inexistente sem efeito colateral', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const before = readFileSync(flowPath, 'utf8')
+    expect(setMessage(store, 'nao-existe', 'oi')).toMatch(/^⚠️ erro: nó não encontrado/)
+    expect(readFileSync(flowPath, 'utf8')).toBe(before)
   })
 })
 
