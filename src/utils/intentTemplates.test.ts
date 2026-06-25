@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { createIntentTemplate, createStartIntent, createConditionForKind, CREATABLE_KINDS, isCreatableKind } from './intentTemplates'
+import { createIntentTemplate, createStartIntent, createConditionForKind } from './intentTemplates'
+import { CREATABLE_KINDS, isCreatableKind } from './nodeCatalog'
 import { validateFlow } from './validateFlow'
 import { applyConnect, applyEdgeDelete, serializeFlow, parseEdgeId } from './editFlow'
 import { addButton, addButtonsMessage } from './editIntent'

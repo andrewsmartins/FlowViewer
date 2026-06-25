@@ -1,6 +1,7 @@
 import type { BotIntent, BotMessage, BulkUpdateItem, Condition, ButtonMessageConfig, ButtonOption, AssistantSay, Next } from '../types'
 import type { EditResult } from './editFlow'
-import { createConditionTemplate, createConditionForKind, type CreatableKind } from './intentTemplates'
+import { createConditionTemplate, createConditionForKind } from './intentTemplates'
+import type { CreatableKind } from './nodeCatalog'
 
 /**
  * Patches de CONTEÚDO de uma intenção (Fase 3): mensagens, botões, metadados

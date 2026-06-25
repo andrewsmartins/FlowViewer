@@ -13,7 +13,7 @@ import {
 } from '../src/tools/flowTools'
 import { Resolvers } from '../src/tools/resolvers'
 import type { FetchLike } from '../src/utils/pushFlow'
-import { manifest, describeNodeType } from './nodeCatalog'
+import { manifest, describeNodeType } from './nodeManifest'
 
 /**
  * Servidor MCP local (Fase 3, PLANS.md § "Fase 3"). Expõe a camada de tools já

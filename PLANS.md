@@ -1,46 +1,49 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-24 (merge da spike concluído)
+## 🔄 Handoff — 2026-06-24 (Fase 2 concluída na branch, aguardando review/merge)
 
-**Foco da próxima sessão:** **escolher e iniciar o próximo trabalho** — os dois candidatos
-naturais são (A) **Fase 2 (`NODE_CATALOG`)**, o refactor adiado que toca o DetailPanel (~3500
-linhas, 383 testes) — `/interrogar` antes, suíte verde como gate; ou (B) **editor do nó Pedido**
-(planejado em §"Nó Pedido", **não** implementado — espelho do CSAT já entregue). A spike MCP
-está **fechada e na `main`**; não há mais nada pendente dela.
+**Foco da próxima sessão:** **revisar e mergear a Fase 2** (`NODE_CATALOG`), depois escolher o
+próximo trabalho. A Fase 2 está **completa na branch `feat/node-catalog`** (4 commits, NÃO
+mergeada, NÃO pushada). Candidato natural seguinte: (B) **editor do nó Pedido** (§"Nó Pedido",
+plano fechado, **não** implementado — mirror da `StoreActionSection`, unitário sem Playwright).
 
-**Onde paramos:** branch **`main`**, **working tree LIMPO** e **sincronizada com `origin/main`**.
-A `feat/mcp-tools-spike` foi **mergeada na `main`** (merge `15cbf54`, `--no-ff`, push feito) — traz
-a spike MCP completa (Fases 1/3/4/4b: camada de tools, servidor MCP stdio, 8 resolvers nome→ID,
-`set_menu`/`connect_to_bot`) **e**, de bônus, os threads ortogonais que estavam pendentes:
-masterFlow Partes 11/12 e o editor Captura CSAT (v0.27.0). Gate antes do merge: **435 testes
-verdes**, `tsc` app e `mcp:typecheck` limpos. PLANS.md arquivado (Fases 1/3/4/4b + CSAT + masterFlow
-migraram verbatim para [docs/PLANS-ARCHIVE.md](docs/PLANS-ARCHIVE.md)).
+**Onde paramos:** branch **`feat/node-catalog`** (criada a partir da `main`), **working tree
+LIMPO**, **4 commits à frente da `main`**, **sem push**. Refactor da Fase 2 **sem mudança de
+comportamento**, centralizando os fatos kind-level dos tipos de nó num único
+[src/utils/nodeCatalog.ts](src/utils/nodeCatalog.ts) (Node-pure); `nodeMeta`/`intentTemplates`/MCP
+passam a **derivar** dele. Gate final: app `tsc` ✅ · `mcp:typecheck` ✅ · **453 testes** (435 +
+18 golden) ✅ · manifesto MCP **byte-idêntico** ao anterior (smoke efêmero tsx).
 
-**Fios soltos / meio-feito:** nada de código. **Limpeza pendente (opcional):** as branches
-`feat/mcp-tools-spike` e `feat/order-node-editor` (esta 100% contida na spike) já estão na `main`
-— podem ser deletadas (local + remota) quando quiser.
+**Fios soltos / meio-feito:** nada de código — Fase 2 fechada e verde. **Pendente:** `/code-review`
+do diff completo da branch, **merge na `main`** (`--no-ff`, espelhar o fluxo da spike) e push.
+**Limpeza opcional (de antes):** branches `feat/mcp-tools-spike` e `feat/order-node-editor` já na
+`main` podem ser deletadas (local+remota).
 
 **Armadilhas (gotchas — não redescobrir):**
-1. **MCP em execução roda o código ANTIGO.** O servidor MCP sobe no boot do Claude Code via
-   `.mcp.json`; mudanças nas tools **só aparecem após reiniciar o Claude Code**. Smoke de tools
-   recém-mexidas: via `tsx` efêmero (funções reais), não via MCP ao vivo.
-2. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** (`public/masterFlow.json`). Rodar prova
-   via MCP deixa diff **só de EOL** — restaurar com `git checkout -- public/masterFlow.json`.
-3. **smoke efêmero:** não deixar `_smoke-*.ts` no repo. Boilerplate de token/fetch para reusar:
-   [scripts/smoke-phase4-resolvers.ts](scripts/smoke-phase4-resolvers.ts).
-4. **`git merge` não aceita `-F -` (stdin)** como o `git commit` aceita — usar `-m` ou `-F arquivo`.
+1. **Dois sistemas de label** (decisão central da Fase 2): badge/canvas é CURTO ("Aguarda",
+   "Variável", "CSAT") e vive no `KIND_LABELS_LIGHT/DARK` do DetailPanel (Sistema B, +cor=tema,
+   consumidor único); paleta/MCP é DESCRITIVO ("Aguardar interação", …) e é o `label` do
+   `NODE_CATALOG` (Sistema P). **NÃO consolidar a badge no catálogo** — mudaria a UI.
+2. **`actionToNodeKind` é re-exportado de `nodeMeta`** (lar conceitual; import coeso com parseFlow),
+   mas DEFINIDO em `nodeCatalog`. Os demais fatos kind-level NÃO são mais re-exportados de
+   `intentTemplates` — importar direto de `nodeCatalog`.
+3. **MCP em execução roda o código ANTIGO** (sobe no boot via `.mcp.json`); mudanças nas tools só
+   após reiniciar o Claude Code. Smoke via `tsx` efêmero com caminho **absoluto** (`D:/Fluxo/...`),
+   não relativo ao scratchpad. Não deixar `_smoke-*.ts` no repo.
+4. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** — diff só de EOL restaura com
+   `git checkout -- public/masterFlow.json`.
+5. **`git merge` não aceita `-F -` (stdin)** — usar `-m` ou `-F arquivo`.
 
-**Próximo passo imediato:** perguntar ao Andy **A (Fase 2) ou B (nó Pedido)**. Se **A**:
-`/interrogar` a Fase 2 antes de tocar o DetailPanel, suíte verde como gate. Se **B**: seguir o
-plano já fechado em §"Nó Pedido" (mirror da `StoreActionSection`, unitário sem Playwright).
+**Próximo passo imediato:** `/code-review` do diff `main..feat/node-catalog`; se limpo, mergear na
+`main` (`--no-ff`) e push. Só então escolher A/B do backlog (provável B: nó Pedido).
 
-**Ponteiros:** merge `15cbf54` na `main`; PLANS §"Fase 2" e §"Nó Pedido" (planos vivos);
-spike arquivada em [docs/PLANS-ARCHIVE.md](docs/PLANS-ARCHIVE.md) (Fases 1/3/4/4b + CSAT + masterFlow).
+**Ponteiros:** branch `feat/node-catalog` commits `ab2b0e5`/`5788e28`/`b290d00`/`086dffb`; plano
+fechado em PLANS §"Fase 2" (decisões + migração + dívida dos sub-enums); §"Nó Pedido" (próximo
+candidato); CHANGELOG §"Alterado" tem a entrada da Fase 2.
 
-**Skills sugeridas ao retomar:** `/interrogar` antes da Fase 2 (refactor arriscado) ou do nó
-Pedido; `/code-review` antes de qualquer commit novo; `/verify` se for validar o MCP ao vivo
-(lembrar do reinício, gotcha 1).
+**Skills sugeridas ao retomar:** `/code-review` do diff antes do merge; `/verify` se for validar o
+MCP ao vivo (gotcha 3, reiniciar); `/interrogar` antes de iniciar o nó Pedido.
 
 <!-- HANDOFF:END -->
 
@@ -147,17 +150,76 @@ escalar". Nova ordem: **1 spike → 2 catálogo → 3 MCP → 4 resolvers → 5 
 
 ### Fase 2 — Centralizar `NODE_CATALOG` (refactor/limpeza, com valor próprio)
 
-**Objetivo:** consolidar a verdade hoje espalhada (NodeKind [types.ts:130](src/types.ts#L130),
-`actionToNodeKind` [nodeMeta.ts](src/utils/nodeMeta.ts), defaults
-[intentTemplates.ts](src/utils/intentTemplates.ts)/[captureFields.ts](src/utils/captureFields.ts),
-const do [DetailPanel.tsx](src/components/DetailPanel.tsx)) num único `NODE_CATALOG`. Alimenta
-o DetailPanel (limpeza com valor próprio) **e** o manifesto enxuto + `describe_node_type` da
-Fase 3 (já entregue à mão, mínimo — esta fase vira a fonte derivada).
+**Objetivo (1 frase):** criar um único `src/utils/nodeCatalog.ts` (Node-pure) como fonte de
+verdade *por tipo de nó*, do qual derivam as constantes hoje duplicadas em ≥4 arquivos, e do
+qual o manifesto MCP passa a **derivar** em vez de duplicar à mão.
 
-**Por que depois do spike:** toca o arquivo mais arriscado (DetailPanel, 383 testes) — só
-pagar esse custo depois que o spike provar que o caminho agente/MCP entrega valor (provado).
-No spike, o manifesto/catálogo foi escrito **à mão, mínimo** ([mcp/nodeCatalog.ts](mcp/nodeCatalog.ts));
-esta fase vira a fonte derivada. Gate: suíte verde antes e depois.
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-06-24. As decisões abaixo
+> estão TRAVADAS — não reabrir sem novo interrogatório.
+
+**Verdade espalhada hoje (o alvo):** `NodeKind` [types.ts:130](src/types.ts#L130);
+`actionToNodeKind`/`CONDITION_TYPE_LABELS`/`PRIORITY_LABELS` [nodeMeta.ts](src/utils/nodeMeta.ts);
+`CREATABLE_KINDS`/`CREATABLE_KIND_LABELS`/`ACTION_TYPE_BY_KIND`(privado)/`ACTION_KINDS_WITH_ERROR`/`buildKindAction`
+[intentTemplates.ts](src/utils/intentTemplates.ts); consts inline por tipo no
+[DetailPanel.tsx](src/components/DetailPanel.tsx) (`KIND_LABELS_LIGHT/DARK`, `KIND_OPTIONS`,
+`STORE_ACTIONS`, `ORDER_ACTIONS`, `EXTERNAL_TYPES`, `TRANSFER_*`); manifesto hand-written
+[mcp/nodeCatalog.ts](mcp/nodeCatalog.ts).
+
+**Decisões (com o porquê):**
+1. **Catálogo MAGRO, kind-level (Opção A).** Absorve só fatos *por tipo de nó*: `label`,
+   `actionType`, `creatable`, `hasError`, `summary`, `fields`. Os sub-enums internos
+   (`TRANSFER_*`, `STORE_ACTIONS`, `CAPTURE_FIELDS`, …) **NÃO** entram — já são fontes únicas
+   locais bem-comportadas, com um só consumidor. O valor que paga tocar o arquivo de 383
+   testes é (a) o MCP **derivar** o manifesto (hoje hand-written → diverge silenciosamente) e
+   (b) matar a duplicação do enum-de-tipos+label (repetido em 3 lugares). Catálogo gordo seria
+   consolidar o que não está espalhado.
+2. **`src/utils/nodeCatalog.ts`, Node-pure; cor/ícones FORA.** O `mcp/` importa o catálogo e
+   roda em Node sem DOM ⇒ catálogo = só domínio. `color` (Tailwind, light/dark) é tema → fica
+   num mapa de tema à parte chaveado por `NodeKind` (regra de ouro do dark-mode: tema separado
+   da estrutura). `label` é domínio e compartilhável; `color` não.
+3. **Rename `mcp/nodeCatalog.ts` → `mcp/nodeManifest.ts`** para não colidir com o novo
+   `src/utils/nodeCatalog.ts`. O de mcp vira derivador fino + formatador (`manifest`/`describeNodeType`).
+4. **Catálogo chaveado pelos 11 `CreatableKind` (uniforme, sem union).** Descoberta no início
+   do commit 1: existem **dois sistemas de label distintos**, não uma duplicação —
+   **(P) paleta/descritivo** (`CREATABLE_KIND_LABELS`, 11 criáveis, ex.: "Aguardar interação",
+   "Editar informação", "Encerrar conversa", "Chamada de API", "Captura CSAT"), duplicado entre
+   intentTemplates → DetailPanel `KIND_OPTIONS` → MCP; e **(B) badge/canvas** (`KIND_LABELS_LIGHT/DARK`,
+   16 kinds, label CURTO + cor, ex.: "Aguarda", "Variável", "Terminar", "Chamada API", "CSAT"),
+   com **consumidor único** (a badge do DetailPanel). Unificar num só label mudaria a UI (viola o
+   gate). Logo: **o catálogo serve só o Sistema P** (label descritivo) + actionType/hasError/summary/fields,
+   chaveado pelos 11 `CreatableKind`. **O Sistema B (badge curto + cor) permanece no DetailPanel**
+   como mapa de tema por `NodeKind` (mesma lógica da decisão 2 + consumidor-único dos sub-enums).
+   `actionToNodeKind` nunca retorna start/externalBot/intentGroup (vêm de detecção estrutural),
+   então 11 kinds bastam. **Efeito:** o commit 3 (DetailPanel) encolhe — `KIND_OPTIONS` deriva de
+   graça via decisão 1; a badge nem muda.
+5. **`buildKindAction` PERMANECE em `intentTemplates.ts`.** O catálogo absorve só dados puros
+   (label, actionType); `actionToNodeKind`, `CREATABLE_KINDS`, `CREATABLE_KIND_LABELS`,
+   `ACTION_KINDS_WITH_ERROR` (→ campo `hasError`) passam a **derivar** do catálogo, com os
+   exports/assinaturas **preservados**. Os `if (kind===…)` do `buildKindAction` são lógica de
+   inicialização, não tabela — declarativizá-los arrisca os testes de template sem ganho.
+
+**Plano de migração (incremental, 4 commits, `npm test` verde como gate entre cada um):**
+1. Criar `nodeCatalog.ts` + re-derivar as constantes antigas *nos arquivos atuais* (`nodeMeta`,
+   `intentTemplates`), **sem mudar exports/assinaturas**. Suíte verde prova derivação fiel.
+2. Apontar `mcp/nodeManifest.ts` (rename) para o catálogo; `mcp:typecheck` + smoke efêmero.
+3. **DetailPanel** (commit isolado — o arriscado): trocar `KIND_LABELS_*`/`KIND_OPTIONS` pela
+   leitura do catálogo (label do catálogo; cor do tema à parte). Vermelho aqui aponta direto.
+4. Limpeza: remover consts mortas; conferir zero duplicação remanescente.
+
+**Como será testado:** os 383 testes são o gate primário (consomem labels/options/defaults via
+exports preservados). **Antes do commit 3**, verificar se há cobertura de render das badges/labels
+do DetailPanel; se não houver, adicionar âncora mínima "catálogo → label renderizado" para a rede
+de segurança não depender só de leitura manual. Fallback defensivo de label/cor (`catalog[kind]?.label ?? kind`)
+preservado igual a hoje.
+
+**Riscos/dívida nomeada:**
+- **Sub-enums adiados (divergência descritiva MCP↔DetailPanel nos valores de campo).** Aceita
+  enquanto o MCP usa `fields` só como prosa-dica. **Gatilho para voltar:** quando o MCP for
+  **validar/enumerar valores de campo** (ex.: `set_action_field` rejeitar `transferType` inválido),
+  provável na Fase 5 — aí consolidar TODOS de uma vez (inclusive `TRANSFER_*`, que é máquina de
+  estado de UI de 2 níveis, mini-refactor à parte) com escopo e teste próprios.
+- Anti-corrupção de `<option>` legado (`storeType`/`orderType`/`condType` desconhecidos) vive
+  nos sub-enums ⇒ **fora do escopo, não tocar**.
 
 ### Fase 5 — Produto (direcional, NÃO detalhar agora)
 

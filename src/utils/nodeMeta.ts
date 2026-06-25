@@ -1,31 +1,16 @@
-import type { Action, BotIntent, NodeKind } from '../types'
+import type { BotIntent } from '../types'
 
 /**
- * Metadados compartilhados do Modelo B (Fase 6): mapeamento ActionType → NodeKind,
- * rótulos de gatilho (ConditionType) e de prioridade (PriorityType).
- * Fonte de verdade dos valores: docs/MODELO-INTENCAO-OMNICHAT.md.
+ * Metadados compartilhados do Modelo B (Fase 6): rótulos de gatilho (ConditionType)
+ * e de prioridade (PriorityType). Fonte de verdade dos valores: docs/MODELO-INTENCAO-OMNICHAT.md.
  *
  * Mantido fora de parseFlow.ts porque também é consumido pelos componentes de nó
  * e pelo DetailPanel — evita duplicar os mesmos enums em vários lugares.
+ *
+ * NOTA (Fase 2): o mapeamento `action.type` → NodeKind migrou para `nodeCatalog.ts`
+ * (fonte única kind-level). Re-exportado aqui para preservar os imports existentes.
  */
-
-/** Mapeia os 11 ActionTypes da plataforma para o tipo de nó do visualizador. */
-export function actionToNodeKind(action?: Action | null): NodeKind {
-  switch (action?.type) {
-    case 'choice':             return 'choiceNode'
-    case 'captureData':        return 'captureNode'
-    case 'setData':            return 'setDataNode'
-    case 'transfer':           return 'transferNode'
-    case 'waitForInteraction': return 'waitNode'
-    case 'endConversation':    return 'endNode'
-    case 'external':           return 'apiCallNode'   // chamada de API (≠ outro bot)
-    case 'order':              return 'orderNode'
-    case 'captureCsat':        return 'csatNode'
-    case 'store':              return 'storeNode'
-    case 'none':
-    default:                   return 'defaultNode'   // só mensagens / encadeamento
-  }
-}
+export { actionToNodeKind } from './nodeCatalog'
 
 /** Rótulos do enum ConditionType (gatilho da condição) exibidos na plataforma. */
 export const CONDITION_TYPE_LABELS: Record<string, string> = {
