@@ -24,10 +24,17 @@ export class FlowStore {
   readonly filePath: string | null
   /** Cópia do estado na 1ª mutação da sessão (a base do `revert`). */
   private snapshot: BotFlowJson | null = null
+  /**
+   * Conteúdo bruto do último `fromFile` ou `save`. Usado por `reloadFromFile`
+   * para detectar se o arquivo foi modificado externamente (disco ≠ este valor
+   * → recarregar; disco = este valor → noop).
+   */
+  private lastSavedContent: string | null = null
 
-  private constructor(model: BotFlowJson, filePath: string | null) {
+  private constructor(model: BotFlowJson, filePath: string | null, lastSavedContent: string | null = null) {
     this.model = model
     this.filePath = filePath
+    this.lastSavedContent = lastSavedContent
   }
 
   /** Store sobre um modelo em memória — sem persistência (save/revert não tocam disco). */
@@ -38,7 +45,7 @@ export class FlowStore {
   /** Carrega o fluxo de um arquivo JSON no disco (caminho local da spike). */
   static fromFile(filePath: string): FlowStore {
     const raw = readFileSync(filePath, 'utf8')
-    return new FlowStore(JSON.parse(raw) as BotFlowJson, filePath)
+    return new FlowStore(JSON.parse(raw) as BotFlowJson, filePath, raw)
   }
 
   /** Caminho do backup de sessão, ao lado do arquivo (`<arquivo>.bak`). */
@@ -78,7 +85,27 @@ export class FlowStore {
   /** Persiste o modelo em disco (no-op em store de memória). Mutações salvam sem gate (Q2). */
   save(): void {
     if (!this.filePath) return
-    writeFileSync(this.filePath, serializeFlow(this.model), 'utf8')
+    const content = serializeFlow(this.model)
+    writeFileSync(this.filePath, content, 'utf8')
+    this.lastSavedContent = content
+  }
+
+  /**
+   * Relê o arquivo do disco e atualiza o modelo em memória se o conteúdo
+   * divergiu desde o último `fromFile`/`save`. É o gatilho de sincronia
+   * do agente: o backend chama isto no início de cada turno para que o
+   * agente enxergue edições manuais feitas pelo front entre turnos.
+   *
+   * Retorna `true` se houve reload, `false` se o arquivo não mudou.
+   * No-op (retorna `false`) em store de memória (`filePath === null`).
+   */
+  reloadFromFile(): boolean {
+    if (!this.filePath) return false
+    const current = readFileSync(this.filePath, 'utf8')
+    if (current === this.lastSavedContent) return false
+    this.model = JSON.parse(current) as BotFlowJson
+    this.lastSavedContent = current
+    return true
   }
 
   /**

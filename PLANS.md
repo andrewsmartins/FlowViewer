@@ -1,53 +1,51 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-25 (plano da caixinha de chat — PoC local do agente)
+## 🔄 Handoff — 2026-06-25 (passo 2 concluído — reloadFromFile() verde, 457 testes)
 
-**Foco da próxima sessão:** **escrever o smoke do passo 1** do plano da caixinha de chat — provar
-que o **Claude Agent SDK, autenticado pela assinatura do CLI (sem key), dirige o `mcp/server.ts`
-por stdio e streama eventos de tool**. É o único elo NÃO-verificado; o resto é montar peças que já
-existem. Plano completo em PLANS § "Caixinha de chat na página — PoC local do agente construtor".
+**Foco da próxima sessão:** **passo 3 do build** — Ponte WebSocket + página HTML mínima (fora do
+React): servidor Node recebe 1 mensagem via WS, chama `query()` do Agent SDK, e renderiza texto
+streaming + atividade de tools no browser. Prova o transporte ponta-a-ponta antes de tocar em React.
+Plano completo em PLANS § "Caixinha de chat na página — PoC local do agente construtor".
 
-**Onde paramos:** branch de feature (este commit). Sessão de **planejamento puro** (interrogatório,
-skill `interrogar`) — **nenhum código de produto tocado**. Saída: nova seção no PLANS com objetivo,
-diagrama Mermaid, **8 decisões travadas**, ordem de build (amostra mínima primeiro) e plano de teste
-do caminho infeliz. Este commit também carrega o **sync de docs da Fase 2** da sessão anterior
-(PLANS + `docs/PLANS-ARCHIVE.md`), que seguia não-commitado no working tree.
+**Onde paramos:** branch **`docs/chat-poc-plan`**. **Passo 2 concluído** ✅ — implementado
+`reloadFromFile()` em [src/tools/flowStore.ts](src/tools/flowStore.ts): rastreia `lastSavedContent`
+(string bruta) e relê o arquivo somente se o disco divergiu do último `fromFile`/`save()`. 4 testes
+novos em [src/tools/flowTools.test.ts](src/tools/flowTools.test.ts) (load→escrita externa→reload→true;
+sem mudança→false; após save()→false; fromObject→false). **457 testes, `mcp:typecheck` limpo.**
+Tudo **não-commitado** — ver fios soltos.
 
-**Decisões-âncora travadas (não reabrir sem novo interrogatório):** (1) PoC **local só no dev build**
-(gh-pages segue read-only — mixed-content); (2) motor = **Claude Agent SDK headless com auth do CLI**
-(sem `ANTHROPIC_API_KEY`); (3) canvas **auto-reload por turno** (JSON inteiro no evento
-`flow-updated`); (4) UX **texto streaming + atividade de tools**; (5) agente+manual **coexistem por
-handoff-de-turno + lock**; (6) precisa de **`reloadFromFile()` novo no FlowStore** (hoje lê só no
-boot — [flowStore.ts:38-42](src/tools/flowStore.ts#L38-L42)); (7) **snapshot por turno + guard de
-parseFlow**; (8) **WebSocket + 1 sessão do SDK por chat**.
+**Fios soltos / meio-feito (NÃO-COMMITADO — decidir antes de seguir):**
+- [src/tools/flowStore.ts](src/tools/flowStore.ts) e [src/tools/flowTools.test.ts](src/tools/flowTools.test.ts) — passo 2 pronto para commitar.
+- `package.json` + `package-lock.json` — devDep `@anthropic-ai/claude-agent-sdk@0.3.191`. Commitar
+  junto com o passo 2 ou criar commit separado "chore: add agent sdk devDependency".
+- [scripts/smoke-chat-poc.mjs](scripts/smoke-chat-poc.mjs) — untracked (smoke do passo 1, prova de
+  conceito). Manter local, commitar como script auxiliar, ou apagar — ainda não decidido.
+- Limpeza de branches mergeadas (10 locais / 5 remotas órfãs em `main`) — pendente, não bloqueia.
 
-**Fios soltos / meio-feito:** nada de código novo. **Pendente:** escrever o smoke (passo 1). A
-decisão antiga de **limpeza de branches mergeadas** (10 locais / 5 remotas órfãs em `main`) segue
-não respondida.
+**Armadilhas herdadas ainda válidas:**
+1. `apiKeySource` volta `"none"` (não `"oauth"`) sem key — é correto; não assertar `"oauth"`.
+2. MCP chega como `deferred` no Agent SDK aninhado dentro do Claude Code — validar por comportamento
+   observado (tool foi chamada + arquivo mudou), nunca pelo snapshot do `system/init`.
+3. Smoke rodou aninhado no Claude Code — prova 100% fiel = terminal limpo fora do Claude Code.
+4. `query()` exige `settingSources: []` para não carregar o `.mcp.json` do projeto e subir 2º MCP.
+5. MCP vivo roda código ANTIGO — `reloadFromFile()` novo só vale após reiniciar o Claude Code.
+   Passo 3 (WS) sobe um processo Node novo por sessão, então o MCP vivo já nasce com o código atual.
+6. `save()` normaliza CRLF→LF (invariante do `serializeFlow`).
 
-**Armadilhas (gotchas relevantes para a próxima fase):**
-1. **MCP roda o código ANTIGO** (sobe no boot via `.mcp.json`) — o `reloadFromFile()` novo só vale
-   após **reiniciar o Claude Code**. O smoke roda o MCP em **processo novo** (`tsx mcp/server.ts`,
-   caminho **absoluto** `D:/Fluxo/...`), `FLOW_FILE` p/ **cópia descartável** (nunca
-   `public/masterFlow.json`). Não deixar smoke no repo.
-2. **`save()` do MCP normaliza CRLF→LF** no `FLOW_FILE`.
-3. **Mixed-content:** caixinha só no dev (localhost); usar **proxy WS do Vite** p/ mesma origem.
-4. **Auth de assinatura do CLI** usada programaticamente: limites de rate + ToS miram interativo —
-   OK p/ PoC interna; Fase 5 troca por key server-side.
-5. **Confiar no git, não no rótulo do handoff** — validar o estado real ao retomar.
+**Próximo passo imediato:** Commitar o passo 2 (`flowStore.ts` + testes + SDK dep — pode ser 1 commit
+ou 2), depois criar `backend/server.ts` (ou `scripts/ws-server.mjs`) com: servidor `ws`, 1 instância
+do Agent SDK por conexão WS, stream de eventos `assistant`/`tool_use`→`tool_result` mandados ao
+browser, evento `flow-updated` ao fim do turno com o JSON do arquivo lido. Página HTML mínima (`index.html`)
+com caixinha de texto + `<pre>` para o stream.
 
-**Próximo passo imediato:** branch de feature; escrever script Node (~30 linhas) com o Agent SDK
-`query()`, `FLOW_FILE` descartável e prompt fixo ("crie um nó de mensagem"); assert: chegam eventos
-de stream **E** o arquivo mudou. Se passar, todo o resto é montagem.
+**Ponteiros:** plano em PLANS § "Caixinha de chat" (decisão 3 = sincronia por turno; decisão 8 =
+transporte WS); smoke em [scripts/smoke-chat-poc.mjs](scripts/smoke-chat-poc.mjs);
+[src/tools/flowStore.ts](src/tools/flowStore.ts) (`reloadFromFile()` recém-adicionado);
+`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` (`query()`, `Options`, `SDKMessage`).
 
-**Ponteiros:** plano em PLANS § "Caixinha de chat na página"; [flowStore.ts:38-42](src/tools/flowStore.ts#L38-L42)
-(precisa de reload); [mcp/server.ts](mcp/server.ts) (19 tools) + [src/tools/](src/tools/) (camada
-durável); `.mcp.json`; round-trip de export (Fase 1/v0.6.0) reusado no flush canvas→arquivo; Fase 5
-(produto) em PLANS §"Fase 5".
-
-**Skills sugeridas ao retomar:** `/verify` p/ validar a caixinha ao vivo (gotcha 1, processo novo);
-`/code-review` antes de commitar código.
+**Skills sugeridas ao retomar:** `/code-review` antes de commitar o passo 2; `/verify` quando a ponte
+WS estiver rodando (passo 3); `/verify` de novo com a UI integrada (passo 4).
 
 <!-- HANDOFF:END -->
 

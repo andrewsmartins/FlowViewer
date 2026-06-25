@@ -340,6 +340,48 @@ describe('Fase 4b — connect_to_bot (redirect cross-bot)', () => {
   })
 })
 
+describe('FlowStore.reloadFromFile — sincronia com edições externas', () => {
+  it('retorna true e atualiza o modelo quando o arquivo foi modificado externamente', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const before = store.flow.list.length
+
+    // Simula o front gravando o arquivo entre turnos: remove o último nó e escreve
+    const edited: BotFlowJson = { list: store.flow.list.slice(0, -1) }
+    writeFileSync(flowPath, JSON.stringify(edited, null, 2), 'utf8')
+
+    const reloaded = store.reloadFromFile()
+
+    expect(reloaded).toBe(true)
+    expect(store.flow.list).toHaveLength(before - 1)
+  })
+
+  it('retorna false e não toca o modelo se o arquivo não mudou', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const before = store.flow.list.length
+
+    const reloaded = store.reloadFromFile()
+
+    expect(reloaded).toBe(false)
+    expect(store.flow.list).toHaveLength(before)
+  })
+
+  it('retorna false após save() sem mudança externa (disco = o que salvamos)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    createNode(store, 'defaultNode', 'spike_reload_save')
+
+    // save() escreve no disco e atualiza lastSavedContent
+    // → reloadFromFile deve ver o mesmo conteúdo e retornar false
+    const reloaded = store.reloadFromFile()
+
+    expect(reloaded).toBe(false)
+  })
+
+  it('retorna false em store de memória (fromObject — sem arquivo)', () => {
+    const store = FlowStore.fromObject({ list: [] })
+    expect(store.reloadFromFile()).toBe(false)
+  })
+})
+
 describe('Leitura — list_nodes e describe_node compactos', () => {
   it('list_nodes traz uma linha por nó com id, kind e alvo', () => {
     const store = FlowStore.fromFile(flowPath)
