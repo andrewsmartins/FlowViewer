@@ -1,46 +1,49 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-24 (merge da spike concluído)
+## 🔄 Handoff — 2026-06-24 (Fase 2 concluída na branch, aguardando review/merge)
 
-**Foco da próxima sessão:** **escolher e iniciar o próximo trabalho** — os dois candidatos
-naturais são (A) **Fase 2 (`NODE_CATALOG`)**, o refactor adiado que toca o DetailPanel (~3500
-linhas, 383 testes) — `/interrogar` antes, suíte verde como gate; ou (B) **editor do nó Pedido**
-(planejado em §"Nó Pedido", **não** implementado — espelho do CSAT já entregue). A spike MCP
-está **fechada e na `main`**; não há mais nada pendente dela.
+**Foco da próxima sessão:** **revisar e mergear a Fase 2** (`NODE_CATALOG`), depois escolher o
+próximo trabalho. A Fase 2 está **completa na branch `feat/node-catalog`** (4 commits, NÃO
+mergeada, NÃO pushada). Candidato natural seguinte: (B) **editor do nó Pedido** (§"Nó Pedido",
+plano fechado, **não** implementado — mirror da `StoreActionSection`, unitário sem Playwright).
 
-**Onde paramos:** branch **`main`**, **working tree LIMPO** e **sincronizada com `origin/main`**.
-A `feat/mcp-tools-spike` foi **mergeada na `main`** (merge `15cbf54`, `--no-ff`, push feito) — traz
-a spike MCP completa (Fases 1/3/4/4b: camada de tools, servidor MCP stdio, 8 resolvers nome→ID,
-`set_menu`/`connect_to_bot`) **e**, de bônus, os threads ortogonais que estavam pendentes:
-masterFlow Partes 11/12 e o editor Captura CSAT (v0.27.0). Gate antes do merge: **435 testes
-verdes**, `tsc` app e `mcp:typecheck` limpos. PLANS.md arquivado (Fases 1/3/4/4b + CSAT + masterFlow
-migraram verbatim para [docs/PLANS-ARCHIVE.md](docs/PLANS-ARCHIVE.md)).
+**Onde paramos:** branch **`feat/node-catalog`** (criada a partir da `main`), **working tree
+LIMPO**, **4 commits à frente da `main`**, **sem push**. Refactor da Fase 2 **sem mudança de
+comportamento**, centralizando os fatos kind-level dos tipos de nó num único
+[src/utils/nodeCatalog.ts](src/utils/nodeCatalog.ts) (Node-pure); `nodeMeta`/`intentTemplates`/MCP
+passam a **derivar** dele. Gate final: app `tsc` ✅ · `mcp:typecheck` ✅ · **453 testes** (435 +
+18 golden) ✅ · manifesto MCP **byte-idêntico** ao anterior (smoke efêmero tsx).
 
-**Fios soltos / meio-feito:** nada de código. **Limpeza pendente (opcional):** as branches
-`feat/mcp-tools-spike` e `feat/order-node-editor` (esta 100% contida na spike) já estão na `main`
-— podem ser deletadas (local + remota) quando quiser.
+**Fios soltos / meio-feito:** nada de código — Fase 2 fechada e verde. **Pendente:** `/code-review`
+do diff completo da branch, **merge na `main`** (`--no-ff`, espelhar o fluxo da spike) e push.
+**Limpeza opcional (de antes):** branches `feat/mcp-tools-spike` e `feat/order-node-editor` já na
+`main` podem ser deletadas (local+remota).
 
 **Armadilhas (gotchas — não redescobrir):**
-1. **MCP em execução roda o código ANTIGO.** O servidor MCP sobe no boot do Claude Code via
-   `.mcp.json`; mudanças nas tools **só aparecem após reiniciar o Claude Code**. Smoke de tools
-   recém-mexidas: via `tsx` efêmero (funções reais), não via MCP ao vivo.
-2. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** (`public/masterFlow.json`). Rodar prova
-   via MCP deixa diff **só de EOL** — restaurar com `git checkout -- public/masterFlow.json`.
-3. **smoke efêmero:** não deixar `_smoke-*.ts` no repo. Boilerplate de token/fetch para reusar:
-   [scripts/smoke-phase4-resolvers.ts](scripts/smoke-phase4-resolvers.ts).
-4. **`git merge` não aceita `-F -` (stdin)** como o `git commit` aceita — usar `-m` ou `-F arquivo`.
+1. **Dois sistemas de label** (decisão central da Fase 2): badge/canvas é CURTO ("Aguarda",
+   "Variável", "CSAT") e vive no `KIND_LABELS_LIGHT/DARK` do DetailPanel (Sistema B, +cor=tema,
+   consumidor único); paleta/MCP é DESCRITIVO ("Aguardar interação", …) e é o `label` do
+   `NODE_CATALOG` (Sistema P). **NÃO consolidar a badge no catálogo** — mudaria a UI.
+2. **`actionToNodeKind` é re-exportado de `nodeMeta`** (lar conceitual; import coeso com parseFlow),
+   mas DEFINIDO em `nodeCatalog`. Os demais fatos kind-level NÃO são mais re-exportados de
+   `intentTemplates` — importar direto de `nodeCatalog`.
+3. **MCP em execução roda o código ANTIGO** (sobe no boot via `.mcp.json`); mudanças nas tools só
+   após reiniciar o Claude Code. Smoke via `tsx` efêmero com caminho **absoluto** (`D:/Fluxo/...`),
+   não relativo ao scratchpad. Não deixar `_smoke-*.ts` no repo.
+4. **`save()` do MCP normaliza CRLF→LF no `FLOW_FILE`** — diff só de EOL restaura com
+   `git checkout -- public/masterFlow.json`.
+5. **`git merge` não aceita `-F -` (stdin)** — usar `-m` ou `-F arquivo`.
 
-**Próximo passo imediato:** perguntar ao Andy **A (Fase 2) ou B (nó Pedido)**. Se **A**:
-`/interrogar` a Fase 2 antes de tocar o DetailPanel, suíte verde como gate. Se **B**: seguir o
-plano já fechado em §"Nó Pedido" (mirror da `StoreActionSection`, unitário sem Playwright).
+**Próximo passo imediato:** `/code-review` do diff `main..feat/node-catalog`; se limpo, mergear na
+`main` (`--no-ff`) e push. Só então escolher A/B do backlog (provável B: nó Pedido).
 
-**Ponteiros:** merge `15cbf54` na `main`; PLANS §"Fase 2" e §"Nó Pedido" (planos vivos);
-spike arquivada em [docs/PLANS-ARCHIVE.md](docs/PLANS-ARCHIVE.md) (Fases 1/3/4/4b + CSAT + masterFlow).
+**Ponteiros:** branch `feat/node-catalog` commits `ab2b0e5`/`5788e28`/`b290d00`/`086dffb`; plano
+fechado em PLANS §"Fase 2" (decisões + migração + dívida dos sub-enums); §"Nó Pedido" (próximo
+candidato); CHANGELOG §"Alterado" tem a entrada da Fase 2.
 
-**Skills sugeridas ao retomar:** `/interrogar` antes da Fase 2 (refactor arriscado) ou do nó
-Pedido; `/code-review` antes de qualquer commit novo; `/verify` se for validar o MCP ao vivo
-(lembrar do reinício, gotcha 1).
+**Skills sugeridas ao retomar:** `/code-review` do diff antes do merge; `/verify` se for validar o
+MCP ao vivo (gotcha 3, reiniciar); `/interrogar` antes de iniciar o nó Pedido.
 
 <!-- HANDOFF:END -->
 
