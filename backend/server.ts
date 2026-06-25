@@ -11,7 +11,7 @@
  *      PORT=4001 npx tsx backend/server.ts   (override da porta)
  */
 import { createServer } from 'node:http'
-import { readFileSync, copyFileSync, mkdtempSync } from 'node:fs'
+import { readFileSync, writeFileSync, copyFileSync, mkdtempSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -56,7 +56,24 @@ wss.on('connection', (ws: WebSocket) => {
   }
 
   ws.on('message', async (data: Buffer) => {
-    const prompt = data.toString().trim()
+    // Aceita dois formatos: string crua (UI HTML do passo 3) ou
+    // `{ prompt, flow }` (caixinha React, decisão 5 — flush do canvas). O `flow`
+    // é o JSON do fluxo JÁ serializado (round-trip de exportar), gravado verbatim.
+    const raw = data.toString()
+    let prompt = ''
+    let flowToFlush: string | undefined
+    try {
+      const parsed = JSON.parse(raw) as { prompt?: unknown; flow?: unknown }
+      if (parsed && typeof parsed === 'object' && 'prompt' in parsed) {
+        prompt = String(parsed.prompt ?? '').trim()
+        // Só aceita flush não-vazio — string vazia corromperia o reload do MCP.
+        if (typeof parsed.flow === 'string' && parsed.flow.trim()) flowToFlush = parsed.flow
+      } else {
+        prompt = raw.trim()
+      }
+    } catch {
+      prompt = raw.trim()
+    }
     if (!prompt) return
 
     if (running) {
@@ -66,6 +83,21 @@ wss.on('connection', (ws: WebSocket) => {
 
     running = true
     send({ type: 'status', text: 'Pensando…' })
+
+    // Flush do canvas → arquivo ANTES do turno (decisão 5/6): persiste as edições
+    // manuais para o MCP recarregar (reloadFromFile) e o agente partir do estado
+    // que o usuário vê. Único escritor por vez — o canvas trava durante o turno.
+    if (flowToFlush !== undefined) {
+      try {
+        writeFileSync(workFile, flowToFlush)
+        console.log('[ws] flush do canvas → arquivo de trabalho')
+      } catch (err) {
+        console.error('[ws] falha ao gravar o flush do canvas:', err)
+        send({ type: 'error', message: 'Não foi possível persistir o canvas antes do turno.' })
+        running = false
+        return
+      }
+    }
     console.log(`[ws] turno iniciado${sessionId ? ' (resume ' + sessionId.slice(0, 8) + '…)' : ''}`)
 
     try {
@@ -108,10 +140,12 @@ wss.on('connection', (ws: WebSocket) => {
         }
       }
 
-      // Fim do turno: lê o arquivo e manda o número de nós p/ a UI.
-      const flowJson = JSON.parse(readFileSync(workFile, 'utf8')) as { list?: unknown[] }
-      const nodeCount = flowJson.list?.length ?? 0
-      send({ type: 'flow-updated', nodeCount })
+      // Fim do turno: lê o arquivo e manda o FLUXO INTEIRO p/ a UI (decisão 3) —
+      // o canvas React faz `parseFlow(flow)` com guard e re-renderiza. `nodeCount`
+      // segue junto para a UI HTML mínima do passo 3 e para o log.
+      const flow = JSON.parse(readFileSync(workFile, 'utf8')) as { list?: unknown[] }
+      const nodeCount = flow.list?.length ?? 0
+      send({ type: 'flow-updated', flow, nodeCount })
       send({ type: 'done' })
       console.log(`[ws] turno concluído — ${nodeCount} nó(s) no fluxo`)
     } catch (err: unknown) {

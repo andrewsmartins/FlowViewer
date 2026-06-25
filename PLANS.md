@@ -1,56 +1,63 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-25 (passo 3 concluído — ponte WS + UI mínima)
+## 🔄 Handoff — 2026-06-25 (passo 3 VERIFICADO ponta-a-ponta — `/verify` PASS)
 
 **Foco da próxima sessão:** **passo 4 do build** — Integrar a caixinha de chat no FlowViewer React:
 componente `ChatPanel`, lock do canvas durante o turno, flush canvas→arquivo no ENVIAR (reusa export),
 `flow-updated`→`parseFlow` com guard de parse, snapshot por turno + "desfazer último turno".
 Plano em PLANS § "Caixinha de chat na página — PoC local do agente construtor" (decisões 4, 5, 7).
+**Primeiro item concreto do passo 4: incluir o `flowJson` COMPLETO no evento `flow-updated`** — ver
+"Fios soltos" abaixo; é pré-requisito do re-render do canvas React.
 
-**Onde paramos:** branch **`docs/chat-poc-plan`**. **Passo 3 concluído** ✅ (não-commitado) —
-criados [backend/server.ts](backend/server.ts) (HTTP + WebSocket, Agent SDK com `resume` por
-`session_id`, streama `text`/`tool`/`flow-updated`/`done`/`error`) e [backend/index.html](backend/index.html)
-(UI dark mínima: bubbles usuário/agente/tool/flow-updated/erro, dot de status, input travado durante
-o turno). `npm run ws:dev` → porta 4000. Smoke: HTTP 200 e HTML correto confirmados. O passo 2
-(`flowStore.ts` + testes) foi commitado na sessão anterior (`18bf0e7`) — árvore estava limpa ao
-iniciar esta sessão.
+**Onde paramos:** branch **`docs/chat-poc-plan`**, **árvore limpa**. Passo 3 **commitado** (`64320c0`)
+— [backend/server.ts](backend/server.ts) (HTTP + WebSocket, Agent SDK com `resume` por `session_id`,
+streama `text`/`tool`/`flow-updated`/`done`/`error`) e [backend/index.html](backend/index.html) (UI dark
+mínima). Nesta sessão **rodei `/verify` com prompt real** (`npm run ws:dev` → porta 4000) e deu **PASS**:
+o Agent SDK com auth de assinatura (sem key) dirigiu o MCP stdio, streamou tools (`create_node`,
+`list_nodes`…), o arquivo de trabalho mudou no disco (42→43 nós, nó `Teste` persistido), o **lock**
+("Turno em andamento") segurou a 2ª mensagem, e o **`resume`** disparou no 2º turno (log
+`turno iniciado (resume …)`). O **maior risco do PoC está derriscado.**
 
-**Fios soltos / meio-feito (NÃO-COMMITADO):**
-- [backend/server.ts](backend/server.ts), [backend/index.html](backend/index.html),
-  `package.json`/`package-lock.json` (devDep `ws@^8` + `@types/ws` + script `ws:dev`) — prontos
-  para commitar.
-- Teste WS ponta-a-ponta com prompt real (manda mensagem → streaming → `flow-updated`) **não feito**
-  nesta sessão — só HTTP foi verificado. Fazer manualmente antes ou como `/verify` após o commit.
-- [scripts/smoke-chat-poc.mjs](scripts/smoke-chat-poc.mjs) — untracked intencional (prova de
-  conceito de auth; ver comentário no topo do arquivo). Decisão sobre commitar ou apagar ainda
-  em aberto.
+**Fios soltos / meio-feito:**
+- ⚠️ **`flow-updated` manda só `{ nodeCount }`, NÃO o JSON inteiro** — [server.ts:112-114](backend/server.ts#L112-L114).
+  A decisão 3 do plano exige o JSON completo embutido para a UI fazer `parseFlow`. OK para a UI HTML
+  mínima do passo 3, mas o **passo 4 (canvas React) precisa do `flowJson` completo no evento** — é o
+  primeiro item a implementar.
+- ⚠️ **Agente não consegue setar o texto de um `defaultNode`** ("sem campos configuráveis" via MCP) —
+  "crie um nó de mensagem com texto X" tem sucesso pela metade (cria o nó, não grava o texto). Não é
+  bug do passo 3, é gap da superfície de tools do MCP; casa com a dívida de sub-enums adiada na Fase 2.
+- [scripts/smoke-chat-poc.mjs](scripts/smoke-chat-poc.mjs) — já está **tracked** (dúvida "commitar ou
+  apagar" resolvida). Fio fechado.
 - Limpeza de branches órfãs — pendente, não bloqueia.
 
 **Armadilhas desta sessão (não estão no PLANS ainda):**
 1. `sdk.d.ts` do Agent SDK tem erros de tipos internos — usar `--skipLibCheck` em qualquer
    `tsc` que cubra o `backend/`. O `mcp:typecheck` (tsconfig do MCP) não cobre `backend/`.
-2. `resume` no SDK exige o `session_id` do evento `system/init` (campo `msg.session_id`, não
-   `msg.apiKeySource`). O servidor guarda por conexão WS e passa como `{ resume: sessionId }` no
-   próximo `query()`. Mesmo ao resumir, é necessário repassar `mcpServers` e `settingSources: []`
-   pois o subprocesso é novo.
-3. `ws` não é dep transitiva — foi instalado como devDep (`npm install --save-dev ws @types/ws`).
+2. `resume` no SDK exige o `session_id` do evento `system/init` (campo `msg.session_id`). O servidor
+   guarda por conexão WS e passa como `{ resume: sessionId }` no próximo `query()`. Mesmo ao resumir,
+   repassar `mcpServers` e `settingSources: []` pois o subprocesso é novo. **Verificado funcionando.**
+3. `ws` é devDep (`npm install --save-dev ws @types/ws`). Cliente de teste fora da árvore do projeto
+   não resolve `ws` por bare specifier — usar `createRequire('d:/Fluxo/package.json')`.
+4. Servidor de teste deve subir com `run_in_background` do Bash (o `&` do Git Bash não sobrevive
+   entre chamadas de tool). Porta isolada (ex.: 4042) evita colisão.
 
 **Armadilhas herdadas ainda válidas:**
-4. `query()` exige `settingSources: []` para não carregar `.mcp.json` e subir 2º MCP.
-5. Smoke do passo 1 rodou aninhado no Claude Code — prova 100% fiel = terminal limpo fora do CC.
-6. `save()` normaliza CRLF→LF (invariante do `serializeFlow`).
+5. `query()` exige `settingSources: []` para não carregar `.mcp.json` e subir 2º MCP.
+6. Smoke rodou aninhado no Claude Code — auth funcionou mesmo assim; prova 100% fiel = terminal limpo
+   fora do CC (incremental, não bloqueia).
+7. `save()` normaliza CRLF→LF (invariante do `serializeFlow`).
 
-**Próximo passo imediato:** Commitar o passo 3 (1 commit: `backend/server.ts` + `backend/index.html`
-+ `package.json`/`package-lock.json`), testar WS com prompt real, depois implementar o passo 4
-(integração React: `ChatPanel`, lock, flush, guard).
+**Próximo passo imediato:** No passo 4, começar editando [server.ts:111-115](backend/server.ts#L111-L115)
+para mandar o `flowJson` completo (não só `nodeCount`) no `flow-updated`; depois o componente React
+`ChatPanel` consome o evento → `parseFlow` com guard → re-render + destrava o canvas.
 
 **Ponteiros:** plano em PLANS § "Caixinha de chat" (decisões 4=UX; 5=lock/flush; 6=reloadFromFile;
 7=snapshot+guard; 8=WS+resume); [backend/server.ts](backend/server.ts);
-[backend/index.html](backend/index.html); commit passo 2: `18bf0e7`.
+[backend/index.html](backend/index.html); commit passo 3: `64320c0`; passo 2: `18bf0e7`.
 
-**Skills sugeridas ao retomar:** `/code-review` antes de commitar; `/verify` após testar o WS
-com prompt real (passo 3 completo); `/verify` novamente com a UI React integrada (passo 4).
+**Skills sugeridas ao retomar:** `/code-review` antes de commitar o passo 4; `/verify` com a UI React
+integrada (manda mensagem → canvas re-renderiza com o nó novo + destrava).
 
 <!-- HANDOFF:END -->
 
@@ -334,17 +341,22 @@ flowchart TB
    passar `model` no `query()` se quiser. SSE+POST seria a alternativa de transporte.
 
 **Ordem de build (amostra mínima primeiro — de-risca o desconhecido antes da UI):**
-1. **Smoke do backend (sem UI):** script Node com o Agent SDK `query()`, auth do CLI, `FLOW_FILE`
+1. ✅ **Smoke do backend (sem UI):** script Node com o Agent SDK `query()`, auth do CLI, `FLOW_FILE`
    apontando p/ cópia descartável, prompt fixo ("crie um nó de mensagem"). Assert: chegam eventos
    de stream **e** o arquivo mudou. Prova o elo mais arriscado — **o Agent SDK com auth de
    assinatura dirige o MCP stdio e streama eventos de tool?** — antes de tocar em React.
-2. **`reloadFromFile()` no FlowStore + teste** (load → escrita externa → reload → assert vê o novo),
-   no padrão de [flowTools.test.ts](src/tools/flowTools.test.ts).
-3. **Ponte WS + página HTML mínima** (fora do React): manda 1 mensagem, renderiza texto streaming +
-   atividade de tools. Prova transporte + streaming ponta-a-ponta.
-4. **Integração no FlowViewer:** componente da caixinha; `flow-updated`→`parseFlow` com guard;
-   lock do canvas no turno; flush canvas→arquivo no ENVIAR (reusa export); snapshot por turno +
-   "desfazer último turno".
+2. ✅ **`reloadFromFile()` no FlowStore + teste** (load → escrita externa → reload → assert vê o novo),
+   no padrão de [flowTools.test.ts](src/tools/flowTools.test.ts). (commit `18bf0e7`)
+3. ✅ **Ponte WS + página HTML mínima** (fora do React): manda 1 mensagem, renderiza texto streaming +
+   atividade de tools. Prova transporte + streaming ponta-a-ponta. (commit `64320c0`, `/verify` PASS)
+4. ✅ **Integração no FlowViewer** (esta sessão): [ChatPanel.tsx](src/components/ChatPanel.tsx) +
+   [useChatSocket.ts](src/hooks/useChatSocket.ts) (widget flutuante, texto streaming + atividade de
+   tools, input travado); `flow-updated`→`parseFlow` com guard (mantém último canvas bom em falha);
+   lock do canvas no turno (shield read-only + fecha o painel); flush canvas→WS no ENVIAR (reusa
+   `serializeFlow`); **snapshot por turno = o Ctrl+Z já existente** (decisão 7 simplificada — front
+   `FlowHistory` em vez de snapshot-de-arquivo no backend; o flush reconcilia o MCP no turno seguinte).
+   Backend: `flow-updated` carrega o fluxo inteiro + aceita `{ prompt, flow }` p/ flush. Proxy WS no
+   Vite (`/agent-ws`). Typecheck (app+backend) e 457 testes verdes; `/verify` da UI pendente.
 
 **Riscos/pendências (e como cada um é testado):**
 - **[maior risco, não verificado] Agent SDK + auth de assinatura dirigindo MCP stdio.** ToS da
