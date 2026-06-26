@@ -3,34 +3,34 @@
 <!-- HANDOFF:START -->
 ## 🔄 Handoff — 2026-06-26
 
-**Foco da próxima sessão:** implementar a **Fase 1** (camada de tools) da feature **"Menus que roteiam de verdade" (v0.33.0)** — plano recém-fechado por `/interrogar` (6 Qs), gravado no corpo do PLANS (§"Menus que roteiam de verdade"). **Antes disso**, resolver o débito ainda aberto: a feature **Categorias (v0.32.0) segue NÃO commitada**.
+**Foco da próxima sessão:** implementar a **Fase 1** (camada de tools) da feature **"Menus que roteiam de verdade" (v0.33.0)** — plano fechado por `/interrogar` (6 Qs), gravado no corpo do PLANS (§"Menus que roteiam de verdade"). **Débito da v0.32.0 já fechado nesta sessão** (commit abaixo).
 
-**Plano novo desta sessão (NÃO iniciado, só planejado):** menus de Escolha não roteiam na plataforma porque o roteamento real é por **`keyword` na intenção-alvo** (match "contém"), não pelo `choices[]` (que só dispara por número posicional — morto p/ botões, pois clicar envia o TEXTO do botão). Faltam setters de `keywords`/`context` (campos de cabeçalho, sem tool — como `category` era). Solução em **2 fases**:
-- **Fase 1 (MCP-first, a fazer agora):** funções puras `setKeywords(node, keywords[])` + `setContext(node, ctx|vazio)` em [flowTools.ts](src/tools/flowTools.ts); registrar as 2 tools em [mcp/server.ts](mcp/server.ts) (11→13) + guidance; **3 nudges** no `validate()` (alvo sem keyword · keyword duplicada entre alvos · context p/ alvo de 2 menus); unit tests + `mcp:typecheck`. **Já conserta a dor reportada** — shippável sozinha (v0.33.0). Fecha com `/verify` e2e.
-- **Fase 2 (sessão própria):** 2 campos por opção no [DetailPanel.tsx:3569-3582](src/components/DetailPanel.tsx#L3569-L3582) (campo keyword pré-preenchido com a do alvo + checkbox context default OFF) + escrita **cross-intent** (patcheia os alvos ao "Aplicar"). Reusa os setters da Fase 1.
+**Onde paramos:** branch `feat/capture-node-guidance`. Rodei `/code-review` (high effort) no diff da v0.32.0 e **achei 1 bug real, corrigido antes do commit**: `findCategoryNudges` quebrava o `validate()` (`normalizeCategory(undefined).trim()`) quando um export real omite o cabeçalho `category` — o type diz `string` mas `FlowStore.fromFile` faz `JSON.parse … as BotFlowJson` cego. Fix: tratar `category` ausente como `'Sem Categoria'` ([flowTools.ts:409](src/tools/flowTools.ts#L409)) + teste de regressão. Suíte **483 verde**, `tsc`+`mcp:typecheck` limpos. **Commitado em `255de1f`** (`feat: set_category + guidance + nudge (v0.32.0)`). Working tree limpo.
 
-**Fios soltos / débito anterior (resolver antes da Fase 1):**
-- **Categorias (v0.32.0) NÃO commitada** — working tree sujo (7+ arquivos: CHANGELOG/PLANS/README/package.json/mcp/server.ts/flowTools.ts/flowTools.test.ts). `setCategory` + guidance + `findCategoryNudges` no `validate()`; **+10 testes, suíte 482 verde**; `tsc`+`mcp:typecheck` limpos. Falta: `/code-review` → commit (`feat: set_category + guidance + nudge (v0.32.0)`).
-- **`/verify` e2e pendentes:** Categorias (saudação + 2 capturas reusam MESMA "Identificação", zero "Sem Categoria") · Captura (CNPJ+nº atendimento → 2 `captureNode`, zero `waitNode`) · `set_message`.
-- **Destino das branches:** `feat/set-message` (v0.30.0) e `feat/capture-node-guidance` (Captura v0.31.0 + Categorias v0.32.0) → PR(s) p/ `main`. v0.33.0 deve sair em branch própria.
+**Fios soltos / pendentes:**
+- **`/verify` e2e pendentes (3, numa sessão NOVA — o MCP só recarrega ao reiniciar o Claude Code):** Categorias (saudação + 2 capturas reusam MESMA "Identificação", zero "Sem Categoria") · Captura (CNPJ+nº atendimento → 2 `captureNode`, zero `waitNode`) · `set_message`.
+- **v0.33.0 NÃO iniciada** (só planejada). Plano: menus de Escolha não roteiam porque o roteamento real é por **`keyword` na intenção-alvo** (match "contém"), não pelo `choices[]` (dispara só por número posicional — morto p/ botões, pois clicar envia o TEXTO). Faltam setters de `keywords`/`context` (campos de cabeçalho sem tool — como `category` era). **2 fases:**
+  - **Fase 1 (MCP-first, a fazer agora):** funções puras `setKeywords(node, keywords[])` + `setContext(node, ctx|vazio)` em [flowTools.ts](src/tools/flowTools.ts); registrar as 2 tools em [mcp/server.ts](mcp/server.ts) (12→14) + guidance; **3 nudges** no `validate()` (alvo sem keyword · keyword duplicada entre alvos · context p/ alvo de 2 menus); unit tests + `mcp:typecheck`. Shippável sozinha. Sair em **branch própria**.
+  - **Fase 2 (sessão própria):** 2 campos por opção no [DetailPanel.tsx:3569-3582](src/components/DetailPanel.tsx#L3569-L3582) + escrita **cross-intent**. Reusa os setters da Fase 1.
+- **Destino das branches:** `feat/set-message` (v0.30.0) e `feat/capture-node-guidance` (Captura v0.31.0 + Categorias v0.32.0) → PR(s) p/ `main`.
 
 **Armadilhas (herdadas, ainda valem):**
-- **PowerShell `Get-Content -Raw` SEM `-Encoding utf8` (PS 5.1) lê UTF-8 como ANSI** e o round-trip dupla-encoda o arquivo (mojibake). Nunca round-trip de fonte sem `-Encoding utf8`; **preferir o Edit tool**.
+- **PowerShell `Get-Content -Raw` SEM `-Encoding utf8` (PS 5.1) lê UTF-8 como ANSI** e o round-trip dupla-encoda (mojibake). Nunca round-trip de fonte sem `-Encoding utf8`; **preferir o Edit tool**.
 - Edit tool converte escapes `\u` em trânsito — p/ acentos usar `/\p{Diacritic}/gu` (flag `u`).
-- Nudges no `validate()` podem colidir com testes que criam nós "incompletos" — ajustar fixtures p/ o estado completo do novo mundo (foi o que quebrou na v0.32.0).
+- Nudges no `validate()` colidem com testes que criam nós "incompletos" — ao adicionar os 3 nudges da v0.33.0, ajustar fixtures p/ o estado completo (foi o que quebrou na v0.32.0). **E:** todo campo de cabeçalho que o nudge lê pode vir `undefined` de export real (mesmo bug do `category`) — guardar `?? default` antes de `.trim()`/normalizar.
 
 **Próximo passo imediato:**
-1. `/code-review` + commit da v0.32.0 (Categorias) → fecha o débito.
-2. Branch nova p/ a v0.33.0; começar pelos setters puros `setKeywords`/`setContext` + testes (amostra mínima antes da UI).
-3. `/verify` e2e numa **sessão nova** (o MCP só recarrega ao reiniciar o Claude Code).
+1. Branch nova a partir de `main` (ou da `feat/capture-node-guidance`) p/ a v0.33.0.
+2. Começar pelos setters puros `setKeywords`/`setContext` + unit tests (amostra mínima antes da UI), espelhando `setCategory`/`findCategoryNudges`.
+3. `/verify` e2e numa sessão nova quando der (independente da v0.33.0).
 
 **Ponteiros:**
 - PLANS §"Menus que roteiam de verdade" — mecânica confirmada, decisões Q1–Q6, faseamento, critério de aceite.
-- Leitura já pronta de `keywords`/`context`: [flowTools.ts:488-489](src/tools/flowTools.ts#L488-L489). Padrão a espelhar: `setCategory`/`findCategoryNudges` no mesmo arquivo.
+- Leitura já pronta de `keywords`/`context`: [flowTools.ts:488-489](src/tools/flowTools.ts#L488-L489). Padrão a espelhar: `setCategory`/`findCategoryNudges` (commit `255de1f`).
 - UI da Escolha: `draft.choices.map` em [DetailPanel.tsx:3569](src/components/DetailPanel.tsx#L3569); patch dos destinos em [DetailPanel.tsx:3204](src/components/DetailPanel.tsx#L3204).
-- Commits recentes: `59b6307` (Captura v0.31.0), `5ae070a` (doc Uni.co).
+- Commits: `255de1f` (Categorias v0.32.0), `59b6307` (Captura v0.31.0), `5ae070a` (doc Uni.co).
 
-**Skills sugeridas ao retomar:** `/code-review` antes de commitar a v0.32.0; `/verify` para os e2e pendentes; `/interrogar` já cumprido para a v0.33.0.
+**Skills sugeridas ao retomar:** `/verify` para os 3 e2e pendentes (sessão nova); `/code-review` antes de commitar a Fase 1; `/interrogar` já cumprido para a v0.33.0.
 <!-- HANDOFF:END -->
 
 ## Contexto
