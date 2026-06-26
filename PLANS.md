@@ -1,47 +1,47 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-25 (`set_message` VERIFICADA ponta-a-ponta; release v0.29.0 + PR `docs/chat-poc-plan` → main)
+## 🔄 Handoff — 2026-06-25 (Gate pendente + Chat UX planejado — nada commitado)
 
-**Foco da próxima sessão:** acompanhar o **merge do PR `docs/chat-poc-plan` → main** (release
-**v0.29.0**). Após o merge, rodar `/handoff` para **arquivar** as features concluídas (set_message +
-Caixinha de chat passos 1–4) de PLANS.md → [docs/PLANS-ARCHIVE.md](docs/PLANS-ARCHIVE.md): o PLANS já
-passa de 480 linhas, perto do limiar de ~600.
+**Foco da próxima sessão:** (1) fechar `feat/chat-gate` (commitado + PR); (2) abrir nova branch e
+implementar as melhorias de UX da caixinha de chat (interrogatório fechado nesta sessão).
 
-**Onde paramos:** branch **`docs/chat-poc-plan`** (11 commits à frente da main; **sem upstream até
-esta sessão**). Rodei o **`/verify` ponta-a-ponta da `set_message` pela caixinha** — o aceite que
-faltava → **PASS**: dirigindo o **socket WS real** (`backend/server.ts` em porta isolada, MCP spawnado
-**fresco** por turno), "crie um nó de mensagem com texto X" gravou `content==X` no `work.flow.json`
-(42→43 intents); probe de idempotência confirmou **sobrescrita sem duplicar** (1 balão TEXT). Depois:
-bump **0.28.0 → 0.29.0** (MINOR — `set_message` + PoC da caixinha + sidebar acumulados no
-`[Não lançado]`), commit do release e abertura do PR.
+**Onde paramos:** branch **`feat/chat-gate`**. Esta sessão foi só planejamento — nenhum código novo.
+O que estava pendente desde antes continua pendente:
+1. **Gate da caixinha** — arquivos do gate escritos (ver §"Gate de acesso à caixinha de chat").
+   468 testes verdes; `tsc --noEmit` limpo.
+2. **Fix: popover do token** — `createPortal` + backdrop + animação slide-from-left em
+   [src/components/Sidebar.tsx](src/components/Sidebar.tsx).
+3. **NodePalette simplificada** — lista plana sem labels de seção em
+   [src/components/NodePalette.tsx](src/components/NodePalette.tsx).
+4. **PLANS.md atualizado** (esta sessão) — nova seção §"Chat UX" adicionada; incluir no commit de
+   documentação ou num `docs: ...` separado.
 
-**Fios soltos / meio-feito:**
-- **PR aberto, aguardando merge.** Nenhum código pendente na feature — só o ciclo de review/merge.
-- **Achado do verify — NÃO vamos mexer (decisão do Andy, 2026-06-25):** no `create_node` o agente
-  chuta `messageNode` antes de acertar `defaultNode`, e o erro do `create_node`
-  ([flowTools.ts:95](src/tools/flowTools.ts#L95)) **não enumera** os kinds válidos. É atrito de
-  discovery, não bug. Rename `defaultNode`→`messageNode` seria interno e API-safe (o kind nunca vai ao
-  JSON), mas ~152 ocorrências/30 arquivos + papel-duplo de fallback — **descartado**.
+**Fios soltos / meio-feito:** (a) `/code-review` não rodou; (b) nada commitado; (c) `/verify` manual
+pendente; (d) CHANGELOG.md não atualizado.
 
-**Armadilhas confirmadas:**
-1. **Gotcha #2 NÃO atinge a caixinha:** o backend sobe o MCP **fresco a cada turno**
-   (`settingSources:[]`, `npx -y tsx mcp/server.ts` — [server.ts:108-117](backend/server.ts#L108-L117))
-   ⇒ lê o código de disco **atual**. Reiniciar o Claude Code só importa para as tools MCP **desta
-   sessão** (presas no código do boot). Por isso o verify rodou sem restart.
-2. O cliente WS de verificação precisa resolver o pacote `ws` → rodar de dentro de `d:/Fluxo` (não do
-   scratchpad). Idempotência é sobre **balões TEXT**: 0→cria, 1→sobrescreve, N>1→erro.
+**Armadilhas:**
+- `npm test` cospe warnings de `esbuild`/`oxc` deprecados do vite — ruído, não erro.
+- Para typecheck do app: `npx tsc --noEmit` (não há script dedicado).
+- Export e Report no Sidebar também têm `absolute left-full` com `overflow-hidden` — fora do escopo
+  desta branch; mesmo padrão de portal se alguém reportar.
 
-**Próximo passo imediato:** revisar/mergear o PR. Depois do merge: `/handoff` arquiva PLANS e segue
-para a Fase 5 (produto) ou o próximo gap de tool.
+**Próximo passo imediato — dois blocos:**
+1. **Fechar `feat/chat-gate`:** `/code-review` → aplicar achados → commitar em 3 commits
+   (`fix: popover do token`, `feat: gate da caixinha`, `refactor: simplificar paleta`) + commit de
+   `docs: plano Chat UX` → `/verify`: botão da chave desliza p/ fora do rail, clicar fora fecha;
+   gate sem fluxo+token → cadeado + popover 2 itens com CTAs; inserir token → 1 item; carregar fluxo
+   → abre normal; paleta com 11 nós sem labels de seção.
+2. **Chat UX (nova branch):** implementar na ordem textarea → estilo do botão → drag (ver §"Chat UX"
+   abaixo). Criar `src/hooks/useDraggable.ts`, editar [src/components/ChatPanel.tsx](src/components/ChatPanel.tsx).
 
-**Ponteiros:** PR `docs/chat-poc-plan`→`main` (release v0.29.0); CHANGELOG `[0.29.0]`; commits da
-feature `18bf0e7`→`d92d962`; PLANS §"Tool de texto da mensagem (`set_message`)" e §"Caixinha de chat na
-página" (subir local: `npm run dev` + `npm run ws:dev`).
+**Ponteiros:**
+- PLANS §"Gate de acesso à caixinha de chat (bot + token)" — 7 decisões travadas.
+- PLANS §"Chat UX — textarea auto-expand + botão estilo menu + widget draggable" — 6 decisões travadas.
+- [src/hooks/useChatGate.ts](src/hooks/useChatGate.ts), [src/utils/chatGate.ts](src/utils/chatGate.ts).
+- Release atual **v0.29.0** (`7c102cd`). PLANS 572 linhas (< limiar ~600, sem arquivar).
 
-**Skills sugeridas ao retomar:** `/handoff` (arquivar PLANS após o merge). `/verify`, `/code-review`,
-`/interrogar` e os passos de implementação já cumpridos nesta feature — não repetir.
-
+**Skills sugeridas ao retomar:** `/code-review` (antes de commitar o gate), `/verify` (depois dos commits).
 <!-- HANDOFF:END -->
 
 ## Contexto
@@ -416,6 +416,103 @@ expostas em [flowTools.ts](src/tools/flowTools.ts) nem no [mcp/server.ts](mcp/se
   saída aditiva.
 - Localizar a "única TEXT" para o caminho de edição: varrer `listMessages` filtrando `condIdx` +
   `type==='TEXT'` e montar a `MessageRef` — detalhe de implementação, sem decisão pendente.
+
+### Gate de acesso à caixinha de chat (bot + token) — (planejada)
+
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-06-25. Decisões TRAVADAS abaixo —
+> registro do raciocínio; não reabrir sem novo interrogatório. É um **gate de produto antecipado**
+> (ensaio da Fase 5): hoje a caixinha NÃO usa `hasFlow`/`hasToken` para operar (fala com o backend
+> local via `OMNI_TOKEN`+`work.flow.json`), mas em produção bot e token virão **prontos da OmniChat**
+> e o gate vira o detector de "a Omni não passou um desses dois dados".
+
+**Objetivo (1 frase):** bloquear a abertura da caixinha de chat ([ChatPanel.tsx](src/components/ChatPanel.tsx))
+enquanto faltar **(1) um fluxo carregado** (`hasFlow`) **e/ou (2) o token de sessão** (`hasToken`),
+exibindo ao clicar um aviso que lista **só os requisitos pendentes** (juntos quando faltam os dois,
+individual quando falta um).
+
+**Decisões (com o porquê):**
+1. **Gate = `hasFlow && hasToken` (estado do front), NÃO o token real do backend (Q1).** Reusa os dois
+   estados que o [App.tsx](src/App.tsx) já tem (`hasFlow` L60; `hasToken = !!sessionToken.trim()` L1047).
+   Zero infra nova e **casa com o modelo de produção**: na Fase 5 a OmniChat injeta bot carregado +
+   token de sessão no front — não o `OMNI_TOKEN` do backend (que é detalhe do PoC e não vive no front).
+2. **Fonte dos dois sinais isolada num ponto único (`useChatGate` no App) para a Fase 5 trocar só a
+   fonte.** Duas camadas que NÃO mudam juntas: (a) **o gate** (regra "bloqueia até os dois `true` +
+   aviso individual") é igual hoje e em produção; (b) **a origem dos sinais** muda — hoje `hasFlow`←
+   importar/criar e `hasToken`←chave na barra; em produção ambos chegam da Omni (query param /
+   `postMessage` / config no boot). O `ChatPanel` recebe dois **booleanos abstratos via props** e não
+   sabe de onde vieram ⇒ a adaptação futura fica confinada a quem alimenta os booleanos. Mesmo anchor
+   "camada agnóstica de transporte" da Fase 5. O **tom do aviso** muda por ambiente: "você esqueceu de
+   inserir" (dev) → "a OmniChat não passou esse dado" (produção, sinal de bug de integração).
+3. **Bloqueio no launcher: não abre; popover ancorado no botão (Q2).** Ao clicar com requisito
+   faltando, o launcher NÃO abre o painel — dispara um popover (estilo o do token na barra) que lista
+   **apenas os requisitos pendentes**. "Junto mas individual" sai de graça: 0 itens (libera) / 1 item
+   (falta um) / 2 itens (faltam os dois).
+4. **Popover acionável (Q3).** Cada item pendente tem CTA: "Carregar um fluxo" → `setImportOpen(true)`;
+   "Inserir o token" → `requestToken()` (abre o popover da chave na barra). Reusa handlers que o App já
+   tem. Em produção os CTAs somem (o usuário não age) e viram texto informativo.
+5. **Gate só na abertura, não contínuo (Q4).** Avaliado no clique de abrir; uma vez dentro, a conversa
+   segue mesmo que o token seja limpo depois (a caixinha não usa o `sessionToken` pra operar). Mais
+   simples, sem fechar o chat no meio; o caso "cair no meio" praticamente só ocorre em dev (em produção
+   os dados vêm fixos).
+6. **Cadeado no launcher quando bloqueado (Q5).** Quando falta requisito, o launcher troca o pontinho de
+   status WS por um cadeado — comunica "indisponível" antes do clique; o popover só explica o porquê.
+7. **`ChatPanel` ganha props `hasFlow`/`hasToken`/`onRequestImport`/`onRequestToken`; gate dev-only por
+   ora** (a caixinha já é dev-only, montada sob `import.meta.env.DEV` em [App.tsx:1219](src/App.tsx#L1219)).
+
+**Como será testado:**
+- **Unit (lógica pura — padrão do projeto; NÃO há testes de componente):** extrair a derivação dos
+  pendentes numa função pura (ex.: `chatGatePending(hasFlow, hasToken)`) e cobrir os 4 casos — ambos OK
+  → `[]`; falta bot → `[bot]`; falta token → `[token]`; faltam os dois → `[bot, token]` (este prova o
+  "individual").
+- **/verify manual pela caixinha (dev build):** sem fluxo + sem token → cadeado + popover com 2 itens e
+  CTAs; inserir token → popover cai pra 1 item; carregar fluxo → launcher abre normal.
+
+**Riscos/pendências:**
+- Em produção a fonte dos sinais muda (query/`postMessage`/config) e o tom do aviso também — isolado no
+  `useChatGate` (decisão 2), fora do `ChatPanel`.
+- A caixinha não usa `sessionToken` pra operar hoje ⇒ o gate é de **produto/ensaio**, não barreira
+  técnica. Aceito (é o ponto da feature: ensaiar o gate da Fase 5).
+
+### Chat UX — textarea auto-expand + botão estilo menu + widget draggable (planejada)
+
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-06-25. Decisões TRAVADAS abaixo —
+> registro do raciocínio; não reabrir sem novo interrogatório.
+
+**Objetivo (1 frase):** melhorar a ergonomia da caixinha de chat em três frentes — o campo de texto
+cresce com o conteúdo, o botão lançador se integra visualmente ao menu esquerdo, e o widget pode ser
+movido livremente pela tela.
+
+**Decisões (com o porquê):**
+1. **Drag: botão e painel como UMA unidade.** Uma única coordenada `{x, y}` compartilhada; ao fechar
+   o painel o botão fica onde o painel estava. Drag no header quando aberto; drag no pill quando
+   recolhido. Posições independentes seriam confusas — o widget é o mesmo objeto em dois estados.
+2. **Drag: hook nativo `useDraggable` (~40 linhas), sem nova dependência.** `mousedown`/`mousemove`/
+   `mouseup` no `document`. Sem `react-draggable` — adicionar dep só pra este widget seria desproporcional
+   e fere a filosofia do projeto (deps mínimas).
+3. **Drag: livre dentro da viewport, sem snapping.** O widget não sai da tela (clamp), mas solta onde
+   largar. Snap de borda seria mais polido, mas é complexidade que não vale para o PoC.
+4. **Posição só em memória.** Volta ao canto inferior direito a cada reload. `localStorage` seria uma
+   linha a mais mas não justifica para um PoC interno de dev.
+5. **Estilo do botão: pill zinc-800/zinc-700/zinc-100 (mantém o label "Agente").** Troca `bg-indigo-600`
+   pelo zinc escuro do menu (`bg-zinc-800 border border-zinc-700 text-zinc-100`). Mantém o pill com label
+   — virar ícone quadrado de rail esconderia o propósito do widget sem ganho real. Acento amber (coerente
+   com o logo `bg-amber-400`) quando conectado/running.
+6. **Textarea: min 1 linha → cresce até 5 linhas → rola.** JS auto-resize: `el.style.height = 'auto'`
+   depois `el.style.height = el.scrollHeight + 'px'` a cada `onChange`, com `max-h` equivalente a 5
+   linhas (~120px). O `rows={1}` atual impedia o crescimento — o `max-h-28` (112px) estava quase certo
+   mas sem o JS de resize não funcionava.
+
+**Armadilhas de implementação:**
+- `mousedown` no botão ×/minimizar NÃO deve iniciar drag — handler de drag fica no header/pill, não
+  em descendentes interativos.
+- Suprimir `user-select: none` no `body` durante o drag (evita selecionar texto no canvas por acidente).
+- Clamp: `x` entre `0` e `window.innerWidth - panelWidth`; `y` entre `0` e `window.innerHeight - panelHeight`.
+
+**Como será testado:**
+- **Manual `/verify`:** arrastar o botão → reabrir → posição mantida; arrastar o header quando aberto →
+  recolher → botão no lugar certo; arrastar até a borda → clamped.
+- **Textarea:** digitar 6+ linhas → para em 5 e rola; limpar → encolhe de volta a 1 linha.
+- **Estilo:** zinc no dark e no light mode; checar se o pill não briga com o fundo do canvas.
 
 ## Melhorias paralelas (independentes das fases)
 
