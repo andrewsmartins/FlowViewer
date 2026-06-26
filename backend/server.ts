@@ -103,6 +103,7 @@ wss.on('connection', (ws: WebSocket) => {
     try {
       const run = query({
         prompt,
+        model: 'claude-sonnet-4-6',
         options: {
           cwd: repoRoot,
           settingSources: [],          // evita carregar .mcp.json e subir 2º MCP
@@ -116,7 +117,7 @@ wss.on('connection', (ws: WebSocket) => {
             },
           },
           permissionMode: 'bypassPermissions',
-          maxTurns: 20,
+          maxTurns: 40,
         },
       })
 
