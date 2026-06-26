@@ -237,7 +237,7 @@ Fases 1–4 respeitarem isso, a Fase 5 segue viável.
 - ~~O refactor do `NODE_CATALOG` (Fase 2) arrisca os 383 testes do DetailPanel.~~ ✅ Resolvido:
   Fase 2 mergeada (merge `e701026`) com a suíte verde como gate em cada um dos 4 commits.
 
-### Caixinha de chat na página — PoC local do agente construtor (planejada)
+### Caixinha de chat na página — PoC local do agente construtor ✅ CONCLUÍDA (merge `15cbf54` + PR #5)
 
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-06-25. Decisões TRAVADAS abaixo —
 > registro do raciocínio; não reabrir sem novo interrogatório. É a **prova de conceito local da
@@ -350,13 +350,17 @@ flowchart TB
   `public/masterFlow.json` — gotcha #2/#3); `serializeFlow` normaliza CRLF→LF, então versionar o
   `work.flow.json` é opcional.
 
-### Tool de texto da mensagem (`set_message`) — fechar o gap do `defaultNode` (planejada)
+### Tool de texto da mensagem (`set_message`) — fechar o gap do `defaultNode` ✅ CONCLUÍDA (merge `15cbf54`)
 
+> **Resultado (2026-06-24, merge `15cbf54`, spike MCP):** entregue em
+> [src/tools/flowTools.ts:149](src/tools/flowTools.ts#L149) (`setMessage`) + registrada em
+> [mcp/server.ts:156](mcp/server.ts#L156) + 7 testes unitários em
+> [flowTools.test.ts:277](src/tools/flowTools.test.ts#L277) (todos verdes, 40 testes no arquivo).
+> Gap fechado: o agente agora constrói um `defaultNode` **com conteúdo de texto**. Pendente apenas
+> o `/verify` ponta-a-ponta pela caixinha ("crie um nó de mensagem com texto X" → assert content = X).
+>
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-06-25. Decisões TRAVADAS abaixo —
-> registro do raciocínio; não reabrir sem novo interrogatório. É o **rumo A** do handoff do PoC da
-> caixinha: hoje "crie um nó de mensagem com texto X" cria o nó mas **NÃO grava o texto** — a
-> superfície de tools do MCP não expõe `assistant_says`. Toca a dívida de sub-enums da Fase 2 só de
-> raspão (não mexe em enums de campo); é o primeiro pedaço concreto do gatilho da Fase 5.
+> registro do raciocínio; não reabrir sem novo interrogatório.
 
 **Objetivo (1 frase):** uma tool MCP `set_message` que grava/edita o texto da mensagem de um nó
 (o que falta para o agente construir um `defaultNode` *com conteúdo*), embrulhando `addTextMessage`/
@@ -404,7 +408,7 @@ expostas em [flowTools.ts](src/tools/flowTools.ts) nem no [mcp/server.ts](mcp/se
 - Localizar a "única TEXT" para o caminho de edição: varrer `listMessages` filtrando `condIdx` +
   `type==='TEXT'` e montar a `MessageRef` — detalhe de implementação, sem decisão pendente.
 
-### Gate de acesso à caixinha de chat (bot + token) — (planejada)
+### Gate de acesso à caixinha de chat (bot + token) ✅ CONCLUÍDA (PR #5, merge `53b3b19`)
 
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-06-25. Decisões TRAVADAS abaixo —
 > registro do raciocínio; não reabrir sem novo interrogatório. É um **gate de produto antecipado**
@@ -460,7 +464,7 @@ individual quando falta um).
 - A caixinha não usa `sessionToken` pra operar hoje ⇒ o gate é de **produto/ensaio**, não barreira
   técnica. Aceito (é o ponto da feature: ensaiar o gate da Fase 5).
 
-### Chat UX — textarea auto-expand + botão estilo menu + widget draggable (planejada)
+### Chat UX — textarea auto-expand + botão estilo menu + widget draggable ✅ CONCLUÍDA (PR #5, merge `53b3b19`)
 
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-06-25. Decisões TRAVADAS abaixo —
 > registro do raciocínio; não reabrir sem novo interrogatório.
