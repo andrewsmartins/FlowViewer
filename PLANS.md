@@ -3,31 +3,28 @@
 <!-- HANDOFF:START -->
 ## 🔄 Handoff — 2026-06-26
 
-**Foco da próxima sessão:** decidir entre (a) `/verify` e2e do `set_message` pela caixinha de chat ou (b) avançar para a próxima feature do roadmap.
+**Foco da próxima sessão:** `/verify` e2e do `set_message` pela caixinha de chat — fechar o critério de aceite pendente — e decidir a próxima feature.
 
-**Onde paramos:** branch **`feat/set-message`** — criada nesta sessão, mas sem código novo ainda.
-O que foi feito nesta sessão:
-- PR #5 (`feat/chat-ux` → `main`) aberto e mergeado (merge `53b3b19`).
-- Branch `feat/set-message` criada a partir do `main` atualizado.
-- Descoberto que `set_message` **já está totalmente implementada** (entregue no spike, merge `15cbf54`): função em [flowTools.ts:149](src/tools/flowTools.ts#L149), registrada no MCP em [mcp/server.ts:156](mcp/server.ts#L156), 7 testes unitários verdes em [flowTools.test.ts:277](src/tools/flowTools.test.ts#L277).
-- PLANS.md atualizado: marcadas como `✅ CONCLUÍDA` as seções de `set_message`, Gate, Chat UX e Caixinha PoC (commit `d4b8537`).
+**Onde paramos:** branch **`feat/set-message`** — sem código novo (a implementação já existe). Nesta sessão foi feito apenas housekeeping de documentação.
+O que foi feito:
+- Interrogatório sobre escopo da atualização documental (skill `/interrogar`).
+- **v0.30.0** lançado: `CHANGELOG.md` (bump "Não lançado" → `[0.30.0] - 2026-06-26`), `package.json` (0.29.0 → 0.30.0), `README.md` (seção "Agente de IA (dev)", Stack +3 libs, estrutura atualizada com `backend/`/`mcp/`/`src/hooks/`, paleta corrigida, contagem 251→469), `docs/GUIA-DE-USO.md` (v0.14.0→v0.30.0, paleta, nova seção 8 do agente), `docs/TESTES-AUTOMATIZADOS.md` (251→469, 22 arquivos, tabela completa com contagens exatas).
+- Commit: `e0cb88e` (docs: bump v0.30.0).
 
 **Fios soltos / meio-feito:**
-- **`/verify` e2e do `set_message` pendente:** pedir ao agente pela caixinha "crie um nó de mensagem com texto X" e confirmar que o `content` no `work.flow.json` bate com X — esse é o critério de aceite final descrito no PLANS.md.
-- Branch `feat/set-message` existe mas está vazia (só o commit de docs do PLANS). Se o `/verify` passar sem código novo, mergear ou descartar a branch.
+- **`/verify` e2e do `set_message` pendente:** pela caixinha, pedir "crie um nó de mensagem com texto X" e confirmar que o `content` no `work.flow.json` = X. É o critério de aceite da PLANS.md §`set_message`. Se passar sem código novo, a branch `feat/set-message` pode ser mergeada ou descartada.
 
-**Armadilhas desta sessão:** nenhuma nova — as da sessão anterior (ImportDialog exige `list`, popover fecha só por backdrop, timeout 1.5s) continuam válidas no PLANS.md §`set_message`.
+**Armadilhas desta sessão:** nenhuma nova. As da sessão anterior continuam: ImportDialog exige `list`, popover fecha só por backdrop, timeout 1.5s.
 
 **Próximo passo imediato:**
-1. Rodar `/verify` pela caixinha para fechar o critério de aceite do `set_message` (se quiser formalizá-lo).
-2. OU definir a próxima feature e redirecionar a branch `feat/set-message` (ou criar uma nova).
+1. `/verify` pela caixinha para fechar o critério de aceite do `set_message`.
+2. Depois: `/interrogar` para definir a próxima feature (ou decidir o destino da branch `feat/set-message`).
 
 **Ponteiros:**
-- PLANS §"Tool de texto da mensagem (`set_message`)" — decisões e critério de aceite.
-- PLANS §"Fase 5 — Produto (direcional)" — próximo horizonte de feature.
-- Commits desta sessão: `aa02f3e` (handoff docs), `53b3b19` (merge PR #5), `d4b8537` (PLANS status update).
-- PLANS 567 linhas (< limiar 600 — sem arquivamento).
-- **v0.30.0 lançado** (2026-06-26): Chat UX + Gate + NodePalette simplificada + fixes.
+- PLANS §"Tool de texto da mensagem (`set_message`)" — critério de aceite do `/verify`.
+- PLANS §"Fase 5 — Produto (direcional)" — próximo horizonte.
+- Commit desta sessão: `e0cb88e` (docs v0.30.0).
+- PLANS ~569 linhas (< limiar 600 — sem arquivamento).
 
 **Skills sugeridas ao retomar:** `/verify` para o e2e do `set_message`; `/interrogar` antes de planejar a próxima feature.
 <!-- HANDOFF:END -->
