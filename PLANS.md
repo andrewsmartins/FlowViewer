@@ -1,47 +1,34 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-25 (Gate pendente + Chat UX planejado — nada commitado)
+## 🔄 Handoff — 2026-06-25
 
-**Foco da próxima sessão:** (1) fechar `feat/chat-gate` (commitado + PR); (2) abrir nova branch e
-implementar as melhorias de UX da caixinha de chat (interrogatório fechado nesta sessão).
+**Foco da próxima sessão:** abrir PR de `feat/chat-ux` → main (ou merge direto) e iniciar a próxima feature do roadmap.
 
-**Onde paramos:** branch **`feat/chat-gate`**. Esta sessão foi só planejamento — nenhum código novo.
-O que estava pendente desde antes continua pendente:
-1. **Gate da caixinha** — arquivos do gate escritos (ver §"Gate de acesso à caixinha de chat").
-   468 testes verdes; `tsc --noEmit` limpo.
-2. **Fix: popover do token** — `createPortal` + backdrop + animação slide-from-left em
-   [src/components/Sidebar.tsx](src/components/Sidebar.tsx).
-3. **NodePalette simplificada** — lista plana sem labels de seção em
-   [src/components/NodePalette.tsx](src/components/NodePalette.tsx).
-4. **PLANS.md atualizado** (esta sessão) — nova seção §"Chat UX" adicionada; incluir no commit de
-   documentação ou num `docs: ...` separado.
+**Onde paramos:** branch **`feat/chat-ux`** com 7 commits à frente de `main` (ver `git log --oneline main..HEAD`).
+`/verify` rodou nesta sessão com Playwright headless — **PASS** em todas as três features do diff:
+- Pill zinc-800 + cadeado + popover de gate ✅
+- Widget draggable (pill e header do painel) — 200-300px de deslocamento confirmados ✅
+- Textarea auto-expand 38 px → 120 px, colapso ao limpar ✅
 
-**Fios soltos / meio-feito:** (a) `/code-review` não rodou; (b) nada commitado; (c) `/verify` manual
-pendente; (d) CHANGELOG.md não atualizado.
+**Fios soltos / meio-feito:** nenhum — tudo commitado e verificado. Branch pronta para PR/merge.
 
-**Armadilhas:**
-- `npm test` cospe warnings de `esbuild`/`oxc` deprecados do vite — ruído, não erro.
-- Para typecheck do app: `npx tsc --noEmit` (não há script dedicado).
-- Export e Report no Sidebar também têm `absolute left-full` com `overflow-hidden` — fora do escopo
-  desta branch; mesmo padrão de portal se alguém reportar.
+**Armadilhas desta sessão:**
+- O `ImportDialog` exige um JSON com propriedade `list` (array de intents OmniChat) — JSON genérico com `nodes` falha com mensagem útil. Para testes futuros, usar `example.json` na raiz.
+- O popover do token fecha via clique no backdrop (`div.fixed.inset-0`), **não** com ESC — não há handler de `keydown`. Comportamento intencional (dev-only por enquanto); lembrar para a Fase 5.
+- Carregar `example.json` (fluxo grande) demora ~1.5 s para renderizar o canvas; timeouts abaixo disso falham nas automações.
 
-**Próximo passo imediato — dois blocos:**
-1. **Fechar `feat/chat-gate`:** `/code-review` → aplicar achados → commitar em 3 commits
-   (`fix: popover do token`, `feat: gate da caixinha`, `refactor: simplificar paleta`) + commit de
-   `docs: plano Chat UX` → `/verify`: botão da chave desliza p/ fora do rail, clicar fora fecha;
-   gate sem fluxo+token → cadeado + popover 2 itens com CTAs; inserir token → 1 item; carregar fluxo
-   → abre normal; paleta com 11 nós sem labels de seção.
-2. **Chat UX (nova branch):** implementar na ordem textarea → estilo do botão → drag (ver §"Chat UX"
-   abaixo). Criar `src/hooks/useDraggable.ts`, editar [src/components/ChatPanel.tsx](src/components/ChatPanel.tsx).
+**Próximo passo imediato:**
+1. `gh pr create` (ou merge local) de `feat/chat-ux` → `main`.
+2. Verificar qual é a próxima fase no PLANS.md § roadmap e abrir branch correspondente.
 
 **Ponteiros:**
-- PLANS §"Gate de acesso à caixinha de chat (bot + token)" — 7 decisões travadas.
-- PLANS §"Chat UX — textarea auto-expand + botão estilo menu + widget draggable" — 6 decisões travadas.
-- [src/hooks/useChatGate.ts](src/hooks/useChatGate.ts), [src/utils/chatGate.ts](src/utils/chatGate.ts).
-- Release atual **v0.29.0** (`7c102cd`). PLANS 572 linhas (< limiar ~600, sem arquivar).
+- PLANS §"Chat UX — textarea auto-expand + botão estilo menu + widget draggable" — decisões já implementadas.
+- PLANS §"Gate de acesso à caixinha de chat" — gate implementado e verificado.
+- Commits desta branch: `d699e83` (Chat UX), `be5391d` (docs), `7c5ee05` (backend model bump), `2f2e769` (fix findTeam), `7a8ee9e` (NodePalette), `ded886f` (gate lock), `5e5648c` (token popover portal).
+- PLANS 576 linhas (< limiar 600 — sem arquivamento necessário).
 
-**Skills sugeridas ao retomar:** `/code-review` (antes de commitar o gate), `/verify` (depois dos commits).
+**Skills sugeridas ao retomar:** `/code-review` se houver diffs não revisados antes do merge; `/verify` depois de qualquer nova feature.
 <!-- HANDOFF:END -->
 
 ## Contexto
