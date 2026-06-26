@@ -27,6 +27,7 @@ O que foi feito nesta sessão:
 - PLANS §"Fase 5 — Produto (direcional)" — próximo horizonte de feature.
 - Commits desta sessão: `aa02f3e` (handoff docs), `53b3b19` (merge PR #5), `d4b8537` (PLANS status update).
 - PLANS 567 linhas (< limiar 600 — sem arquivamento).
+- **v0.30.0 lançado** (2026-06-26): Chat UX + Gate + NodePalette simplificada + fixes.
 
 **Skills sugeridas ao retomar:** `/verify` para o e2e do `set_message`; `/interrogar` antes de planejar a próxima feature.
 <!-- HANDOFF:END -->

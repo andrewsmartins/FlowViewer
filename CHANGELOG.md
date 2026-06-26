@@ -11,7 +11,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
-## [Não lançado]
+## [0.30.0] - 2026-06-26
 
 ### Adicionado
 - **Chat UX — textarea auto-expand, pill zinc, widget draggable** ([src/components/ChatPanel.tsx](src/components/ChatPanel.tsx), [src/hooks/useDraggable.ts](src/hooks/useDraggable.ts)) — três melhorias ergonômicas da caixinha de chat. (1) **Textarea auto-resize**: cresce de 1 linha até 5 linhas (~120 px) via `scrollHeight` a cada `onChange`, depois rola; encolhe de volta ao limpar o draft. (2) **Pill zinc**: botão lançador trocou `bg-indigo-600` por `bg-zinc-800 border-zinc-700 text-zinc-100` (coerente com o rail do menu lateral); borda amber-400 quando `running && connected` (acento coerente com o logo). (3) **Widget draggable**: hook nativo `useDraggable` (~50 linhas, sem dependência nova); botão e painel compartilham uma única coordenada `{x, y}` — ao fechar o painel, o botão fica onde o painel estava; drag no header quando aberto, drag no pill quando recolhido; clamp dentro da viewport sem snapping; posição só em memória.
