@@ -13,6 +13,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Não lançado]
 
+### Adicionado
+- **Chat UX — textarea auto-expand, pill zinc, widget draggable** ([src/components/ChatPanel.tsx](src/components/ChatPanel.tsx), [src/hooks/useDraggable.ts](src/hooks/useDraggable.ts)) — três melhorias ergonômicas da caixinha de chat. (1) **Textarea auto-resize**: cresce de 1 linha até 5 linhas (~120 px) via `scrollHeight` a cada `onChange`, depois rola; encolhe de volta ao limpar o draft. (2) **Pill zinc**: botão lançador trocou `bg-indigo-600` por `bg-zinc-800 border-zinc-700 text-zinc-100` (coerente com o rail do menu lateral); borda amber-400 quando `running && connected` (acento coerente com o logo). (3) **Widget draggable**: hook nativo `useDraggable` (~50 linhas, sem dependência nova); botão e painel compartilham uma única coordenada `{x, y}` — ao fechar o painel, o botão fica onde o painel estava; drag no header quando aberto, drag no pill quando recolhido; clamp dentro da viewport sem snapping; posição só em memória.
+- **Gate da caixinha de chat — lock + popover de requisitos pendentes** ([src/utils/chatGate.ts](src/utils/chatGate.ts), [src/hooks/useChatGate.ts](src/hooks/useChatGate.ts), [src/components/ChatPanel.tsx](src/components/ChatPanel.tsx)) — a caixinha do agente só abre quando `hasFlow && hasToken`; clique bloqueado exibe um popover listando só os requisitos pendentes (fluxo e/ou token), cada um com seu CTA (`Carregar um fluxo` / `Inserir o token`). O botão troca o dot de status por um cadeado quando bloqueado. Lógica pura em `chatGate.ts` (4 testes); hook `useChatGate` isola a origem dos sinais para que a Fase 5 (produto) troque só ele sem tocar no gate nem no `ChatPanel`.
+- **NodePalette simplificada — lista plana sem labels de seção** ([src/components/NodePalette.tsx](src/components/NodePalette.tsx)) — remove os grupos "Fluxo" / "Avançado" e exibe os 11 tipos como lista plana contínua. Reduz ruído visual; a distinção de uso fica na cor do nó (já existente).
+
+### Corrigido
+- **Popover do token usa `createPortal` + backdrop + animação slide-from-left** ([src/components/Sidebar.tsx](src/components/Sidebar.tsx), [src/hooks/useClickOutside.ts](src/hooks/useClickOutside.ts)) — o popover anterior tinha `position: absolute` dentro do rail com `overflow-hidden`, sendo cortado fora da barra. Agora usa `createPortal(document.body)` com coordenadas calculadas via `getBoundingClientRect`; abre com `translate-x-0/opacity-100` (180 ms ease-out) e fecha com backdrop invisível. Hook `useClickOutside` extraído do `Sidebar` (2º consumidor: o popover do gate).
+- **`findTeam` trata 400 com "token" no body como falha de autenticação** ([src/tools/resolvers.ts](src/tools/resolvers.ts)) — o endpoint Parse `/classes/Team` retorna 400 (não 401) quando o token expirou. A função `errorToMessage` passa a detectar `status 400` + `"token"` na mensagem e retornar o mesmo `AUTH_MSG` orientativo ("autenticação falhou — renove o OMNI_TOKEN") em vez de vazar o body cru do servidor. Coberto por +1 teste em [src/tools/resolvers.test.ts](src/tools/resolvers.test.ts).
+
+### Alterado
+- **Backend: model fixado em `claude-sonnet-4-6`, `maxTurns` aumentado para 40** ([backend/server.ts](backend/server.ts)) — evita seleção automática de modelo em futuras releases do SDK; 40 turnos dá margem para fluxos complexos sem atingir o limite em tarefas comuns.
+
 ## [0.29.0] - 2026-06-25
 
 ### Adicionado

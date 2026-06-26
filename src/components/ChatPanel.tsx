@@ -1,6 +1,9 @@
-import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type ChangeEvent } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
 import { useChatSocket, type ChatMessage, type ConnStatus } from '../hooks/useChatSocket'
+import { useClickOutside } from '../hooks/useClickOutside'
+import { useDraggable } from '../hooks/useDraggable'
+import { chatGatePending, type ChatGateRequirement } from '../utils/chatGate'
 import type { BotFlowJson } from '../types'
 
 /**
@@ -22,6 +25,27 @@ interface ChatPanelProps {
   onFlowUpdated: (flow: BotFlowJson) => void
   /** Propaga o estado do turno para o App travar/destravar o canvas. */
   onRunningChange: (running: boolean) => void
+  /**
+   * Sinais ABSTRATOS do gate (PLANS §"Gate de acesso à caixinha", decisão 2): a
+   * caixinha só abre com `hasFlow && hasToken`. O painel não sabe de onde vêm —
+   * hoje do front (dev), na Fase 5 da OmniChat. Derivados no `useChatGate` do App.
+   */
+  hasFlow: boolean
+  hasToken: boolean
+  /** CTA do popover quando falta fluxo (decisão 4) — abre o importador. */
+  onRequestImport: () => void
+  /** CTA do popover quando falta token (decisão 4) — abre o popover da chave na barra. */
+  onRequestToken: () => void
+}
+
+/**
+ * Textos do popover do gate por requisito pendente (decisão 4). Tom de DEV
+ * ("você esqueceu de inserir"); na Fase 5 vira "a OmniChat não passou esse dado"
+ * (detector de bug de integração) — trocar aqui quando o gate sair do dev-only.
+ */
+const GATE_REQUIREMENT: Record<ChatGateRequirement, { title: string; cta: string }> = {
+  flow:  { title: 'Nenhum fluxo carregado', cta: 'Carregar um fluxo' },
+  token: { title: 'Token de sessão não inserido', cta: 'Inserir o token' },
 }
 
 const STATUS_DOT: Record<ConnStatus, string> = {
@@ -36,12 +60,32 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   closed:     'Offline — rode `npm run ws:dev`',
 }
 
-export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange }: ChatPanelProps) {
+export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, hasToken, onRequestImport, onRequestToken }: ChatPanelProps) {
   const isDark = useTheme()
   const [open, setOpen] = useState(false)
+  const [gateOpen, setGateOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const { status, messages, running, statusText, send } = useChatSocket({ onFlowUpdated })
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef    = useRef<HTMLDivElement>(null)
+  const textareaRef  = useRef<HTMLTextAreaElement>(null)
+  const gateRef      = useClickOutside(() => setGateOpen(false))
+  const { ref: dragRef, style: dragStyle, onMouseDown: onDragMouseDown, wasDragged } = useDraggable<HTMLDivElement>()
+
+  // Gate só na abertura (decisão 5): avaliado no clique; uma vez dentro, segue.
+  const pending = chatGatePending(hasFlow, hasToken)
+  const blocked = pending.length > 0
+
+  function handleLauncherClick() {
+    if (wasDragged()) return  // clique suprimido quando encerra um drag
+    if (blocked) { setGateOpen(o => !o); return }
+    setOpen(true)
+  }
+
+  function handleGateCta(req: ChatGateRequirement) {
+    setGateOpen(false)
+    if (req === 'flow') onRequestImport()
+    else onRequestToken()
+  }
 
   // Propaga o lock do turno para o App (canvas read-only durante o turno).
   useEffect(() => { onRunningChange(running) }, [running, onRunningChange])
@@ -58,6 +102,7 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange }: ChatPanel
     if (!text || running || status !== 'open') return
     send(text, getFlow())
     setDraft('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -67,80 +112,135 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange }: ChatPanel
     }
   }
 
-  // ── Launcher recolhido ────────────────────────────────────────────────────
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="Abrir o agente construtor"
-        className={`fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold shadow-lg transition-colors ${isDark ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        Agente
-        <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
-      </button>
-    )
+  // Auto-resize: min 1 linha → cresce até 5 linhas (~120px) → rola (decisão 6).
+  function handleDraftChange(e: ChangeEvent<HTMLTextAreaElement>) {
+    setDraft(e.target.value)
+    e.target.style.height = 'auto'
+    e.target.style.height = `${e.target.scrollHeight}px`
   }
 
-  // ── Painel aberto ──────────────────────────────────────────────────────────
+  // Wrapper externo único: mantém o drag contínuo entre pill e painel (decisão 1).
   return (
     <div
-      className={`fixed bottom-4 right-4 z-30 flex flex-col rounded-2xl border shadow-2xl w-[400px] max-w-[92vw] h-[600px] max-h-[80vh] ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
-      role="dialog"
-      aria-label="Agente construtor de fluxo"
+      ref={dragRef}
+      className={`fixed z-30${dragStyle ? '' : ' bottom-4 right-4'}`}
+      style={dragStyle}
     >
-      {/* Header */}
-      <div className={`flex items-center gap-2 px-4 py-3 border-b ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
-        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
-        <div className="min-w-0 flex-1">
-          <p className={`text-sm font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Agente construtor</p>
-          <p className={`text-[11px] leading-tight truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            {running && statusText ? statusText : STATUS_LABEL[status]}
-          </p>
+      {!open ? (
+        // ── Launcher recolhido ──────────────────────────────────────────────
+        <div ref={gateRef}>
+          {/* Popover do gate (decisões 3 e 4): só os requisitos pendentes, cada um
+              com seu CTA. Some sozinho quando `blocked` zera (sinais satisfeitos). */}
+          {gateOpen && blocked && (
+            <div
+              role="dialog"
+              aria-label="Requisitos para usar o agente"
+              className={`absolute bottom-full right-0 mb-2 w-[280px] rounded-xl border shadow-2xl p-3 flex flex-col gap-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
+            >
+              <p className={`text-xs font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                Para abrir o agente, falta:
+              </p>
+              {pending.map(req => (
+                <div key={req} className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
+                  <span className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{GATE_REQUIREMENT[req].title}</span>
+                  <button
+                    onClick={() => handleGateCta(req)}
+                    className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors"
+                  >
+                    {GATE_REQUIREMENT[req].cta}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Pill: zinc-800/700/100 (decisão 5); acento amber quando running (decisão 5).
+              onMouseDown inicia drag; onClick abre/trava (suprimido após drag). */}
+          <button
+            onMouseDown={onDragMouseDown}
+            onClick={handleLauncherClick}
+            aria-label={blocked ? 'Agente indisponível — requisitos pendentes' : 'Abrir o agente construtor'}
+            aria-expanded={blocked ? gateOpen : undefined}
+            className={`flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold shadow-lg border transition-colors cursor-grab active:cursor-grabbing bg-zinc-800 text-zinc-100 hover:bg-zinc-700 ${running && status === 'open' ? 'border-amber-400' : 'border-zinc-700'}`}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            Agente
+            {blocked ? (
+              // Cadeado quando bloqueado (decisão 6): comunica "indisponível" antes do clique.
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            ) : (
+              <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
+            )}
+          </button>
         </div>
-        <button
-          onClick={() => setOpen(false)}
-          aria-label="Recolher o agente"
-          className={isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}
+      ) : (
+        // ── Painel aberto ────────────────────────────────────────────────────
+        <div
+          className={`flex flex-col rounded-2xl border shadow-2xl w-[400px] max-w-[92vw] h-[600px] max-h-[80vh] ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
+          role="dialog"
+          aria-label="Agente construtor de fluxo"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-      </div>
+          {/* Header — handle de drag (não inicia em botões descendentes). */}
+          <div
+            onMouseDown={e => { if (!(e.target as HTMLElement).closest('button')) onDragMouseDown(e) }}
+            style={{ cursor: 'grab' }}
+            className={`flex items-center gap-2 px-4 py-3 border-b select-none ${isDark ? 'border-slate-700' : 'border-slate-100'}`}
+          >
+            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
+            <div className="min-w-0 flex-1">
+              <p className={`text-sm font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Agente construtor</p>
+              <p className={`text-[11px] leading-tight truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                {running && statusText ? statusText : STATUS_LABEL[status]}
+              </p>
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Recolher o agente"
+              className={isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
 
-      {/* Mensagens */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
-        {messages.length === 0 && (
-          <p className={`m-auto max-w-[260px] text-center text-xs leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            Instrua o agente em linguagem natural — ex.: <em>"crie um nó de mensagem chamado boas_vindas e conecte ao início"</em>. As mudanças aparecem no canvas ao fim de cada turno.
-          </p>
-        )}
-        {messages.map(m => <Bubble key={m.id} msg={m} isDark={isDark} />)}
-      </div>
+          {/* Mensagens */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
+            {messages.length === 0 && (
+              <p className={`m-auto max-w-[260px] text-center text-xs leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                Instrua o agente em linguagem natural — ex.: <em>"crie um nó de mensagem chamado boas_vindas e conecte ao início"</em>. As mudanças aparecem no canvas ao fim de cada turno.
+              </p>
+            )}
+            {messages.map(m => <Bubble key={m.id} msg={m} isDark={isDark} />)}
+          </div>
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className={`flex items-end gap-2 p-3 border-t ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
-        <textarea
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={status === 'open' ? 'Instrua o agente…' : 'Aguardando o backend…'}
-          rows={1}
-          disabled={running || status !== 'open'}
-          spellCheck={false}
-          className={`flex-1 resize-none rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors max-h-28 disabled:opacity-50 ${isDark ? 'bg-slate-800 text-slate-200 border-slate-700 placeholder:text-slate-600' : 'bg-slate-50 text-slate-900 border-slate-200 placeholder:text-slate-400'}`}
-        />
-        <button
-          type="submit"
-          disabled={running || status !== 'open' || !draft.trim()}
-          className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {running ? '…' : 'Enviar'}
-        </button>
-      </form>
+          {/* Input */}
+          <form onSubmit={handleSubmit} className={`flex items-end gap-2 p-3 border-t ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={handleDraftChange}
+              onKeyDown={handleKeyDown}
+              placeholder={status === 'open' ? 'Instrua o agente…' : 'Aguardando o backend…'}
+              rows={1}
+              disabled={running || status !== 'open'}
+              spellCheck={false}
+              className={`flex-1 resize-none rounded-lg px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors overflow-y-auto max-h-[120px] disabled:opacity-50 ${isDark ? 'bg-slate-800 text-slate-200 border-slate-700 placeholder:text-slate-600' : 'bg-slate-50 text-slate-900 border-slate-200 placeholder:text-slate-400'}`}
+            />
+            <button
+              type="submit"
+              disabled={running || status !== 'open' || !draft.trim()}
+              className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {running ? '…' : 'Enviar'}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

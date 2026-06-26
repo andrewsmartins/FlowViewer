@@ -7,6 +7,7 @@ import { NewFlowDialog } from './components/NewFlowDialog'
 import { PushDialog }    from './components/PushDialog'
 import { RestoreDialog } from './components/RestoreDialog'
 import { ChatPanel }     from './components/ChatPanel'
+import { useChatGate }   from './hooks/useChatGate'
 import { DetailPanel }   from './components/DetailPanel'
 import { Toast, type Notice } from './components/Toast'
 import { ThemeToggle }   from './components/ThemeToggle'
@@ -1045,6 +1046,9 @@ export default function App() {
 
   const requestToken = useCallback(() => setTokenOpen(true), [])
   const hasToken = !!sessionToken.trim()
+  // Ponto único de derivação dos sinais do gate da caixinha (decisão 2): a Fase 5
+  // troca SÓ a fonte aqui; o ChatPanel recebe os booleanos abstratos via props.
+  const chatGate = useChatGate({ hasFlow, hasToken })
   const uploadFile = useCallback(async (file: File, type: UploadMediaType) => {
     const token = sessionToken.trim()
     if (!token) throw new Error('Sem token de sessão — defina o token de sessão para fazer upload.')
@@ -1221,6 +1225,10 @@ export default function App() {
           getFlow={getFlowForAgent}
           onFlowUpdated={handleAgentFlow}
           onRunningChange={handleAgentRunningChange}
+          hasFlow={chatGate.hasFlow}
+          hasToken={chatGate.hasToken}
+          onRequestImport={() => setImportOpen(true)}
+          onRequestToken={requestToken}
         />
       )}
     </div>
