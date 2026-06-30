@@ -7,7 +7,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { FlowStore } from '../src/tools/flowStore'
 import {
-  createNode, setActionField, setMessage, setNodeChoices, setMenu, connectNodes, connectToBot,
+  createNode, setActionField, setMessage, setCategory, setKeywords, setContext,
+  setNodeChoices, setMenu, connectNodes, connectToBot,
   validate, revert, listNodes, describeNode,
   ACTION_FIELDS, type ActionFieldName,
 } from '../src/tools/flowTools'
@@ -86,13 +87,28 @@ const instructions = [
   'operando estas tools — NUNCA escreva JSON cru. A validade vive no código das tools.',
   '',
   'Trabalho típico: list_nodes (orientar) → describe_node (inspecionar) → create_node →',
-  'set_message / set_action_field / set_menu / set_choices → connect → validate. Use revert',
-  'para desfazer tudo desde o início da sessão.',
+  'set_message / set_category / set_action_field / set_menu / set_choices / set_keywords → connect → validate.',
+  'Use revert para desfazer tudo desde o início da sessão.',
   '',
   'Regras:',
   '- Referencie nós por id OU nome exato (nome ambíguo é erro — use o id).',
+  '- Perguntar algo e esperar a resposta = UM nó de Captura (captureNode), NUNCA Mensagem +',
+  '  Aguardar interação. Ponha a pergunta com set_message; deixe captureDataType=free (texto',
+  '  livre, default) ou tipe via set_action_field só quando a pergunta casar LIMPO com um campo',
+  '  conhecido (CNPJ→cnpj, e-mail→mail, telefone→fullPhoneNumber); composto/ambíguo → free. Nunca',
+  '  setar variable. Use waitNode só para esperar SEM perguntar nada.',
+  '- Categorize TODO nó com set_category(node, categoria) — agrupa o fluxo na plataforma. É texto',
+  '  livre, mas REUTILIZE: rode list_nodes e prefira uma categoria JÁ usada no fluxo; senão escolha da',
+  '  semente por FASE da jornada (Saudação e triagem · Identificação · Atendimento · Vendas · Transferência',
+  '  · Encerramento); só invente nova, no mesmo eixo "fase", se nenhuma servir. O assunto específico vai no',
+  '  NOME do nó, não na categoria. Não recategorize o nó de início.',
   '- Nó de Escolha (choiceNode): crie os itens com set_menu (body + itens), depois ligue os',
   '  destinos com set_choices ou connect. Sem set_menu o menu nasce vazio (sem botões).',
+  '- Menu de BOTÃO/LISTA roteia pela KEYWORD da intenção-ALVO, NÃO pelo choices[] — clicar envia o',
+  '  TEXTO do botão (não um número), então o choices[] posicional fica morto. Para cada destino do',
+  '  menu, set_keywords(alvo, [palavra saliente]) — ex.: "Falar com Financeiro" → ["financeiro"]',
+  '  (o casamento é "contém"). Deixe SEM context por padrão (atalho global); use set_context(alvo, menu)',
+  '  só quando a keyword for genérica/reusada (ex.: "Voltar", "Sim") e fosse colidir entre menus.',
   '- Redirect cross-bot: connect_to_bot(node, botId, intentId?) grava o next para outro bot.',
   '- NUNCA invente IDs de time/usuário/bot/API/lista (campos value, apiName, next.intent).',
   '  Resolva o nome → ID pelos resolvers (find_team/find_user/find_bot/list_*) e só então',
@@ -162,6 +178,33 @@ server.registerTool('set_message', {
     condIdx: z.number().int().nonnegative().optional().describe('índice da condição (default 0)'),
   },
 }, async ({ node, text, condIdx }) => reply(setMessage(store, node, text, condIdx ?? 0)))
+
+server.registerTool('set_category', {
+  title: 'Definir categoria',
+  description: 'Grava a categoria da intenção (agrupa o fluxo). Texto livre — REUTILIZE uma categoria já usada no fluxo (veja list_nodes) ou a semente por fase (Saudação e triagem/Identificação/Atendimento/Vendas/Transferência/Encerramento) antes de criar nova. Não recategorize o nó de início.',
+  inputSchema: {
+    node: z.string().describe('id ou nome do nó'),
+    category: z.string().describe('categoria (texto livre; reutilize uma existente sempre que servir)'),
+  },
+}, async ({ node, category }) => reply(setCategory(store, node, category)))
+
+server.registerTool('set_keywords', {
+  title: 'Definir palavras-chave',
+  description: 'SUBSTITUI as palavras-chave (keywords) da intenção-ALVO de um menu — é o que ROTEIA botão/lista (clicar envia o texto, não um número; choices[] posicional não dispara). Casamento é "contém". Array vazio limpa. Uma palavra saliente por alvo (ex.: "Falar com Financeiro" → ["financeiro"]).',
+  inputSchema: {
+    node: z.string().describe('id ou nome do nó-alvo (a intenção para onde o item do menu aponta)'),
+    keywords: z.array(z.string()).describe('palavras-chave (substituem as atuais; vazio limpa)'),
+  },
+}, async ({ node, keywords }) => reply(setKeywords(store, node, keywords)))
+
+server.registerTool('set_context', {
+  title: 'Definir context (escopo da keyword)',
+  description: 'Escopa a keyword da intenção-ALVO a UM menu: grava context = id da intenção que a escopa (resolve por id/nome intra-fluxo). Sem o argumento (ou vazio) LIMPA → keyword vira atalho global. Por padrão deixe global; escope só keyword genérica/reusada que colidiria.',
+  inputSchema: {
+    node: z.string().describe('id ou nome do nó-alvo cuja keyword será escopada'),
+    contextNode: z.string().optional().describe('id ou nome do nó de Escolha que escopa (omitido/vazio → limpa, keyword global)'),
+  },
+}, async ({ node, contextNode }) => reply(setContext(store, node, contextNode)))
 
 server.registerTool('set_choices', {
   title: 'Definir escolhas',

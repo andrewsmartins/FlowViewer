@@ -17,12 +17,12 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 - Zoom, pan e minimapa interativos; **dark mode** completo (toggle sol/lua salvo em `localStorage`)
 
 ### Edição
-- **Criação de nós** — paleta no canto superior esquerdo (grupos **Fluxo** e **Avançado**): arraste um dos 11 tipos para o canvas e crie uma intenção nova com template canônico; soltar **sobre um nó existente** adiciona o tipo como **nova condição** daquela intenção (vira grupo)
+- **Criação de nós** — paleta no canto superior esquerdo com os 11 tipos em lista plana: arraste um deles para o canvas e crie uma intenção nova com template canônico; soltar **sobre um nó existente** adiciona o tipo como **nova condição** daquela intenção (vira grupo)
 - **Edição de conexões** — arraste a ponta de destino de uma aresta para outra intenção; conecte arrastando do handle inferior; remova pela **tag "×"** da aresta ou com Delete/Backspace; o JSON subjacente é atualizado (`next.intent` ou `action.choices`)
 - **Edição de conteúdo** — o painel abre em modo conforme o nó: **grupo** (meta da intenção: nome, categoria, palavras-chave, prioridade, contexto + lista de condições), **condição** (gatilho, mensagens, botões e ação só daquela condição) ou **nó solto** (editor completo); **Aplicar alterações** grava no modelo. Os campos espelham o construtor da plataforma: **nome** em `mixed_snake_case` (espaço vira `_`, sem acento/símbolo), **categoria** como combobox ("Sem Categoria" por padrão, sugere as existentes e cria novas), **palavras-chave** como tags (Enter cria, "×" remove)
 - **Campos por tipo de condição** — "O contexto é igual a" abre **Intenção** + **Contexto** (seletores de intenções); "A última intenção foi" abre **Intenção**; "O valor está vazio"/"O valor existe", "Valor é igual a", "O valor contém", "Total é maior que" e "Total é igual a" abrem o campo **Variável** com um **picker de `@`** em 3 níveis (Categoria → Variável → Modificador) que exibe rótulos legíveis ("Loja › Número (Só dígitos)") e grava a variável crua. O operando varia: "Valor é igual a" tem **Valor** (texto livre); "O valor contém" tem **Valores** (lista de tags, igual às palavras-chave, gravada em `values`); "Total é maior que"/"Total é igual a" têm **Total** (campo numérico com −/+, começa em 0 e aceita negativos, gravado em `valueNumber`)
 - **Respostas (mensagens)** — botão **"+ Adicionar Resposta"** cria **Texto**, **Imagem**, **PDF** ou **Vídeo**; mídia aceita **URL manual** ou **upload** direto para a OmniChat (presigned S3, requer token de sessão)
-- **Menu Botão/Lista (nó de Escolha)** — seção **"Menu"** monta a mensagem interativa: moldura (Título/Corpo/Rodapé/Título botão opções) + itens. *Sem descrição*: 1-3 itens viram **botões de resposta**, 4-10 viram **lista**; *com descrição*: sempre lista, cada item com descrição. A seção **"Escolhas"** liga os itens a intenções-destino **pela ordem** (`action.choices`); nem todo item precisa de destino (pode transitar por palavra-chave). Conectar uma **opção livre pelo canvas** cria a escolha automaticamente
+- **Menu Botão/Lista (nó de Escolha)** — seção **"Menu"** monta a mensagem interativa: moldura (Título/Corpo/Rodapé/Título botão opções) + itens. *Sem descrição*: 1-3 itens viram **botões de resposta**, 4-10 viram **lista**; *com descrição*: sempre lista, cada item com descrição. A seção **"Escolhas"** liga os itens a intenções-destino **pela ordem** (`action.choices`); nem todo item precisa de destino (pode transitar por palavra-chave). Conectar uma **opção livre pelo canvas** cria a escolha automaticamente. Como clicar num botão envia o **texto** (não um número), cada opção traz também o campo **palavra-chave** (gravado no destino — é o que de fato roteia o clique, por "contém") e um checkbox **"Restringir a este menu"** (escopa a keyword via `context`); ambos pré-preenchem com o estado real do destino e patcheiam a intenção-alvo ao Aplicar
 - **Duplicação de nós** — **Ctrl+arrastar** um nó-intenção (solto ou grupo) cria uma intenção nova no ponto do drop; no painel, **"Duplicar Condição"** copia a condição na mesma intenção e **"Duplicar Intenção"** gera uma intenção nova (os dois botões ficam lado a lado quando ambos se aplicam). Cópias são fiéis (conexões de saída preservadas, IDs de botão regenerados); o início nunca é duplicado
 - **Exclusão de intenções** — botão no painel ou tecla Delete; todas as referências de entrada são limpas automaticamente
 - **Undo/redo** — **Ctrl+Z** desfaz e **Ctrl+Shift+Z** / **Ctrl+Y** refazem qualquer edição (botões ↶ ↷ na toolbar); histórico de até 30 passos
@@ -39,6 +39,17 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 - **Restaurar backup (UI)** — botão **Restaurar** sobe um backup `.json` e restaura o bot ao estado do arquivo (exclui o excedente, recria o que falta com remap e sobrescreve o resto), baixando um snapshot de segurança antes
 - **Push/restore via CLI** — `scripts/push-flow.mjs` e `scripts/rollback-bot.mjs` para uso em lote/auditável (mesma lógica do `pushFlow.ts`/`restoreFlow.ts`), com dry-run por padrão e backup automático
 
+### Agente de IA (dev — `npm run ws:dev`)
+
+Uma **caixinha de chat** integrada ao FlowViewer permite construir e editar nós por linguagem natural. Disponível **somente no build de desenvolvimento** (`npm run dev` + `npm run ws:dev` em paralelo).
+
+- O motor é o **Claude Agent SDK** — usa a autenticação da assinatura do Claude Code CLI (sem `ANTHROPIC_API_KEY`).
+- O agente opera o **servidor MCP local** (`mcp/server.ts`, stdio) com 13 tools: `create_node`, `set_message`, `set_category`, `set_menu`, `set_action_field`, `set_choices`, `set_keywords`, `set_context`, `connect`, `connect_to_bot`, `validate`, `revert` e as de leitura/resolução de nomes.
+- Ao enviar uma mensagem, o canvas é travado (somente-leitura) durante o turno; ao fim, o fluxo atualizado é refletido automaticamente. **Ctrl+Z** desfaz o que o agente fez.
+- **Pré-requisitos:** `claude` instalado e logado (`claude /login`), token de sessão configurado (`OMNI_TOKEN` em `flow-viewer.env`), fluxo carregado.
+
+> Veja detalhes da arquitetura e decisões de design em [mcp/README.md](mcp/README.md) e no `PLANS.md`.
+
 ---
 
 ## Stack
@@ -53,6 +64,9 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 | [Tailwind CSS](https://tailwindcss.com) | Estilização |
 | [Vitest](https://vitest.dev) | Testes unitários |
 | [Playwright](https://playwright.dev) | Smoke tests no browser (`scripts/smoke-*.mjs`) |
+| [@anthropic-ai/claude-agent-sdk](https://github.com/anthropics/claude-code) | Motor do agente de IA (dev) — dirige o Claude Code CLI |
+| [@modelcontextprotocol/sdk](https://modelcontextprotocol.io) | Servidor MCP local (backend do agente, `npm run mcp`) |
+| [ws](https://github.com/websockets/ws) | Ponte WebSocket entre o front e o agente (`npm run ws:dev`) |
 
 ---
 
@@ -74,7 +88,9 @@ npm test
 
 O servidor sobe em `http://localhost:5173`.
 
-> 🧪 **[Testes automatizados](docs/TESTES-AUTOMATIZADOS.md)** — os 251 testes unitários e os 15 smokes documentados, com o que cada um cobre.
+> Para usar o **agente de IA** (somente no dev build), suba também a ponte WebSocket em outro terminal: `npm run ws:dev`.
+
+> 🧪 **[Testes automatizados](docs/TESTES-AUTOMATIZADOS.md)** — os 469 testes unitários (22 arquivos) e os 15 smokes documentados, com o que cada um cobre.
 
 ---
 
@@ -215,15 +231,28 @@ Há duas formas de definir o próximo nó:
 ## Estrutura do projeto
 
 ```
+backend/
+├── server.ts                   Ponte WebSocket (`npm run ws:dev`): 1 sessão Agent SDK por conexão, streama eventos para o front
+└── index.html                  Página de teste standalone da ponte (sem React)
+mcp/
+├── server.ts                   Servidor MCP stdio (`npm run mcp`): expõe 13 tools de leitura/mutação do fluxo
+├── nodeManifest.ts             Formatador do manifesto de tipos de nó (deriva do NODE_CATALOG)
+└── tsconfig.json               Config TypeScript isolada para o servidor MCP
 src/
 ├── types.ts                    Interfaces TypeScript do JSON do bot
 ├── App.tsx                     Layout principal, estado dos nós e undo/redo
 ├── main.tsx                    Entry point
 ├── contexts/
 │   └── ThemeContext.tsx        Distribui isDark via React Context (dark mode)
+├── hooks/
+│   ├── useChatSocket.ts        Conexão WebSocket com o backend do agente (streaming de texto + tools)
+│   ├── useChatGate.ts          Gate da caixinha: hasFlow × hasToken → lista de requisitos pendentes
+│   ├── useDraggable.ts         Hook nativo de drag para o widget da caixinha (sem dependência)
+│   └── useClickOutside.ts      Fecha popovers ao clicar fora
 ├── utils/
 │   ├── parseFlow.ts            Converte JSON → nodes + edges + layout Dagre (Modelo B)
-│   ├── nodeMeta.ts             Mapa ActionType→nó, rótulos de gatilho e prioridade
+│   ├── nodeCatalog.ts          NODE_CATALOG — fonte única kind-level (label/actionType/hasError/fields)
+│   ├── nodeMeta.ts             Mapa ActionType→nó e rótulos (derivam do nodeCatalog)
 │   ├── editFlow.ts             Reconectar/conectar/deletar arestas + serializar fluxo
 │   ├── editIntent.ts           Patches de conteúdo do intent (mensagens, botões, ação)
 │   ├── intentTemplates.ts      Templates canônicos por tipo (criação de nó/condição)
@@ -232,13 +261,20 @@ src/
 │   ├── validateFlow.ts         Validação no export (erros bloqueiam, avisos informam)
 │   ├── exportImage.ts          Exportação PNG/SVG (bounds reais, ciente de grupos)
 │   ├── history.ts              Pilha de undo/redo (até 30 snapshots)
+│   ├── chatGate.ts             Lógica pura do gate da caixinha de chat
 │   ├── pushFlow.ts             Núcleo do push para o rascunho (2 passadas + remap)
 │   └── restoreFlow.ts          Restauração a partir de backup (deletar→recriar→sobrescrever)
+├── tools/
+│   ├── flowStore.ts            FlowStore: carrega/salva o arquivo de fluxo (fonte de verdade do agente)
+│   ├── flowTools.ts            13 tools MCP (create_node, set_message, set_category, set_keywords, set_context, set_menu, connect, validate…)
+│   └── resolvers.ts            8 resolvers nome→ID sobre a API OmniChat (find_team, find_bot…)
 ├── components/
 │   ├── TopBar.tsx              Toolbar: importar, exportar, enviar, restaurar, undo/redo, validação
 │   ├── FlowCanvas.tsx          Canvas React Flow com todos os providers
 │   ├── OmniWatermark.tsx       Marca-d'água da logo Omni no fundo (sutil, segue o tema)
-│   ├── NodePalette.tsx         Paleta de criação (grupos Fluxo / Avançado)
+│   ├── NodePalette.tsx         Paleta de criação (11 tipos em lista plana)
+│   ├── Sidebar.tsx             Rail lateral expansível com rótulos (menu, token, dark mode)
+│   ├── ChatPanel.tsx           Caixinha de chat do agente (widget flutuante draggable, dev-only)
 │   ├── DetailPanel.tsx         Painel de edição (modos: grupo / condição / solo / read-only)
 │   ├── ImportDialog.tsx        Modal de importação (colar JSON / upload)
 │   ├── NewFlowDialog.tsx       Modal "Novo fluxo" (a partir do botId)
@@ -279,6 +315,12 @@ JSON (modal de importação / arquivo / Novo fluxo)
                     ├─▶ serializeFlow()   JSON de volta (preserve-and-patch)
                     ├─▶ exportImage()     PNG/SVG (bounds reais)
                     └─▶ pushFlow()        envio ao rascunho da plataforma
+
+Agente de IA (dev — npm run ws:dev)
+  └─▶ ChatPanel.tsx (WebSocket /agent-ws)
+        └─▶ backend/server.ts (Claude Agent SDK)
+              └─▶ mcp/server.ts (stdio) — FlowStore (work.flow.json)
+                    └─▶ serializeFlow / parseFlow — canvas re-renderiza ao fim do turno
 ```
 
 ---

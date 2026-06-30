@@ -1,6 +1,6 @@
 # Guia de uso — FlowViewer
 
-Guia do editor visual de fluxos de chatbot OmniChat. Atualizado para a **v0.14.0 (Fase 6 — Modelo B)**.
+Guia do editor visual de fluxos de chatbot OmniChat. Atualizado para a **v0.30.0**.
 
 > O ciclo completo: **importar (ou criar do zero) → editar no canvas → validar → exportar JSON → enviar para o rascunho do bot (UI ou CLI) → publicar manualmente na plataforma**.
 
@@ -52,10 +52,7 @@ Se já houver um fluxo com edições na tela, o modal avisa antes de substituir.
 
 ### Criar nós
 
-Arraste um tipo da paleta **Criar nó** (canto superior esquerdo) até a posição desejada. São **11 tipos**, em dois grupos:
-
-- **Fluxo** (dia a dia): Mensagem, Escolha, Captura, Transferência, Aguardar interação, Editar informação.
-- **Avançado** (Fase 6): Encerrar conversa, Chamada de API, Pedido, Captura CSAT, Loja física.
+Arraste um tipo da paleta **Criar nó** (canto superior esquerdo) até a posição desejada. São **11 tipos** numa lista plana: Mensagem, Escolha, Captura, Transferência, Aguardar interação, Editar informação, Encerrar conversa, Chamada de API, Pedido, Captura CSAT e Loja física.
 
 Cada um nasce como **nó solto** com o template canônico que a tela oficial usa (UUID novo, defaults corretos por tipo, caminho de erro apontando para o start quando aplicável).
 
@@ -218,6 +215,31 @@ Toggle sol/lua na toolbar — tema aplicado a toda a interface (toolbar, nós, p
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Refazer |
 
 > Os atalhos de undo/redo são ignorados quando o foco está em campos de texto.
+
+---
+
+## 8. Agente de IA (somente no build de desenvolvimento)
+
+O FlowViewer inclui uma **caixinha de chat** que permite construir e editar nós por linguagem natural, usando o Claude Code como motor (sem `ANTHROPIC_API_KEY` — usa a autenticação da assinatura do CLI).
+
+**Pré-requisitos:**
+- `claude` instalado e logado (`claude /login`)
+- Token de sessão inserido na barra lateral (`OMNI_TOKEN` no arquivo `flow-viewer.env`)
+- Um fluxo carregado no canvas
+
+**Como iniciar:**
+```bash
+npm run dev        # servidor Vite (frontend)
+npm run ws:dev     # ponte WebSocket (backend local — em outro terminal)
+```
+
+O botão **Agente** aparece no canto inferior direito apenas no `npm run dev`. Ao clicar:
+1. A caixinha verifica se há fluxo carregado e token definido (popover indica o que falta).
+2. Envie um prompt em linguagem natural ("crie um nó de mensagem com texto Olá").
+3. O agente opera as tools do servidor MCP (`create_node`, `set_message`, `set_menu`, `connect`, etc.) e o canvas atualiza ao fim do turno.
+4. **Ctrl+Z** desfaz o que o agente fez, igual a qualquer outra edição.
+
+> O canvas fica em modo somente-leitura durante o turno do agente — edições manuais são liberadas ao fim. Os dois modos (agente e manual) coexistem na mesma sessão.
 
 ---
 

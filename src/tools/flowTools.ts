@@ -5,7 +5,7 @@ import { createIntentTemplate } from '../utils/intentTemplates'
 import { isCreatableKind, type CreatableKind } from '../utils/nodeCatalog'
 import {
   updateActionFields, setChoices, listMessages, addButtonListMessage, addChoice,
-  addTextMessage, updateMessageText,
+  addTextMessage, updateMessageText, setIntentKeywords, setIntentContext, touch,
 } from '../utils/editIntent'
 import { applyConnect, setNextRef } from '../utils/editFlow'
 import { validateFlow } from '../utils/validateFlow'
@@ -180,6 +180,93 @@ export function setMessage(
 }
 
 /**
+ * `set_category(node, category)` — grava a CATEGORIA da intenção (campo de cabeçalho
+ * que AGRUPA o fluxo na plataforma; texto livre — MODELO-INTENCAO §). Fecha o gap: todo
+ * nó nasce em 'Sem Categoria' e a superfície de tools não expunha o cabeçalho. Idempotente.
+ * Faz **trim** e colapsa espaços internos (mata a quase-duplicata boba "Vendas " vs "Vendas",
+ * decisão Q3). Recusa categoria vazia (espelha set_message) e o nó de início (categoria
+ * especial 'start' — nunca recategorizar, Q5). Vocabulário é texto livre (estratégia híbrida,
+ * Q1): a coerência/reuso vivem na guidance (instructions) + no nudge do validate, não num enum.
+ */
+export function setCategory(store: FlowStore, ref: string, category: string): string {
+  // Espelha set_menu/set_message: "set" nunca grava cabeçalho vazio. Trim + colapsa
+  // espaços internos para que " Vendas " e "Vendas" não virem categorias distintas.
+  const clean = category.trim().replace(/\s+/g, ' ')
+  if (!clean) return `⚠️ erro: a categoria não pode ficar vazia`
+  const intent = resolveIntent(store, ref)
+  if (isError(intent)) return `⚠️ erro: ${intent.error}`
+  // O nó de início usa a categoria especial 'start' (createIntentTemplate); recategorizá-lo
+  // não quebra a topologia (a entrada é identificada pelo id `${botId}-start`), mas confunde
+  // — recusamos para manter o cabeçalho do start canônico.
+  if (intent.id === `${store.mainBotId}-start`) {
+    return `⚠️ erro: "${intent.name}" é o nó de início (categoria especial "start") — não recategorize`
+  }
+  store.beginMutation()
+  intent.category = clean
+  // Uniformiza com os demais setters de campo de cabeçalho (set_keywords/set_context tocam via
+  // os setters puros): toda escrita honesta reflete em `updatedAt` (#7 do code-review da Fase 2).
+  touch(intent)
+  store.save()
+  return `categoria de "${intent.name}" = "${clean}"`
+}
+
+/**
+ * `set_keywords(node, keywords[])` — SUBSTITUI as palavras-chave da intenção (campo de
+ * cabeçalho que ROTEIA na plataforma; v0.33.0). Por quê isto e não `set_choices`: ao clicar
+ * num botão/lista o cliente envia o TEXTO do botão, não um número — então `choices[]` (posicional)
+ * não dispara; o roteamento real é a `keyword` da intenção-ALVO casando o texto por "contém".
+ * Verbo "set" honesto (Q6): grava exatamente o que recebe — só com higiene (trim, colapsa espaços,
+ * descarta vazias, dedup exato). Array vazio LIMPA (estado default e legítimo; o nudge do validate
+ * avisa que alvo sem keyword não roteia). NUNCA grava `variable`/`context` aqui.
+ */
+export function setKeywords(store: FlowStore, ref: string, keywords: string[]): string {
+  const intent = resolveIntent(store, ref)
+  if (isError(intent)) return `⚠️ erro: ${intent.error}`
+  // A higiene (trim/colapsa/dedup exato/vazio-limpa) vive no setter puro `setIntentKeywords`
+  // (compartilhado com a UI do DetailPanel, Fase 2). Aqui só resolvemos a ref, persistimos e
+  // montamos a mensagem a partir do array que o setter realmente gravou.
+  store.beginMutation()
+  const clean = setIntentKeywords(intent, keywords)
+  store.save()
+  return clean.length
+    ? `keywords de "${intent.name}" = [${clean.join(', ')}]`
+    : `keywords de "${intent.name}" limpadas (alvo não vai rotear por clique)`
+}
+
+/**
+ * `set_context(node, contextNode?)` — grava o `context` da intenção-ALVO = ID da intenção
+ * que a ESCOPA (tipicamente o nó de Escolha do menu). Sem `contextNode` (ou vazio) LIMPA o
+ * context → a keyword vira atalho GLOBAL (dispara de qualquer lugar). Com context setado, a
+ * keyword só dispara dentro daquele menu. Default ao fiar é global (Q4): só escope quando a
+ * keyword é genérica/reusada ("Voltar", "Sim") e colidiria. Resolve `contextNode` por id/nome
+ * INTRA-fluxo (nunca inventa ID). Recusa apontar para si mesmo (context de si = sem sentido).
+ */
+export function setContext(store: FlowStore, ref: string, contextRef?: string): string {
+  const intent = resolveIntent(store, ref)
+  if (isError(intent)) return `⚠️ erro: ${intent.error}`
+  // Vazio/ausente = limpa (desmarca o escopo → keyword global). Espelha o checkbox da UI OFF.
+  if (!contextRef || !contextRef.trim()) {
+    store.beginMutation()
+    setIntentContext(intent, null)
+    store.save()
+    return `context de "${intent.name}" limpo (keyword global)`
+  }
+  // Resolve a ref do context (id/nome intra-fluxo) ANTES de chamar o setter puro, que só
+  // aceita id já resolvido (e cuida da recusa de auto-referência + persiste o `context`).
+  const ctx = resolveIntent(store, contextRef)
+  if (isError(ctx)) return `⚠️ erro: context "${contextRef}": ${ctx.error}`
+  // `beginMutation` aqui (antes da guarda de self-ref dentro de `setIntentContext`) é inofensivo:
+  // é idempotente (snapshot só na 1ª mutação da sessão = base correta — flowStore.ts:77-79). Um
+  // self-ref recusado captura o estado INALTERADO, então `revert` segue íntegro. NÃO pré-checar
+  // antes daqui — reintroduziria a duplicação da guarda que centralizamos no setter puro (#8).
+  store.beginMutation()
+  const result = setIntentContext(intent, ctx.id)
+  if (!result.ok) return `⚠️ erro: ${result.reason}`
+  store.save()
+  return `context de "${intent.name}" = "${ctx.name}" (${ctx.id})`
+}
+
+/**
  * `set_choices(node, destinos)` — define a lista de destinos de um nó de Escolha
  * (envolve `setChoices`). Os destinos são ids de intenção, posicionais com os itens.
  */
@@ -309,20 +396,222 @@ export function connectToBot(
   return `${intent.name}→outro bot (${targetId})${hadNext ? ' (destino anterior substituído)' : ''}`
 }
 
+/** Extrai o id da intenção-destino de um `next` (objeto `{botId,id}` ou string). */
+function nextIntentId(cond: BotIntent['conditions'][number]): string | null {
+  const next = cond.next?.intent
+  if (!next) return null
+  return typeof next === 'string' ? next : (next.id ?? null)
+}
+
+/** True se a condição tem ao menos um balão TEXT com conteúdo (= "fez uma pergunta"). */
+function hasTextMessage(cond: BotIntent['conditions'][number]): boolean {
+  return cond.assistant_says.some(say =>
+    say.messages.some(m => m.type === 'TEXT' && !!(m.content ?? '').trim()),
+  )
+}
+
+/**
+ * Nudge do antipadrão "Mensagem + Aguardar" (decisão 5 do interrogatório
+ * 2026-06-26): só dispara quando um `defaultNode` QUE CARREGA texto (= fez uma
+ * pergunta) aponta para um `waitNode`. É a assinatura de "perguntou e esperou" —
+ * que deveria ser UM `captureNode`. Avisos NÃO bloqueiam export; vivem só aqui no
+ * `validate()` do agente (não em `validateFlow`), para não acusar Mensagem+Aguardar
+ * legítimos montados à mão na UI.
+ */
+function findAskWaitNudges(store: FlowStore): string[] {
+  const byId = new Map(store.flow.list.map(i => [i.id, i]))
+  const nudges: string[] = []
+  for (const intent of store.flow.list) {
+    for (const cond of intent.conditions) {
+      if (actionToNodeKind(cond.action) !== 'defaultNode' || !hasTextMessage(cond)) continue
+      const target = byId.get(nextIntentId(cond) ?? '')
+      const pointsToWait = !!target && target.conditions.some(c => c.action?.type === 'waitForInteraction')
+      if (!pointsToWait) continue
+      nudges.push(
+        `nó "${intent.name}" faz uma pergunta e aponta para "${target.name}" (Aguardar interação) — ` +
+        `troque os dois por UM nó de Captura (captureNode): set_message com a pergunta + captureDataType=free (ou tipado).`,
+      )
+    }
+  }
+  return nudges
+}
+
+/**
+ * Dobra um texto para comparação "frouxa": ignora caixa, acentos e espaços. Base das
+ * detecções de quase-duplicata (categorias) e de colisão de keyword. Por quê: na plataforma
+ * "Atendimento", "atendimento" e "Atendimento " são strings DISTINTAS — quem agrupa/casa é a
+ * string crua. Dois valores que colapsam na mesma chave colidem sem ninguém ver.
+ */
+function foldText(text: string): string {
+  return text.trim().toLowerCase()
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * Nudges de categoria (decisões Q3/Q5 do interrogatório 2026-06-26), não-bloqueantes:
+ * (a) categorias QUASE-IGUAIS (diferem só por caixa/acento/espaço) → unifique numa só,
+ *     senão viram grupos distintos na plataforma e o reuso fura;
+ * (b) nós deixados no default 'Sem Categoria' (exceto o início) → a recidiva que a
+ *     feature combate; lista os nomes para o agente saber onde aplicar set_category.
+ * Vivem só aqui no `validate()` do agente (não em `validateFlow`/UI): é política de
+ * design (toda intenção categorizada), não validação estrutural do fluxo.
+ */
+function findCategoryNudges(store: FlowStore): string[] {
+  const nudges: string[] = []
+  const startId = `${store.mainBotId}-start`
+  // (a) agrupa as categorias REAIS por chave normalizada; >1 variante na mesma chave = quase-dup.
+  const variantsByKey = new Map<string, Set<string>>()
+  const uncategorized: string[] = []
+  for (const intent of store.flow.list) {
+    if (intent.id === startId) continue // o início tem categoria especial 'start'
+    // `category` é `string` no type, mas o flow vem de `JSON.parse ... as BotFlowJson`
+    // (flowStore.fromFile) e exports reais podem OMITIR o campo (ver PLANS §schema). Tratar
+    // ausente/vazia como "Sem Categoria" — sem isso `foldText(undefined).trim()` quebra o validate().
+    if (!intent.category || intent.category === 'Sem Categoria') { uncategorized.push(intent.name); continue }
+    const key = foldText(intent.category)
+    if (!variantsByKey.has(key)) variantsByKey.set(key, new Set())
+    variantsByKey.get(key)!.add(intent.category)
+  }
+  for (const variants of variantsByKey.values()) {
+    if (variants.size > 1) {
+      const shown = [...variants].map(v => `"${v}"`).join(' / ')
+      nudges.push(
+        `categorias quase-iguais: ${shown} — unifique numa só (diferenças de caixa/acento/espaço ` +
+        `contam como categorias distintas na plataforma).`,
+      )
+    }
+  }
+  // (b) nós sem categoria — a feature quer todo nó (menos o início) categorizado.
+  if (uncategorized.length) {
+    nudges.push(
+      `${uncategorized.length} nó(s) em "Sem Categoria" (${uncategorized.join(', ')}) — ` +
+      `defina a categoria com set_category (reutilize uma já usada no fluxo antes de criar nova).`,
+    )
+  }
+  return nudges
+}
+
+/**
+ * Indica se uma condição é um nó de Escolha de BOTÃO/LISTA — onde clicar envia o TEXTO do
+ * botão, então o roteamento depende da `keyword` do alvo (e não do `choices[]` posicional).
+ * Um choiceNode de resposta NUMÉRICA (sem mensagem BUTTON/LIST) ainda roteia por `choices[]`,
+ * então NÃO entra no nudge de keyword — evita falso-positivo.
+ */
+function isButtonListChoice(cond: BotIntent['conditions'][number]): boolean {
+  if (cond.action?.type !== 'choice') return false
+  // `assistant_says` é obrigatório no type, mas exports reais podem omiti-lo (flowStore faz
+  // `JSON.parse … as BotFlowJson` cego) — guardamos como os demais leitores guardam keywords/context.
+  return (cond.assistant_says ?? []).some(say =>
+    say.messages.some(m => m.type === 'BUTTON' || m.type === 'LIST'),
+  )
+}
+
+/**
+ * Nudges de roteamento por keyword (v0.33.0, interrogatório 2026-06-26), não-bloqueantes:
+ * (1) alvo de menu de botão/lista SEM keyword → não roteia ao clicar (o clique manda o texto,
+ *     não o número; o `choices[]` fica morto). Lista os alvos p/ o agente saber onde fiar set_keywords.
+ * (2) MESMA keyword em intenções DIFERENTES (colisão global, casamento é "contém") → unifique
+ *     ou escope com set_context.
+ * (3) intenção COM context (escopada a um menu) que é alvo de 2+ menus de botão/lista → conflito
+ *     impossível (context comporta só um) → os demais menus não roteiam até ela.
+ * Vivem só aqui no `validate()` do agente (não em `validateFlow`/UI): é política de roteamento,
+ * não validação estrutural.
+ */
+function findKeywordNudges(store: FlowStore): string[] {
+  const nudges: string[] = []
+  const byId = new Map(store.flow.list.map(i => [i.id, i]))
+  // Quantas intenções-FONTE distintas de menu de botão/lista apontam para cada alvo. Conta por
+  // intenção (não por condição): um intentGroupNode com 2 condições de escolha para o mesmo alvo
+  // é UM menu, não dois — daí dedup dos alvos por fonte antes de incrementar.
+  const menuCountByTarget = new Map<string, number>()
+  for (const intent of store.flow.list) {
+    const targets = new Set<string>()
+    for (const cond of intent.conditions) {
+      if (!isButtonListChoice(cond) || !Array.isArray(cond.action.choices)) continue
+      for (const tid of cond.action.choices) if (tid) targets.add(tid)
+    }
+    for (const tid of targets) menuCountByTarget.set(tid, (menuCountByTarget.get(tid) ?? 0) + 1)
+  }
+  // (1) alvos de menu de botão/lista sem keyword — chaveados por ID (nomes podem repetir entre
+  // intenções distintas), exibindo o NOME do alvo (onde o set_keywords deve ir), não o menu.
+  const noKeywordIds = [...menuCountByTarget.keys()].filter(tid => {
+    const target = byId.get(tid)
+    return !!target && (target.keywords ?? []).length === 0
+  })
+  if (noKeywordIds.length) {
+    const names = noKeywordIds.map(tid => byId.get(tid)!.name)
+    nudges.push(
+      `${noKeywordIds.length} alvo(s) de menu de botão/lista sem keyword (${names.join(', ')}) — ` +
+      `não roteiam ao clicar (o clique envia o TEXTO do botão, não um número); ` +
+      `defina set_keywords com uma palavra saliente em cada alvo.`,
+    )
+  }
+  // (2) mesma keyword (dobrada) em intenções DIFERENTES = colisão global. Chaveado por id da
+  // intenção (não pelo nome) para flagrar até homônimas distintas que dividem a keyword.
+  const idsByKeyword = new Map<string, Set<string>>()
+  for (const intent of store.flow.list) {
+    for (const k of new Set((intent.keywords ?? []).map(foldText))) {
+      if (!k) continue
+      if (!idsByKeyword.has(k)) idsByKeyword.set(k, new Set())
+      idsByKeyword.get(k)!.add(intent.id)
+    }
+  }
+  for (const ids of idsByKeyword.values()) {
+    if (ids.size > 1) {
+      const names = [...ids].map(id => byId.get(id)!.name)
+      nudges.push(
+        `keyword repetida em ${ids.size} intenções (${names.join(', ')}) — ` +
+        `como o casamento é "contém", colide globalmente; unifique ou escope com set_context.`,
+      )
+    }
+  }
+  // (3) intenção com context que é alvo de 2+ menus (context comporta só um menu).
+  for (const intent of store.flow.list) {
+    const count = menuCountByTarget.get(intent.id) ?? 0
+    if (intent.context && count >= 2) {
+      nudges.push(
+        `nó "${intent.name}" tem context (escopo de um menu) mas é alvo de ${count} menus — ` +
+        `context comporta só um; os demais menus não roteiam até ele.`,
+      )
+    }
+  }
+  // (4) keyword multi-palavra: a plataforma só casa palavra individual (território N2), então
+  // uma keyword com espaço NUNCA roteia. A UI já previne (split por espaço no commit do
+  // KeywordTags); este nudge pega o residual que entrou por IMPORT de JSON ou pelo AGENTE
+  // (set_keywords não splita — split silencioso no setter seria surpresa). Chaveado por id.
+  for (const intent of store.flow.list) {
+    const withSpace = (intent.keywords ?? []).filter(k => k.includes(' '))
+    if (withSpace.length) {
+      const shown = withSpace.map(k => `"${k}"`).join(', ')
+      nudges.push(
+        `nó "${intent.name}" tem keyword com espaço (${shown}) — a plataforma só casa palavra ` +
+        `individual; separe em palavras-chave distintas (uma por palavra).`,
+      )
+    }
+  }
+  return nudges
+}
+
 /**
  * `validate()` — relatório de validade do fluxo (envolve `validateFlow`).
  * Tool separada (Q2): nunca é gate de escrita; o agente chama quando quer
- * (tipicamente no fim). Erros bloqueiam export; avisos só informam.
+ * (tipicamente no fim). Erros bloqueiam export; avisos só informam — inclui os
+ * nudges de captura (`findAskWaitNudges`), de categoria (`findCategoryNudges`) e de
+ * roteamento por keyword (`findKeywordNudges`), exclusivos do agente.
  */
 export function validate(store: FlowStore): string {
   const { errors, warnings } = validateFlow(store.flow)
-  if (!errors.length && !warnings.length) return '✅ fluxo válido (0 erros, 0 avisos)'
+  const allWarnings = [
+    ...warnings, ...findAskWaitNudges(store), ...findCategoryNudges(store), ...findKeywordNudges(store),
+  ]
+  if (!errors.length && !allWarnings.length) return '✅ fluxo válido (0 erros, 0 avisos)'
   const lines: string[] = []
   lines.push(errors.length ? `❌ ${errors.length} erro(s):` : '✅ 0 erros')
   errors.forEach(e => lines.push(`  • ${e}`))
-  if (warnings.length) {
-    lines.push(`⚠️ ${warnings.length} aviso(s):`)
-    warnings.forEach(w => lines.push(`  • ${w}`))
+  if (allWarnings.length) {
+    lines.push(`⚠️ ${allWarnings.length} aviso(s):`)
+    allWarnings.forEach(w => lines.push(`  • ${w}`))
   }
   return lines.join('\n')
 }
@@ -361,7 +650,7 @@ export function describeNode(store: FlowStore, ref: string): string {
   const head = [
     `nó "${intent.name}" (id ${intent.id})`,
     `categoria=${intent.category}`,
-    intent.keywords.length ? `keywords=[${intent.keywords.join(', ')}]` : null,
+    intent.keywords?.length ? `keywords=[${intent.keywords.join(', ')}]` : null,
     intent.context ? `context=${intent.context}` : null,
   ].filter(Boolean).join(' · ')
 
