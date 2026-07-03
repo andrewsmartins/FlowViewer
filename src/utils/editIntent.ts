@@ -2,6 +2,7 @@ import type { BotIntent, BotMessage, BulkUpdateItem, Condition, ButtonMessageCon
 import type { EditResult } from './editFlow'
 import { createConditionTemplate, createConditionForKind } from './intentTemplates'
 import type { CreatableKind } from './nodeCatalog'
+import { findMenuLimitViolations } from './menuLimits'
 
 /**
  * Patches de CONTEÚDO de uma intenção (Fase 3): mensagens, botões, metadados
@@ -437,21 +438,31 @@ function buildButtonList(
   if (!cfg.body.trim()) return { error: 'o corpo do texto não pode ficar vazio' }
 
   const msgType: 'BUTTON' | 'LIST' = cfg.variant === 'described' || items.length >= LIST_THRESHOLD ? 'LIST' : 'BUTTON'
-  return {
-    msgType,
-    messageConfig: {
-      header: cfg.header.trim(),
-      title: msgType === 'LIST' ? cfg.title.trim() : '',
-      body: cfg.body.trim(),
-      footer: cfg.footer.trim(),
-      type: 'text',
-      buttons: items.map((it, i) => ({
-        id: reuseButtons[i]?.id ?? crypto.randomUUID(),
-        text: it.text,
-        description: msgType === 'LIST' ? it.description : '',
-      })),
-    },
+  const messageConfig: ButtonMessageConfig = {
+    header: cfg.header.trim(),
+    title: msgType === 'LIST' ? cfg.title.trim() : '',
+    body: cfg.body.trim(),
+    footer: cfg.footer.trim(),
+    type: 'text',
+    buttons: items.map((it, i) => ({
+      id: reuseButtons[i]?.id ?? crypto.randomUUID(),
+      text: it.text,
+      description: msgType === 'LIST' ? it.description : '',
+    })),
   }
+  // Hard-block de limite de caractere (mesma família do ">10 itens" acima: o que a
+  // plataforma rejeita, recusamos aqui). Um ponto só cobre agente (set_menu) e UI
+  // (replaceButtonListMessage). Checa os campos JÁ normalizados: em BUTTON o title é '',
+  // então não falso-positiva. Fonte única dos limites em menuLimits.ts.
+  const overflow = findMenuLimitViolations({
+    header: messageConfig.header ?? '',
+    title: messageConfig.title ?? '',
+    body: messageConfig.body ?? '',
+    footer: messageConfig.footer ?? '',
+    items: messageConfig.buttons.map(b => ({ text: b.text, description: b.description ?? '' })),
+  })
+  if (overflow.length) return { error: overflow[0] }
+  return { msgType, messageConfig }
 }
 
 /**

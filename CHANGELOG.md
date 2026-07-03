@@ -11,6 +11,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [0.34.0] - 2026-07-03
+
+### Adicionado
+- **Limites de caractere do Menu (Botão/Lista) impostos de ponta a ponta** ([src/utils/menuLimits.ts](src/utils/menuLimits.ts), [src/utils/editIntent.ts](src/utils/editIntent.ts), [src/tools/flowTools.ts](src/tools/flowTools.ts), [src/utils/nodeCatalog.ts](src/utils/nodeCatalog.ts)) — fecha o gap em que o agente (via `set_menu`) criava itens de menu acima do limite de caractere sem ninguém acusar. Nova **fonte única** `MENU_LIMITS` (cabeçalho 60 · corpo 80 · rodapé 60 · título do menu 20 · texto do item 20 · descrição 72) — os valores do **builder real da OmniChat** (observados na plataforma), não o WhatsApp cru (o body do WhatsApp é 1024; o builder usa 80; item é **20 fixo**, não varia BUTTON×LIST). Imposição em três camadas: (1) **hard-block** no `buildButtonList` (recusa criar/salvar campo acima do limite — um ponto só cobre agente **e** UI, mesma família do `>10 itens` já existente); (2) **nudge não-bloqueante** no `validate()` (`findMenuLimitNudges`) para menus **legados/importados** que já vieram acima do limite no JSON; (3) **guidance** no `nodeCatalog` (o `choiceNode` passa a listar os limites para o agente mirar dentro deles). O `BL_LIMITS` local do `DetailPanel` (que já alimentava o `maxLength` dos inputs desde a Fase 10) passou a **reusar** a fonte única — mata a duplicação da tabela. Cobertura: **+11 testes** ([editIntent.test.ts](src/utils/editIntent.test.ts): cada campo no limite exato passa/recusa, item 20 fixo mesmo em LIST, título longo em BUTTON não falso-positiva; [flowTools.test.ts](src/tools/flowTools.test.ts): nudge de menu legado dispara/não-dispara, `set_menu` recusa item longo). Suíte cheia verde (**539 testes**); `tsc` do app e `mcp:typecheck` limpos.
+
 ## [0.33.1] - 2026-06-30
 
 ### Corrigido

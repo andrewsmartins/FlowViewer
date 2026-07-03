@@ -719,6 +719,45 @@ describe('addButtonListMessage (Botão/Lista de exibição — Fase 10)', () => 
     expect(msg.messageConfig!.buttons.map(b => b.text)).toEqual(items)
     expect(msg.messageConfig!.buttons.every(b => b.description === '' && /^[0-9a-f-]{36}$/i.test(b.id!))).toBe(true)
   })
+
+  // v0.34.0 (Fase A): hard-block de limite de caractere no buildButtonList. Item = 20
+  // FIXO (BUTTON e LIST — o builder OmniChat não varia por tipo). Recusa = não cria.
+  describe('limites de caractere (v0.34.0)', () => {
+    it('item: 20 chars passa, 21 recusa', () => {
+      expect(addButtonListMessage(fresh(), cfg(['x'.repeat(20)])).ok).toBe(true)
+      expect(addButtonListMessage(fresh(), cfg(['x'.repeat(21)])).ok).toBe(false)
+    })
+    it('item acima do limite num menu LIST (4+ itens) também recusa (20 fixo, não 24)', () => {
+      const items = [...seq(3), 'x'.repeat(21)] // 4 itens → LIST
+      expect(addButtonListMessage(fresh(), cfg(items)).ok).toBe(false)
+    })
+    it('cabeçalho: 60 passa, 61 recusa', () => {
+      expect(addButtonListMessage(fresh(), cfg(['a'], { header: 'h'.repeat(60) })).ok).toBe(true)
+      expect(addButtonListMessage(fresh(), cfg(['a'], { header: 'h'.repeat(61) })).ok).toBe(false)
+    })
+    it('corpo: 80 passa, 81 recusa', () => {
+      expect(addButtonListMessage(fresh(), cfg(['a'], { body: 'b'.repeat(80) })).ok).toBe(true)
+      expect(addButtonListMessage(fresh(), cfg(['a'], { body: 'b'.repeat(81) })).ok).toBe(false)
+    })
+    it('rodapé: 61 recusa', () => {
+      expect(addButtonListMessage(fresh(), cfg(['a'], { footer: 'f'.repeat(61) })).ok).toBe(false)
+    })
+    it('título do menu (LIST): 20 passa, 21 recusa', () => {
+      expect(addButtonListMessage(fresh(), cfg(seq(4), { title: 't'.repeat(20) })).ok).toBe(true)
+      expect(addButtonListMessage(fresh(), cfg(seq(4), { title: 't'.repeat(21) })).ok).toBe(false)
+    })
+    it('título longo num BUTTON não falso-positiva (title é descartado → "")', () => {
+      // 1-3 itens = BUTTON; buildButtonList zera o title, então não conta no limite
+      expect(addButtonListMessage(fresh(), cfg(['a'], { title: 't'.repeat(50) })).ok).toBe(true)
+    })
+    it('descrição do item (LIST): 72 passa, 73 recusa', () => {
+      const described = (n: number) => ({
+        variant: 'described' as const, items: [{ text: 'a', description: 'd'.repeat(n) }],
+      })
+      expect(addButtonListMessage(fresh(), cfg([], described(72))).ok).toBe(true)
+      expect(addButtonListMessage(fresh(), cfg([], described(73))).ok).toBe(false)
+    })
+  })
 })
 
 describe('addCondition tipada (Marco D — escolher o tipo da condição)', () => {

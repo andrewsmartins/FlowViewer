@@ -16,6 +16,7 @@ import { acceptFor, type UploadMediaType } from '../utils/uploadMedia'
 import { VARIABLE_GROUPS, variableDisplay, entityFieldItems, type VariableItem } from '../utils/variables'
 import type { VariableGroup } from '../utils/variables'
 import { computeMenuLeft, MENU_COLUMN_WIDTH, MENU_MARGIN } from '../utils/menuPosition'
+import { MENU_LIMITS } from '../utils/menuLimits'
 import { useTeams } from '../contexts/TeamsContext'
 import type { Collection } from '../utils/collections'
 import { templateVarCount, type MessageTemplate } from '../utils/messageTemplates'
@@ -1286,7 +1287,9 @@ const ADD_MESSAGE_OPTIONS: { type: NewDraftMessage['type']; label: string }[] = 
 const ADD_MESSAGE_ICONS: Record<string, string> = { ...MEDIA_ICONS, TEXT: '✏️', BUTTONLIST: '🔘', COLLECTION: '🛍️', TEMPLATE: '🧩' }
 
 /** Limites de caracteres do Botão/Lista, espelhando o construtor da plataforma (padrão WhatsApp). */
-const BL_LIMITS = { header: 60, body: 80, footer: 60, title: 20, item: 20, desc: 72 } as const
+// Limites de caractere do menu: fonte única em menuLimits.ts (mesma tabela do hard-block
+// do buildButtonList e do nudge do validate()). Alias local mantém o uso curto nos CharFields.
+const BL_LIMITS = MENU_LIMITS
 const BL_MAX_ITEMS = 10
 /** 4+ itens viram LIST (menu com título); 1-3, BUTTON (botões de resposta). */
 const BL_LIST_THRESHOLD = 4
@@ -1405,7 +1408,7 @@ function ButtonListEditor({ msg, isDark, inputCls, labelCls, ghostBtnCls, dashed
               >remover</button>
             </div>
             {isDescribed && (
-              <CharField label="Descrição" value={it.description} max={BL_LIMITS.desc} placeholder="Descrição do item (opcional)"
+              <CharField label="Descrição" value={it.description} max={BL_LIMITS.description} placeholder="Descrição do item (opcional)"
                 isDark={isDark} inputCls={inputCls} labelCls={labelCls} onChange={v => setItem(i, 'description', v)} />
             )}
           </div>
