@@ -1,33 +1,31 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-06-30
+## 🔄 Handoff — 2026-07-03 (Fase A da v0.34.0 CODADA + testada; falta commit e /verify e2e)
 
-**Foco da próxima sessão:** **implementar a Fase 2.1** (correções pós-code-review da Fase 2) conforme as decisões já travadas no PLANS §"Correções pós-code-review da Fase 2 (Fase 2.1)"; depois `/code-review` rápido + **commitar tudo** (Fase 2 + 2.1) como `feat: roteamento por opção na UI (v0.33.0)`; então os `/verify` e2e represados.
+**Foco da próxima sessão:** fechar a **Fase A** — commitar (branch nova) e rodar o `/verify` e2e ao vivo (fixture Fluent School) — **e/ou** partir para a **Fase B** (`set_transfer`), independente e ainda 100% no papel. Plano travado no PLANS §"Agente respeita as regras…".
 
-**Onde paramos:** branch `feat/menu-keywords-routing`, HEAD ainda `d028098` (Fase 1). A **Fase 2 inteira segue no working tree, NÃO commitada** (sessão anterior). **Esta sessão NÃO escreveu código** — rodou `/code-review` (high) na Fase 2 (10 achados) e `/interrogar` em TODOS os 10; as decisões de correção viraram o bloco **"Correções pós-code-review da Fase 2 (Fase 2.1)"** no PLANS.md. WIP atual = mesmos arquivos de antes + edições no PLANS.md desta sessão.
+**Onde paramos:** branch `fix/export-popover-overflow-clipped` (a do v0.33.1, já mergeada — **stale**, não é branch da v0.34.0). Esta sessão **implementou a Fase A inteira** (limites de caractere do Menu) + docs. Tudo em WIP **não-commitado** (misturado com os docs de planejamento da sessão anterior — PLANS/PROMPT/ARCHIVE).
 
-**Fios soltos / pendentes:**
-- **Fase 2.1 decidida mas NÃO implementada** — é o trabalho da próxima sessão. Os 7 itens de escopo estão listados no fim do bloco da Fase 2.1 no PLANS.
-- **Nada commitado** — Fase 2 + Fase 2.1 vão num commit só (`feat:`), após implementar e revisar.
-- **`/verify` e2e represados (4, cada um em sessão NOVA — MCP só recarrega ao reiniciar):** v0.33.0 keyword/roteamento · v0.32.0 categorias · v0.31.0 captura · v0.30.0 `set_message`. Critérios nos respectivos blocos do PLANS.
-- **Destino das branches:** `feat/set-message` (v0.30.0), `feat/capture-node-guidance` (v0.31.0+v0.32.0), `feat/menu-keywords-routing` (v0.33.0) → PR(s) encadeados p/ `main`.
+**O que foi mexido (Fase A):**
+- **Novo** [src/utils/menuLimits.ts](src/utils/menuLimits.ts) — fonte única `MENU_LIMITS` + `findMenuLimitViolations`.
+- Hard-block no `buildButtonList` ([editIntent.ts](src/utils/editIntent.ts)); nudge `findMenuLimitNudges` no `validate()` ([flowTools.ts](src/tools/flowTools.ts)); guidance no `choiceNode` ([nodeCatalog.ts](src/utils/nodeCatalog.ts)); `BL_LIMITS` do [DetailPanel.tsx](src/components/DetailPanel.tsx) virou alias da fonte única.
+- **+11 testes** (editIntent.test.ts + flowTools.test.ts). Suíte cheia **539 verde**; `tsc`+`mcp:typecheck` limpos. CHANGELOG + PLANS atualizados; `package.json` → **0.34.0**.
 
-**Armadilhas desta sessão (preservar ao implementar a Fase 2.1):**
-- **Gatilho de escrita muda de fundamento:** trocar "grava se difere do alvo VIVO" por "grava só o que o humano editou desde a abertura" — comparar `keyword`/`contextOn` vs `initialKeyword`/`initialContextOn` (string-CRUA), que passam a morar DENTRO do `ChoiceMeta` (sem 3º array). Isso é o que mata #2/#3/#5 e dissolve o `norm` local (#9).
-- **Keyword multi-palavra é INVÁLIDA na plataforma** (só casa palavra individual — território N2 do Andy). Por isso `KeywordTags.commit` splita por espaço E vírgula; `validate()` ganha nudge p/ keyword com espaço; mas `setIntentKeywords` NÃO splita (split silencioso no setter = surpresa, igual à decisão 3 do set_category).
-- **`#8 aceito de propósito:** `beginMutation` antes da guarda de self-ref é inofensivo (snapshot idempotente = base correta da sessão, [flowStore.ts:77-79](src/tools/flowStore.ts#L77-L79)). NÃO "consertar" pré-checando — reintroduziria duplicação da guarda.
-- **`#7:** dar `touch()` no `setCategory` (hoje não toca) ao uniformizar — mexe em código já mergeado da v0.32.0, é proposital.
-- Sem RTL/jsdom: testes de UI são **lógica pura** (`applyChoiceRouting`/`ChoiceMeta` exportados). Sem linter (`npm run lint` não existe).
+**Armadilha crítica (correção de drift do plano):** os limites do Menu **NÃO** são o WhatsApp cru "por tipo" que o interrogatório travou. Andy decidiu **alinhar ao builder real da OmniChat** (= o `BL_LIMITS` que já existia na UI): **body 80 · título 20 · item 20 FIXO** (BUTTON e LIST, não 20/24) · header 60 · footer 60 · desc 72. Detalhe e porquê no PLANS §Fase A (bloco "Resultado/Correção"). **Consequência p/ o /verify:** os itens do fixture Fluent School ("Falar com um consultor"=22, "Quero ver outras opções"=23) agora são **INVÁLIDOS** (>20) — ao rodar o e2e, encurtar esses itens no prompt OU esperar o hard-block disparar.
 
-**Próximo passo imediato:** implementar os 7 itens da Fase 2.1 (ver fim do bloco no PLANS), começando pelo gatilho `initial*` no `ChoiceMeta` + `applyChoiceRouting`, rodar a suíte, depois `KeywordTags`/nudge/hints/`setCategory`.
+**Fios soltos / meio-feito:**
+- **Fase A:** falta **commit** (criar branch, ex. `feat/menu-char-limits`; separar docs de código) e o **`/verify` e2e ao vivo** (caixinha + agente). Testes já exercitam os caminhos reais das tools, mas o gate de aceite do plano é o e2e.
+- **Fase B (`set_transfer`):** intacta, só plano — toca o `DetailPanel` (extrair `TRANSFER_MAP`/`TRANSFER_SUBS` p/ `src/utils/transfer.ts`), remove `transferType` de `ACTION_FIELDS`, erro-duro se o time não resolve.
+- **Fase 2.1 (v0.33.0):** `/verify` e2e ainda pendente (segue viva no PLANS de propósito).
 
-**Ponteiros:**
-- PLANS §"Correções pós-code-review da Fase 2 (Fase 2.1)" — **decisões TRAVADAS dos 10 achados** + "Como será testado" + escopo (7 itens). Não reabrir sem novo `/interrogar`.
-- PLANS §"Menus que roteiam de verdade" → "Decisões da Fase 2" (Fases 1+2, já implementadas).
-- Código a tocar: [DetailPanel.tsx](src/components/DetailPanel.tsx) (`ChoiceMeta`, `applyChoiceRouting`, `choiceMetaOf`, `buildDraft`, handlers de opção, `KeywordTags`), [flowTools.ts](src/tools/flowTools.ts) (`findKeywordNudges`, `setCategory`, `setContext`), testes em `DetailPanel.routing.test.ts` + `flowTools.test.ts`.
+**Ao rodar /verify de tools:** muta `public/masterFlow.json`/`work.flow.json` → restaurar via git; o MCP relê o disco só no boot (matar a árvore força respawn fresco).
 
-**Skills sugeridas ao retomar:** implementar direto (decisões já interrogadas); `/code-review` rápido antes de commitar; `/verify` para os e2e represados (sessão nova com MCP reiniciado).
+**Próximo passo imediato:** conferir `git status`; criar branch da v0.34.0 e commitar a Fase A (docs separados do código); depois rodar o `/verify` e2e (com o ajuste do fixture acima). Ou, se preferir agrupar, ir direto para a Fase B.
+
+**Ponteiros:** PLANS §"Agente respeita as regras… (v0.34.0)" (Fase A ✅ / Fase B planejada); fonte única [menuLimits.ts](src/utils/menuLimits.ts); MCP [mcp/server.ts](mcp/server.ts); UI transfer p/ Fase B [DetailPanel.tsx:125-144](src/components/DetailPanel.tsx#L125-L144).
+
+**Skills sugeridas ao retomar:** `/verify` (fecha a Fase A, com o app/caixinha rodando); `/code-review` (high) antes de commitar a Fase B (escrita cross-tool); `/interrogar` só se surgir decisão nova fora do plano travado.
 <!-- HANDOFF:END -->
 
 ## Contexto
@@ -169,246 +167,6 @@ tools de condição inexistentes (add_condition + critério `@bot.isOpenNow` + f
 horário virou 2 nós soltos como aproximação; candidato a feature futura. Pendente: rodar pela
 caixinha e avaliar contra o critério do doc.
 
-### Nó de Captura no agente — trocar "Mensagem + Aguardar" por `captureNode` (guidance + nudge) ✅ IMPLEMENTADA (branch `feat/capture-node-guidance`, v0.31.0)
-
-> **Resultado (2026-06-26, branch `feat/capture-node-guidance`):** entregue como **guidance + nudge**
-> (sem tool nova). (1) `summary`/`fields` de `captureNode` e `waitNode` reescritos em
-> [nodeCatalog.ts](src/utils/nodeCatalog.ts); (2) nova regra "perguntar+esperar = captureNode" nas
-> `instructions` do [mcp/server.ts](mcp/server.ts); (3) `validate()` ([flowTools.ts](src/tools/flowTools.ts))
-> ganhou `findAskWaitNudges` — aviso não-bloqueante quando `defaultNode` COM texto → `waitNode`, exclusivo
-> do agente (não toca `validateFlow`/UI). **+3 testes**, suíte cheia verde (**472 testes**), `tsc`+`mcp:typecheck`
-> limpos. **Pendente:** `/verify` e2e pela caixinha (critério de aceite abaixo).
->
-> Plano fechado por interrogatório (skill `interrogar`) em 2026-06-26. Decisões TRAVADAS abaixo —
-> registro do raciocínio; não reabrir sem novo interrogatório. Origem: ao construir o fluxo Uni.co
-> (turnos 2/3/4/7, "mensagem X → aguardar a resposta"), o agente monta `defaultNode` + `waitNode`
-> em vez de um `captureNode`.
-
-**Objetivo (1 frase):** fazer o agente usar **um `captureNode`** sempre que o passo for "perguntar
-algo e esperar a resposta", em vez do par `defaultNode` + `waitNode`.
-
-**Diagnóstico (achados do código — é guidance, NÃO falta tool):**
-- `captureNode` recém-criado já nasce com `captureDataType: 'free'` ([intentTemplates.ts:83](src/utils/intentTemplates.ts#L83))
-  ⇒ captura não configurada = "pergunte e espere qualquer resposta" = exatamente o que Mensagem+Aguardar faz.
-- `set_message` aceita `captureNode` (recusa só `choiceNode`) ⇒ o nó de Captura **carrega a própria pergunta**.
-- `set_action_field` já grava `captureDataType`/`captureDataTypesCategory`/`multipleFields` ([flowTools.ts:33](src/tools/flowTools.ts#L33)).
-- A UI ([DetailPanel.tsx:3215](src/components/DetailPanel.tsx#L3215)) grava **só** esses 3 campos ao salvar captura — **nunca** `variable`.
-  Captura tipada (CNPJ/CPF/…) **não precisa** de variável: a plataforma armazena no campo conhecido do contato pelo
-  próprio `captureDataType`. `variable` só serve ao tipo `custom` (= território do `setDataNode.bulkUpdate` não exposto, fora do escopo).
-- Logo: tudo construível com as tools de hoje. O agente caiu no workaround por **guidance** — o `summary` do
-  `captureNode` ("Captura dado(s) do contato…") enquadra como "dado estruturado" e não diz que é o jeito de "perguntar e esperar".
-
-**Decisões (com o porquê):**
-1. **Regra única: pergunta+espera → `captureNode` (Q1).** Qualquer "faça uma pergunta e espere a resposta" vira
-   um `captureNode` — inclusive texto livre, que fica em `captureDataType='free'` (default). O `waitNode` sobra só
-   para "esperar sem perguntar nada". Uma regra só, uniforme; sem o agente ter que adivinhar "é tipado?".
-2. **Materialização: guidance + nudge no `validate()` (Q2).** (a) Reescrever o `summary` do `captureNode` e do
-   `waitNode` em [nodeCatalog.ts](src/utils/nodeCatalog.ts) e a regra na linha "Trabalho típico" das `instructions`
-   do [mcp/server.ts](mcp/server.ts); (b) `validate()` emite **aviso não-bloqueante** ao detectar o antipadrão.
-   Texto guia a construção; validate pega recidiva. **Sem guardrail duro na tool** — `waitNode` tem usos legítimos
-   e bloquear misturaria política de design com validação estrutural.
-3. **Política de tipo: conservador (Q4).** O agente só seta `captureDataType` quando a pergunta casa **limpo** com
-   **um** dos 11 `CAPTURE_FIELDS` (CNPJ→`cnpj`, e-mail→`mail`, telefone→`fullPhoneNumber`). Composto/ambíguo/sem
-   mapeamento → deixa `free`. Nunca erra o tipo (pior caso = pergunta+espera); `set_action_field` **não valida** enum
-   hoje, então a disciplina vive na guidance. Vocabulário = os 11 `CAPTURE_FIELDS`, não os 22 do enum da plataforma.
-   *Consequência:* o "Qual seu CNPJ **e nome da loja**?" do Uni.co (composto) vira captura **free** — o humano lê a resposta.
-4. **Agente NUNCA grava `variable` (decorre do diagnóstico).** Espelha a UI. `variable` = tipo `custom`, fora do escopo.
-5. **Nudge preciso: só `defaultNode` COM mensagem TEXT → `waitNode` (Q5).** É a assinatura de "perguntou e esperou".
-   `defaultNode` sem texto → `waitNode` não acusa (raro e ambíguo). Menos falso-positivo.
-
-**Como será testado:**
-- **Unit do nudge** (padrão de [flowTools.test.ts](src/tools/flowTools.test.ts)): defaultNode-com-texto→wait **dispara**
-  aviso; defaultNode-sem-texto→wait **não** dispara; captureNode→(nada) limpo; aviso é não-bloqueante (validate não falha).
-- **`mcp:typecheck`** limpo (mudança de `summary`/instructions é texto; o validate ganha uma checagem).
-- **`/verify` e2e pela caixinha:** prompt "pergunte o CNPJ e depois pergunte o nº de atendimento" → assert no
-  `work.flow.json` que ambos são `captureNode` (CNPJ tipado=`cnpj`; nº atendimento=`free`), **zero** `waitNode`.
-
-**Riscos/pendências:**
-- Guidance não garante 100% (Q2 recusou guardrail duro) — o nudge do `validate()` é a rede para recidiva.
-- `set_action_field` ainda não valida `captureDataType` (dívida da Fase 2) — se o agente escrever tipo inválido,
-  passa silencioso. Aceito por ora; consolidar junto com os sub-enums quando a Fase 5 pedir validação de campo.
-- Enum reduzido (11 vs 22): captura que precisaria de `cpfOrCnpj`/`custom`/etc. cai em `free` — aceito; ampliar é aditivo.
-
-### Categorias coerentes nos nós (`set_category` + semente + nudge) ✅ IMPLEMENTADA (v0.32.0)
-
-> **Resultado (2026-06-26):** entregue. (1) Tool `setCategory` em [flowTools.ts](src/tools/flowTools.ts) (trim+colapsa
-> espaços, recusa vazia e o nó de início) + registrada em [mcp/server.ts](mcp/server.ts); (2) guidance híbrida
-> reuse-first (semente por fase + precedência) nas `instructions` do MCP + linha "Trabalho típico"; (3) `findCategoryNudges`
-> no `validate()` (quase-duplicatas por caixa/acento/espaço + nós em "Sem Categoria", excluindo o início). **+10 testes**
-> (suíte cheia **482 verde**), `tsc`+`mcp:typecheck` limpos. **Pendente:** `/verify` e2e pela caixinha (critério abaixo).
->
-> Plano fechado por interrogatório (skill `interrogar`) em 2026-06-26. Decisões TRAVADAS abaixo —
-> registro do raciocínio; não reabrir sem novo interrogatório. Origem: o agente cria todo nó em
-> `category: 'Sem Categoria'` e não tem como categorizar — pedido: categorias coerentes e reutilizadas.
-
-**Objetivo (1 frase):** dar ao agente como atribuir **categorias coerentes e reutilizáveis** às
-intenções que cria, para agrupar o fluxo na plataforma OmniChat sem explodir em sinônimos.
-
-**Diagnóstico (achados do código — é gap de tool, NÃO só guidance):**
-- Todo nó nasce em `category: 'Sem Categoria'` ([intentTemplates.ts:134](src/utils/intentTemplates.ts#L134)); o
-  `start` em `'start'` ([intentTemplates.ts:157](src/utils/intentTemplates.ts#L157)).
-- `category` é campo de **cabeçalho da intenção** (texto livre que agrupa — [MODELO-INTENCAO-OMNICHAT.md:36](docs/MODELO-INTENCAO-OMNICHAT.md#L36)),
-  **não** está em `ACTION_FIELDS` e **não há tool** para gravá-la → hoje o agente não consegue categorizar.
-- **Leitura já pronta:** `list_nodes` mostra `| categoria |` ([flowTools.ts:391](src/tools/flowTools.ts#L391)) e
-  `describe_node` mostra `categoria=` ([flowTools.ts:405](src/tools/flowTools.ts#L405)) — o pré-requisito de "ver o
-  que existe pra reutilizar" já existe; falta só a **escrita**.
-
-**Decisões (com o porquê):**
-1. **Estratégia híbrida reuse-first (Q1).** Vocabulário-semente curado + regra de reuso; categoria é
-   **texto livre** (não enum — precisa de válvula de escape). Taxonomia 100% fixa é rígida demais p/
-   varejo+educacional; emergente puro deriva. O híbrido dá âncora **e** escape, casando com a regra-âncora
-   "reusar/resolver antes de criar".
-2. **Tool dedicada `set_category(node, category)`, idempotente (Q2).** Espelha `set_message`/`set_action_field`
-   (verbo "set", editável depois). Categoriza nós novos **e** existentes e re-categoriza sem recriar —
-   o que um param de `create_node` não faz. Mantém `create_node` enxuto (kind+name).
-3. **Anti-duplicata = trim + nudge no `validate()` (Q3).** (a) `set_category` faz **trim** e colapsa espaços
-   (mata o erro bobo); (b) `validate()` emite **aviso não-bloqueante** quando categorias diferem só por
-   caixa/acento/espaço ("'Atendimento' vs 'atendimento' — unifique"). Espelha `findAskWaitNudges`. **Sem
-   auto-canonicalizar** (violaria "sem surpresa" — gravaria categoria diferente da pedida em silêncio).
-4. **Eixo = fase da jornada, semente de 6 (Q4).** Categorias grossas que reusam em todo fluxo (reuso alto),
-   não por assunto (cardinalidade alta = reuso baixo). Assunto fica no **nome** do nó. Semente:
-   **Saudação e triagem · Identificação · Atendimento · Vendas · Transferência · Encerramento**.
-5. **Precedência fluxo > semente > inventar + nudge de default (Q5).** (1) reutiliza categoria já existente
-   no fluxo que sirva (o fluxo manda sobre a semente — evita duplicar contra vocabulário estabelecido);
-   (2) senão escolhe da semente; (3) senão inventa coerente com o eixo "fase". `validate()` também nudga nó
-   deixado em `'Sem Categoria'` (a recidiva que a feature combate) — **exceto** o `start` (categoria especial
-   `'start'`, nunca recategorizar).
-6. **Guidance mora nas `instructions` do [mcp/server.ts](mcp/server.ts)** (semente + precedência), no padrão do
-   `captureNode` — registrar a tool com descrição + zod e citá-la na linha "Trabalho típico".
-
-**Como será testado (Q6 — aceite):**
-- **Unit** em [flowTools.test.ts](src/tools/flowTools.test.ts): `set_category` grava (assert) · **trim**
-  (`" Vendas "`→`"Vendas"`) · **idempotente** · nó inexistente → erro. Nudge do `validate()`:
-  `"Atendimento"`+`"atendimento"` → **dispara**; só `"Atendimento"` → **não**; nó em `"Sem Categoria"` →
-  **dispara**; `start`/`"start"` → **não**; tudo **não-bloqueante**.
-- **`mcp:typecheck`** limpo (registro da tool + zod).
-- **`/verify` e2e pela caixinha (critério de aceite):** prompt "crie um nó de saudação e dois nós que
-  perguntam CNPJ e e-mail" → assert no `work.flow.json` que a saudação ficou em `"Saudação e triagem"` e as
-  **duas capturas reutilizaram a MESMA `"Identificação"`** (prova o reuso eficiente), **zero** `"Sem Categoria"`.
-
-**Riscos/pendências:**
-- Híbrido depende de guidance p/ a precedência (Q5) — o nudge do `validate()` é a rede p/ recidiva (duplicata
-  e `'Sem Categoria'`).
-- Detecção de quase-duplicata por caixa/acento/espaço (normalização leve) pode não pegar sinônimos reais
-  ("Atendimento" vs "Suporte") — aceito; o eixo "fase" + semente reduzem isso na origem, não no validate.
-- `set_category` aceita texto livre (Q1) — categoria fora da semente passa; é a válvula de escape, por design.
-
-### Menus que roteiam de verdade (`set_keywords` + `set_context` + UI por opção) ✅ FASES 1+2 IMPLEMENTADAS (v0.33.0, branch `feat/menu-keywords-routing`) · PENDENTE COMMIT + `/verify` e2e
-
-> **Resultado Fase 1 (2026-06-26, branch `feat/menu-keywords-routing`):** entregue a camada de tools.
-> (1) `setKeywords` (substitui o array; trim/colapsa/dedup; vazio limpa) e `setContext` (resolve id/nome
-> intra-fluxo; vazio limpa → global; recusa auto-ref) em [flowTools.ts](src/tools/flowTools.ts); (2) ambas
-> registradas em [mcp/server.ts](mcp/server.ts) + guidance "menu de botão/lista roteia pela keyword do alvo"
-> + linha "Trabalho típico"; (3) `findKeywordNudges` no `validate()` com os **3 nudges** (alvo de botão/lista
-> sem keyword · keyword duplicada entre intenções · context p/ alvo de 2+ menus) — só em BUTTON/LIST (menu
-> numérico roteia por `choices[]`, não acusa). Helper `normalizeCategory` generalizado p/ `foldText` (reuso
-> categoria+keyword). **+13 testes** (suíte cheia **496 verde**), `tsc`+`mcp:typecheck` limpos. **Decisão de
-> fixture:** os 5 menus do masterFlow são BUTTON/LIST sem keyword nos alvos (demos de tipo de nó) → o nudge (1)
-> acusa corretamente; o teste que assertava `✅ fluxo válido` (linha ~192) foi relaxado p/ `not.toMatch(/❌/)`
-> em vez de poluir o fixture canônico com 25 keywords inventadas. **Pendente:** `/verify` e2e (critério abaixo)
-> + **Fase 2 (UI, sessão própria)**.
->
-> Plano fechado por interrogatório (skill `interrogar`) em 2026-06-26. Decisões TRAVADAS abaixo —
-> registro do raciocínio; não reabrir sem novo interrogatório. Origem: *"nossos nós de menu não
-> funcionam na plataforma"* — o agente monta `choices[]` + botões, mas o menu não roteia.
-
-**Objetivo (1 frase):** fazer os menus (nó de Escolha) **rotearem de verdade** na plataforma,
-fiando `keyword` (e opcionalmente `context`) nas **intenções-alvo** — nas duas superfícies: tool MCP
-(agente) **e** campo na UI do `DetailPanel` (humano).
-
-**Mecânica de roteamento confirmada (runtime OmniChat, território N2 do Andy — não está no código):**
-- Clicar num botão/lista envia o **TEXTO do botão** (ex.: "Falar com Financeiro"), nunca um número.
-- O `choices[]` (o que `set_choices` grava) só dispara por **resposta numérica posicional** → como o
-  cliente nunca manda número ao clicar, **`choices[]` é praticamente morto** p/ menus de botão/lista. **É o bug.**
-- Roteamento real = **`keyword` na intenção-alvo** casando com o texto do botão; casamento é **"CONTÉM"**
-  (a mensagem do cliente contém a keyword), não "igual".
-- `context` é **opcional**: vazio = a keyword vira **atalho global** (dispara de qualquer lugar);
-  setado (= a intenção de Escolha) = **escopado** àquele menu.
-
-**Diagnóstico do código:** **não existe setter** p/ `keywords` nem `context` — são campos de **cabeçalho**
-da intenção (como `category` era antes da v0.32.0). `describe_node` só os **lê** ([flowTools.ts:488-489](src/tools/flowTools.ts#L488-L489));
-falta a escrita. Logo é **gap de tool**, no mesmo padrão de `set_category`.
-
-**Decisões (com o porquê):**
-1. **Keyword = palavra saliente, casamento "contém" (Q2).** Humano escolhe a palavra; agente escolhe a
-   mais saliente por julgamento (ex.: "Falar com Financeiro" → `financeiro`). Como o match é "contém", a
-   saliente casa o clique **e** texto livre digitado. **Auto-wire mecânico no `set_choices` descartado** —
-   escolher a saliente é julgamento, não derivação mecânica.
-2. **Escopo: ambas as superfícies (Q3 = B).** Tool MCP p/ o agente **e** campo na UI p/ o humano. (As duas
-   últimas features foram MCP-only; aqui o usuário pediu explicitamente o caminho humano também.)
-3. **Context default global, escopar sob demanda (Q4 = A).** `set_context` entra, mas o padrão ao fiar é
-   **sem context** (atalho global — "deixa mais aberto", como o usuário quer); escopa-se via context só
-   quando a keyword é **genérica/reusada** ("Voltar", "Sim/Não") e colidiria. Keyword distintiva fica global.
-   Guidance ensina o critério; `validate()` nudga keyword duplicada entre alvos.
-4. **UI = 2 campos por opção, abaixo do seletor de alvo (Q5).** Na seção de Escolhas, **sem mexer** no menu
-   nem no seletor de alvo que já funcionam: abaixo do `IntentSelect` de cada opção
-   ([DetailPanel.tsx:3569-3582](src/components/DetailPanel.tsx#L3569-L3582)) entram **(a)** um campo de
-   keyword e **(b)** um checkbox "setar context". O campo de keyword **pré-preenche com a keyword atual do
-   alvo** (mostra o estado real, zero adivinhação frágil); checkbox default **OFF**.
-5. **`set_keywords` substitui (set honesto) (Q6 = A).** Grava exatamente o que recebe (`keywords = [palavra]`),
-   espelhando o verbo "set" de `set_message`/`set_category`. Clobber mitigado: o agente cria alvos com array
-   **vazio** (sem clobber) e a UI **pré-preenche** (humano vê e preserva). Multi-keyword gerenciado, se um dia
-   precisar, é aditivo (`add_keyword`).
-
-**Faseamento (2 fases, baixo acoplamento — cruzam só nos campos `keywords`/`context`):**
-- **Fase 1 — Camada de tools (MCP-first):** funções puras `setKeywords`/`setContext` em [flowTools.ts](src/tools/flowTools.ts)
-  + registro em [mcp/server.ts](mcp/server.ts) + guidance + os 3 nudges no `validate()` + unit tests + `mcp:typecheck`.
-  **Já entrega o conserto reportado** (menus que o agente empurra) — shippável sozinha (uma versão). Fecha com `/verify` e2e.
-- **Fase 2 — UI do `DetailPanel`:** 2 campos por opção ([3569-3582](src/components/DetailPanel.tsx#L3569-L3582)) + escrita
-  **cross-intent**. **Reusa os setters puros da Fase 1** (não reimplementa lógica). Dependência unidirecional Fase 1→Fase 2;
-  isola o pedaço arriscado (DetailPanel ~3500 linhas) numa sessão própria, com a camada de tools já verde como rede.
-
-**Tools novas (header-field, padrão `set_category`):**
-- `set_keywords(node, keywords[])` — substitui o array de palavras-chave do alvo.
-- `set_context(node, contextNode | vazio)` — grava `context` = ID da intenção referenciada (intra-fluxo,
-  resolve por id/nome); vazio = limpa (desmarcar o checkbox).
-- Registrar ambas em [mcp/server.ts](mcp/server.ts) + citar na linha "Trabalho típico"; 11→13 tools.
-
-**Tratamentos do caminho infeliz (no `validate()` / sinais leves — todos NÃO-bloqueantes):**
-- Opção de menu cujo alvo **não tem keyword** → nudge "não vai rotear" + sinal leve no campo vazio na UI
-  (padrão do "opção sem conexão" da v0.19.0).
-- **Keyword duplicada entre alvos diferentes** (colisão global) → nudge "unifique ou escope com context".
-- **Context apontando p/ alvo que é destino de 2 menus** (conflito impossível — context comporta um só) → nudge.
-
-**Detalhe de implementação mais delicado (registrado):** a escrita é **cross-intent** — os 2 campos do painel
-da Escolha **patcheiam o cabeçalho da intenção-alvo** (`keywords`/`context`), não o nó de Escolha. Ao "Aplicar
-alterações", o painel passa a mutar **nós irmãos**. Factível no modelo fonte-de-verdade (cada nó guarda seu `raw`),
-mas é onde mora o risco no `DetailPanel` (~3500 linhas, arquivo mais arriscado).
-
-**Como será testado:**
-- **Unit** ([flowTools.test.ts](src/tools/flowTools.test.ts)): `set_keywords` grava/substitui · nó inexistente → erro ·
-  `set_context` grava ID e **limpa** ao receber vazio · resolve alvo por id/nome intra-fluxo. Nudges: alvo sem
-  keyword **dispara** · keyword duplicada **dispara** · context conflitante **dispara** · tudo **não-bloqueante**.
-- **`mcp:typecheck`** limpo (registro das 2 tools + zod).
-- **UI** ([DetailPanel.tsx:3569](src/components/DetailPanel.tsx#L3569)): campo pré-preenche com a keyword do alvo ·
-  "Aplicar" patcheia o **alvo** (cross-intent) · campo vazio sinaliza.
-- **`/verify` e2e pela caixinha (critério de aceite):** prompt "menu com Financeiro, Suporte e Vendas" → cada
-  alvo recebe **keyword saliente** (`financeiro`/`suporte`/`vendas`), `choices[]` ainda gravado (não regride), e o
-  menu **roteia** ao empurrar p/ a plataforma.
-
-**Decisões da Fase 2 — UI do `DetailPanel` (interrogatório 2026-06-27, skill `interrogar`; TRAVADAS — não reabrir sem novo interrogatório):**
-
-> Achados do código que de-riscaram a fase: (a) `handleApplyEdit` ([App.tsx:638](src/App.tsx#L638)) **ignora** o `intentId` e re-parseia o **modelo inteiro** → mudança em irmão aparece no canvas sem sinalização; (b) o prop `intents` do painel **são as mesmas refs** de `model.list` → mutar o alvo por id muta o modelo; (c) `takeSnapshot` ([history.ts:14](src/utils/history.ts#L14)) faz `structuredClone` do modelo inteiro e `onBeforeApply` o captura ANTES de mutar → undo/rollback cross-intent de graça; (d) já existe o componente `KeywordTags` ([DetailPanel.tsx:560](src/components/DetailPanel.tsx#L560)) (chips, vírgula por trás) e `updateIntentMeta` já grava keywords/context (mas é writer de meta COMPLETA — revalida o nome → impróprio p/ patch cross-intent).
-
-1. **Camada da escrita = setters puros novos em [editIntent.ts](src/utils/editIntent.ts) (Q1).** `setIntentKeywords(intent, kw[])` (trim/colapsa/dedup/vazio-limpa) e `setIntentContext(intent, ctxId|null)` (grava id / limpa / recusa self-ref), puros sobre `BotIntent`. `flowTools.setKeywords/setContext` passam a **envolvê-los** (resolve ref + `store.save`); a UI os chama no alvo. Mata a duplicação de higiene e **desacopla a escrita de keyword da validação de nome** (o `updateIntentMeta` revalida o nome do alvo → falharia em nome legado).
-2. **Alvo compartilhado: aceitar, sem guarda na UI (Q2).** Pré-preenche mostrando o estado real do alvo; keyword é last-write-wins; os nudges do `validate()` (Fase 1) já acusam keyword duplicada / context conflitante. Não detectar/mesclar na UI — desproporcional à raridade (cada opção costuma ir a uma intenção distinta).
-3. **Escrita CONDICIONAL no Aplicar (Q3) — evita clobber de estado alheio.** context **ON** → `setIntentContext(T, id-deste-choiceNode)`; **OFF** → só limpa **se** `T.context === id-deste-menu` (desescopa só o próprio menu; se aponta a outro, NÃO toca). Keyword só grava quando **difere** do pré-preenchido (não bumpa `updatedAt` nem empilha histórico de irmão não editado).
-4. **Opção sem destino: campo desabilitado + dica (Q4).** Sem `choices[i]` não há alvo onde gravar → `<KeywordTags>` cede lugar a um box desabilitado ("defina um destino"). Com destino mas alvo sem keyword → sinal leve de campo vazio (padrão "opção sem conexão" da v0.19.0).
-5. **Campo = reuso de `<KeywordTags>` (Q6).** Chips removíveis, vírgula só por trás; pré-preenche com TODAS as keywords do alvo (multi-keyword, sem clobber de extras); espelha o campo de keyword da meta do próprio painel.
-6. **Draft + apply (implementação):** `draft.choices` segue `string[]` + array-meta paralelo `{ keyword, contextOn }[]` index-alinhado (sincroniza no add/remove de opção; re-pré-preenche ao trocar destino). As escritas cross-intent entram no array `results` do `handleApply` → rollback de falha parcial + undo já cobertos. Valor de context = `intent.id` do próprio `choiceNode`.
-
-**Como será testado (Fase 2, fecha o aceite Q5):**
-- **Unit dos setters puros** em [editIntent.test.ts](src/utils/editIntent.test.ts): `setIntentKeywords` (grava/substitui · trim/colapsa/dedup · vazio limpa) · `setIntentContext` (grava id · limpa com null · recusa self-ref).
-- **Re-rodar as 496 do [flowTools.test.ts](src/tools/flowTools.test.ts)** como gate de não-regressão do religamento (flowTools agora envolve os setters puros).
-- **Teste de componente do `DetailPanel`** (padrão dos 383): edita keyword de uma opção + Aplicar → assere que a intenção-**ALVO** (irmã) mutou; + os 3 casos do Q3 (context ON grava id deste menu · context OFF NÃO toca context que aponta a outro menu · keyword inalterada não regrava).
-- **`/verify` e2e** em sessão nova (já represado) — critério acima.
-
-**Riscos/pendências:**
-- Escrita cross-intent no `DetailPanel` (item acima) — fatiar a parte UI com cuidado; é o maior risco.
-- `set_keywords` substitui → clobber, mitigado por array-vazio (agente) + pré-preenche (UI).
-- Casamento "contém" → keyword genérica colide globalmente; mitigado por guidance (distintiva→global,
-  genérica→context) + nudge de duplicata.
-
 ### Correções pós-code-review da Fase 2 (Fase 2.1) ✅ IMPLEMENTADA (v0.33.0, branch `feat/menu-keywords-routing`)
 
 > **Resultado (2026-06-30):** entregue. Gatilho de escrita de `applyChoiceRouting` trocado para
@@ -507,6 +265,125 @@ duplo" é irrelevante, pois multi-palavra é sempre inválido); (b) **#5 é não
 - **`setCategory` toca `updatedAt`** (#7, [flowTools.test.ts](src/tools/flowTools.test.ts)): `set_category` bumpa `updatedAt`.
 - **Re-rodar a suíte cheia** como gate de não-regressão.
 
+### Agente respeita as regras: limites do Menu + Transferência de verdade (v0.34.0 — PLANEJADA)
+
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-07-03. Decisões TRAVADAS abaixo —
+> registro do raciocínio; não reabrir sem novo interrogatório. Origem: rodando o prompt "Fluent
+> School" (escola de idiomas, 2 fases — guardado como fixture do `/verify` e2e), o agente (1) criou
+> itens de menu acima do limite de caracteres sem ninguém acusar e (2) preencheu o nó de Transferência
+> com `transferType="team"` (valor inventado, fora do enum) em vez de resolver o time real.
+>
+> **Duas fases independentes (baixo acoplamento — não se cruzam).** Cada uma shippável sozinha (uma versão).
+
+**Objetivo (1 frase):** o agente passa a **respeitar os limites de caractere do Menu** (WhatsApp) e a
+**preencher o nó de Transferência de verdade** (tipo válido dos 6 + destino resolvido por ID), com o
+`validate()` acusando as recidivas.
+
+#### Fase A — Limites de caractere do Menu (nó de Escolha) ✅ IMPLEMENTADA (v0.34.0)
+
+> **Resultado (2026-07-03):** entregue. Fonte única `MENU_LIMITS` em [src/utils/menuLimits.ts](src/utils/menuLimits.ts)
+> + `findMenuLimitViolations`; hard-block no `buildButtonList`; nudge `findMenuLimitNudges` no `validate()`; guidance no
+> `choiceNode` do `nodeCatalog`; `BL_LIMITS` do DetailPanel virou alias da fonte única. **+11 testes**, suíte cheia
+> **539 verde**, `tsc`+`mcp:typecheck` limpos.
+>
+> **Correção do plano (drift pego no /handon):** os valores NÃO são o WhatsApp cru "por tipo" que o interrogatório
+> travou (body 1024 · título 24 · item 20/24). São os do **builder real da OmniChat** já codificados no `BL_LIMITS`
+> da UI e confirmados pela [memória de limites](../memory): **body 80 · título 20 · item 20 FIXO** (BUTTON e LIST) ·
+> header 60 · footer 60 · desc 72. Motivo: "o real vence o documento" — o que a plataforma de fato rejeita é o builder,
+> não o WhatsApp cru. Decidido por Andy no início desta sessão. **Consequência para o /verify:** os itens do fixture
+> Fluent School ("Falar com um consultor"=22, "Quero ver outras opções"=23) agora são **INVÁLIDOS** (>20) — ao rodar
+> o e2e, ou encurtar esses itens no prompt, ou esperar o hard-block disparar. O `maxLength` da UI (decisão #4 do plano)
+> **já existia** desde a Fase 10 (`CharField`); só faltava a extração p/ fonte única + o caminho do agente.
+
+**Diagnóstico (achado do código):** `buildButtonList` ([editIntent.ts:429](src/utils/editIntent.ts#L429)),
+compartilhado por `set_menu` (agente) e `replaceButtonListMessage` (UI), **valida estrutura** (≥1 item,
+≤10 itens, item com texto, body não-vazio — [:434-437](src/utils/editIntent.ts#L434-L437)) mas **não
+valida NENHUM limite de caractere**. Nenhuma constante de limite existe no caminho do menu.
+
+**Decisões (com o porquê):**
+1. **Contrato = padrão WhatsApp POR TIPO (Q2).** Item de menu = **20 (BUTTON) / 24 (linha de LIST)**;
+   demais campos: **header 60 · body 1024 · footer 60 · título de seção 24 · descrição de linha 72**.
+   O limite do item depende do `msgType`, então a checagem roda **depois** que `buildButtonList` decide
+   BUTTON vs LIST (natural — é lá que o tipo é calculado). *Consequência:* os itens do teste ("Falar com
+   um consultor"=22, "Quero ver outras opções"=23) num menu de 4 opções (LIST) são **válidos** (≤24) —
+   a regra pega o real overflow (BUTTON >20 ou qualquer campo acima da tabela).
+2. **Imposição = hard-block no `buildButtonList` + nudge no `validate()` (Q3).** Recusa criar/salvar campo
+   acima do limite **dentro** do `buildButtonList` — um ponto só cobre agente E UI, **coerente com o
+   `>10 itens` já existente** (mesma família "o WhatsApp rejeita"). O nudge no `validate()` pega menus
+   **legados/importados** (criados antes da regra). **Por quê hard e não só nudge:** limite de caractere
+   é restrição estrutural (a plataforma rejeita), não política de design — igual à contagem de itens.
+3. **Escopo = TODOS os campos, tabela-constante única (Q4).** Uma constante com a tabela WhatsApp, fonte
+   única, valida header/body/footer/título/item/descrição. Barato (o `buildButtonList` já monta cada um)
+   e evita que a próxima reclamação seja outro campo estourando.
+4. **UI = `maxLength` nos inputs do DetailPanel (Q4).** Como o `buildButtonList` passa a recusar no
+   "Aplicar", o `maxLength` evita a surpresa de erro-ao-salvar (o humano não digita além do limite).
+   Toca o arquivo mais arriscado (~3500 linhas) — fatiar com cuidado.
+5. **Guidance no `nodeCatalog`/instructions.** O agente já manda dentro do limite (metade do pedido "o
+   Agente precisa respeitar"); o hard-block é a rede quando a guidance falha.
+
+**Como será testado (Fase A):**
+- **Unit** ([editIntent.test.ts](src/utils/editIntent.test.ts)): item 21 chars em menu que vira BUTTON →
+  **recusa**; item 24 em menu LIST → **passa**; item 25 em LIST → **recusa**; header 61 → **recusa**;
+  cada campo no seu limite exato. Nudge do `validate()` ([flowTools.test.ts](src/tools/flowTools.test.ts)):
+  menu legado com item acima do limite → **dispara**; dentro → **não**; não-bloqueante.
+- **`mcp:typecheck`** limpo.
+- **`/verify` e2e (fixture Fluent School):** rodar o prompt; assert que nenhum item/campo excede a tabela
+  (e, se algum menu for BUTTON com item >20, que a tool recusou).
+
+#### Fase B — `set_transfer`: preencher a Transferência de verdade
+
+**Diagnóstico (achado do código):** `transferType` está em `ACTION_FIELDS` ([flowTools.ts:33](src/tools/flowTools.ts#L33))
+e o `set_action_field` grava **texto livre, sem validar o enum** → o agente chutou `"team"`. O enum real
+(6 valores) e o mapa categoria→tipo vivem **duplicados** (`nodeCatalog` [nodeCatalog.ts:93](src/utils/nodeCatalog.ts#L93)
+× `DetailPanel` `TRANSFER_MAP`/`TRANSFER_SUBS` [DetailPanel.tsx:125-144](src/components/DetailPanel.tsx#L125-L144)) —
+a duplicação sem fonte única é o que deixou o enum solto. O nó exige **dois campos acoplados**:
+`transferType` (enum de 6) + `value` (objectId resolvido, ou variável nos tipos `search`).
+
+**Decisões (com o porquê):**
+1. **Tool dedicada `set_transfer` (Q5), na filosofia do `set_menu`/`set_category`.** Campo estruturado
+   (enum fechado + valor que exige resolver) = tool semântica, não `set_action_field` cru. É como
+   category/keywords/context já são tratados. **Guidance-só foi recusado** — a orquestração (resolver
+   time, usar objectId, escolher o tipo) é exatamente o que o agente já botou a perder.
+2. **Cobertura COMPLETA dos 6 tipos, espelhando a UI (Q6):**
+   `set_transfer(node, category, sub?, target?)` — `category: userPrevious | branch | user | group`;
+   `sub` (exigido só p/ user/group): `user → name|email`, `group → simple|advanced`; `target`: nos tipos
+   **direct** = nome→resolve p/ objectId (`find_team`/`find_user`), nos **search** = a variável verbatim,
+   em userPrevious/branch = omitido. Mapeia p/ os 6 `transferType`.
+3. **Fonte única dos mapas de transferência (Q6).** Extrair `TRANSFER_MAP`/`TRANSFER_SUBS`/categorias p/
+   um módulo compartilhado (ex.: `src/utils/transfer.ts`), importado por `DetailPanel`, `set_transfer`,
+   `nodeCatalog` e `validate()`. Mata a 3ª cópia — a duplicação foi a raiz do enum solto (CLAUDE.md: não duplicar).
+4. **Remover `transferType` de `ACTION_FIELDS` (Q7).** `set_transfer` vira o **único** caminho → `"team"`
+   impossível por construção. Espelha category/keywords/context (não estão no `set_action_field`).
+   `set_action_field` responde **erro-guia** ("use set_transfer") se `transferType` for tentado. `value`
+   fica em `ACTION_FIELDS` (genérico); quem escreve `value` do transfer é o `set_transfer`.
+5. **Resolução INTERNA na tool (Q5).** `set_transfer` chama `find_team`/`find_user` internamente
+   (name→objectId) — "resolver por nome → gravar por ID", o ID sempre vem de resposta real da API.
+6. **Caminho infeliz = ERRO DURO (Q8).** Não-encontrado / ambíguo (2 times mesmo nome) / sem-token →
+   **falha sem gravar nada** (nunca inventar ID, nunca nó meia-boca). O agente recebe o erro e resolve
+   (garante o time / pergunta ao humano). O `validate()` ainda **nudga** transfer sem `transferType` ou
+   sem `value` quando o tipo exige (padrão "opção sem conexão" da v0.19.0).
+
+**Como será testado (Fase B):**
+- **Unit** ([flowTools.test.ts](src/tools/flowTools.test.ts), com `find_team`/`find_user` mockados):
+  `set_transfer('group','simple', 'Consultores')` → `transferType=direct4group` + `value=<objectId>` ·
+  `userPrevious`/`branch` → tipo certo, value vazio · `search` → grava variável verbatim (sem resolver) ·
+  time não-encontrado → **erro** (nada gravado) · nome ambíguo → **erro listando matches** · sem token →
+  **erro** · nó não-transfer → **erro**. `set_action_field('transferType', …)` → **erro-guia** apontando `set_transfer`.
+  Nudge do `validate()`: transfer sem tipo/sem value exigido → **dispara**; completo → **não**; não-bloqueante.
+- **`mcp:typecheck`** limpo (registro da tool + zod; enum da fonte única).
+- **`/verify` e2e (fixture Fluent School):** rodar o prompt com os times reais existindo na loja de teste;
+  assert que os 3 transfers ("Consultores"/"Financeiro"/"Suporte ao Aluno") ficaram `direct4group` com
+  `value` = objectId real, **zero** `transferType="team"`.
+
+**Riscos/pendências (ambas as fases):**
+- Hard-block no `buildButtonList` muda o comportamento da UI (hoje salva em silêncio) — o `maxLength`
+  mitiga, mas revisar os testes de componente do menu que porventura gravem valores longos.
+- Remover `transferType` de `ACTION_FIELDS` toca testes existentes do `set_action_field` — atualizar.
+- Extração dos mapas de transferência toca o `DetailPanel` (~3500 linhas) — arquivo mais arriscado;
+  fatiar a extração sem mudar comportamento (só mover + importar), com a suíte verde como gate.
+- Erro-duro no `set_transfer` (Q8) trava a construção se o time não existir na loja — aceito por decisão;
+  o fluxo Fluent School assume os times já criados no ambiente de teste.
+
 ## Melhorias paralelas (independentes das fases)
 
 - ~~Trocar `dagre@0.8.5` (sem manutenção) por `@dagrejs/dagre` (fork mantido,
@@ -543,6 +420,9 @@ duplo" é irrelevante, pois multi-palavra é sempre inválido); (b) **#5 é não
 
 > Detalhes completos em [docs/PLANS-ARCHIVE.md](docs/PLANS-ARCHIVE.md). Uma linha por fase/feature concluída e mergeada.
 
+- **v0.33.0 (PR #6, merge `d59d6ae`)** — Menus que roteiam de verdade (`set_keywords` + `set_context` + UI por opção, Fases 1+2)
+- **v0.32.0 (PR #6, merge `d59d6ae`)** — Categorias coerentes nos nós (`set_category` + semente + nudge)
+- **v0.31.0 (PR #6, merge `d59d6ae`)** — Nó de Captura no agente (`captureNode` via guidance + nudge)
 - **v0.30.0 (PR #5, merge `53b3b19`)** — Chat UX: textarea auto-expand + pill zinc + widget draggable
 - **v0.30.0 (PR #5, merge `53b3b19`)** — Gate da caixinha de chat (lock + popover de requisitos pendentes)
 - **(merge `15cbf54`, PR #5)** — Caixinha de chat na página: PoC local do agente (Claude Agent SDK + ponte WS)
