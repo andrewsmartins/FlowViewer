@@ -259,6 +259,77 @@ describe('list_api_integrations / list_entities', () => {
   })
 })
 
+describe('resolveTeam / resolveUser — resolução ESTRUTURADA (set_transfer, v0.35.0)', () => {
+  function usersResponder(users: Array<{ objectId: string; name?: string; lastName?: string }>) {
+    return () => ({ status: 200, body: { result: users } })
+  }
+
+  it('resolveTeam: match exato → { ok, id, name }', async () => {
+    const { fetch } = recordingFetch(teamsResponder([
+      { objectId: 'S1Cl3fbnFG', name: 'Financeiro' },
+      { objectId: 'A2', name: 'Vendas' },
+    ]))
+    const r = new Resolvers(storeWithStart(), { fetch, token: TOKEN })
+    expect(await r.resolveTeam('financeiro')).toEqual({ ok: true, id: 'S1Cl3fbnFG', name: 'Financeiro' })
+  })
+
+  it('resolveTeam: sem match → { ok:false, message } com a guia (nada de id)', async () => {
+    const { fetch } = recordingFetch(teamsResponder([{ objectId: 'A1', name: 'Financeiro' }]))
+    const r = new Resolvers(storeWithStart(), { fetch, token: TOKEN })
+    const res = await r.resolveTeam('marketing')
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.message).toContain('nenhum time corresponde')
+  })
+
+  it('resolveTeam: ambíguo → { ok:false } mandando PARAR', async () => {
+    const { fetch } = recordingFetch(teamsResponder([
+      { objectId: 'A1', name: 'Vendas' }, { objectId: 'A2', name: 'vendas' },
+    ]))
+    const r = new Resolvers(storeWithStart(), { fetch, token: TOKEN })
+    const res = await r.resolveTeam('vendas')
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.message).toMatch(/ambíguo/)
+  })
+
+  it('resolveTeam: sem token → { ok:false } de configuração, sem chamar a API', async () => {
+    const { fetch, calls } = recordingFetch(teamsResponder([]))
+    const r = new Resolvers(storeWithStart(), { fetch, token: '' })
+    const res = await r.resolveTeam('x')
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.message).toMatch(/configure OMNI_TOKEN/)
+    expect(calls.length).toBe(0)
+  })
+
+  it('resolveUser: match exato → { ok, id, name }', async () => {
+    const { fetch } = recordingFetch(usersResponder([{ objectId: 'H8eCHFdDdc', name: 'João', lastName: 'Silva' }]))
+    const r = new Resolvers(storeWithStart(), { fetch, token: TOKEN })
+    expect(await r.resolveUser('joão silva')).toEqual({ ok: true, id: 'H8eCHFdDdc', name: 'João Silva' })
+  })
+
+  it('resolveUser: match exato COM teto de página → { ok, note } avisando truncamento', async () => {
+    // 100 usuários (teto) mas só um "João Silva" exato → resolve, mas sinaliza que pode haver
+    // homônimo cortado da página (o antigo find_user avisava no exato; a note restaura o sinal).
+    const many = Array.from({ length: 100 }, (_, i) =>
+      i === 0 ? { objectId: 'H8eCHFdDdc', name: 'João', lastName: 'Silva' } : { objectId: `U${i}`, name: `Outro ${i}` })
+    const { fetch } = recordingFetch(usersResponder(many))
+    const r = new Resolvers(storeWithStart(), { fetch, token: TOKEN })
+    const res = await r.resolveUser('joão silva')
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      expect(res.id).toBe('H8eCHFdDdc')
+      expect(res.note).toMatch(/teto da página/)
+    }
+    // e o find_user (texto) reanexa o aviso ao resultado exato
+    expect(await r.findUser('joão silva')).toMatch(/João Silva.*\n.*teto da página/s)
+  })
+
+  it('find_team continua devolvendo texto (wrapper do resolveTeam)', async () => {
+    const { fetch } = recordingFetch(teamsResponder([{ objectId: 'S1Cl3fbnFG', name: 'Financeiro' }]))
+    const r = new Resolvers(storeWithStart(), { fetch, token: TOKEN })
+    expect(await r.findTeam('financeiro')).toBe('time "Financeiro" → id S1Cl3fbnFG')
+  })
+})
+
 describe('list_intents — intenções de outro bot (cross-bot, decisão 7)', () => {
   const intentsBody = {
     list: [

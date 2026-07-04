@@ -8,11 +8,12 @@ import { z } from 'zod'
 import { FlowStore } from '../src/tools/flowStore'
 import {
   createNode, setActionField, setMessage, setCategory, setKeywords, setContext,
-  setNodeChoices, setMenu, connectNodes, connectToBot,
+  setNodeChoices, setMenu, setTransfer, connectNodes, connectToBot,
   validate, revert, listNodes, describeNode,
-  ACTION_FIELDS, type ActionFieldName,
+  SET_ACTION_FIELD_INPUTS, type SetActionFieldInput,
 } from '../src/tools/flowTools'
 import { Resolvers } from '../src/tools/resolvers'
+import { TRANSFER_CATEGORY_VALUES } from '../src/utils/transfer'
 import type { FetchLike } from '../src/utils/pushFlow'
 import { manifest, describeNodeType } from './nodeManifest'
 
@@ -110,6 +111,10 @@ const instructions = [
   '  (o casamento é "contém"). Deixe SEM context por padrão (atalho global); use set_context(alvo, menu)',
   '  só quando a keyword for genérica/reusada (ex.: "Voltar", "Sim") e fosse colidir entre menus.',
   '- Redirect cross-bot: connect_to_bot(node, botId, intentId?) grava o next para outro bot.',
+  '- Transferência: use set_transfer(node, category, sub?, target?) — NUNCA set_action_field para transferType.',
+  '  category: userPrevious | branch | user | group; sub (só user/group): user→name|email, group→simple|advanced.',
+  '  target = NOME do vendedor/time nos tipos de nome (resolvido p/ id) OU a variável nos tipos email/advanced;',
+  '  userPrevious/branch dispensam target. Nome ambíguo/não-encontrado → a tool erra: PARE e confirme com o humano.',
   '- NUNCA invente IDs de time/usuário/bot/API/lista (campos value, apiName, next.intent).',
   '  Resolva o nome → ID pelos resolvers (find_team/find_user/find_bot/list_*) e só então',
   '  grave o ID com set_action_field / connect_to_bot. Se o resolver devolver candidatos ou',
@@ -159,15 +164,15 @@ server.registerTool('create_node', {
 
 server.registerTool('set_action_field', {
   title: 'Definir campo da ação',
-  description: 'Grava um campo do action de um nó (ex.: transferType, captureDataType, orderType). Lista só em multipleFields.',
+  description: 'Grava um campo do action de um nó (ex.: captureDataType, orderType, storeType). Lista só em multipleFields. Para a Transferência use set_transfer (transferType não é gravável aqui).',
   inputSchema: {
     node: z.string().describe('id ou nome do nó'),
-    field: z.enum(ACTION_FIELDS).describe('campo a gravar'),
+    field: z.enum(SET_ACTION_FIELD_INPUTS).describe('campo a gravar (transferType → use set_transfer)'),
     value: z.union([z.string(), z.array(z.string())]).describe('valor (lista só para multipleFields)'),
     condIdx: z.number().int().nonnegative().optional().describe('índice da condição (default 0)'),
   },
 }, async ({ node, field, value, condIdx }) =>
-  reply(setActionField(store, node, field as ActionFieldName, value, condIdx ?? 0)))
+  reply(setActionField(store, node, field as SetActionFieldInput, value, condIdx ?? 0)))
 
 server.registerTool('set_message', {
   title: 'Definir texto da mensagem',
@@ -231,6 +236,23 @@ server.registerTool('set_menu', {
   },
 }, async ({ node, body, items, header, footer, title }) =>
   reply(setMenu(store, node, body, items, header ?? '', footer ?? '', title ?? '')))
+
+server.registerTool('set_transfer', {
+  title: 'Definir transferência',
+  description:
+    'Preenche o nó de Transferência: resolve o tipo válido (1 dos 6) + o destino de uma vez. ' +
+    'category: userPrevious (devolve ao vendedor) | branch (endereço físico) | user (por vendedor) | group (por time). ' +
+    'sub (só user/group): user → name|email; group → simple|advanced. ' +
+    'target: nome do vendedor/time nos tipos de nome (resolvido p/ id) · a variável nos tipos email/advanced · omitido em userPrevious/branch. ' +
+    'Nome não-encontrado/ambíguo → erro (pare e confirme); nunca inventa id.',
+  inputSchema: {
+    node: z.string().describe('id ou nome do nó de transferência'),
+    category: z.enum(TRANSFER_CATEGORY_VALUES).describe('categoria da transferência'),
+    sub: z.string().optional().describe('sub-opção (user: name|email · group: simple|advanced); omitida em userPrevious/branch'),
+    target: z.string().optional().describe('nome do time/vendedor (tipos de nome) ou a variável (tipos email/advanced); omitido em userPrevious/branch'),
+  },
+}, async ({ node, category, sub, target }) =>
+  reply(await setTransfer(store, resolvers, node, category, sub, target)))
 
 server.registerTool('connect', {
   title: 'Conectar nós',

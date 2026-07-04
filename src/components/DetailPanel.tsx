@@ -17,6 +17,10 @@ import { VARIABLE_GROUPS, variableDisplay, entityFieldItems, type VariableItem }
 import type { VariableGroup } from '../utils/variables'
 import { computeMenuLeft, MENU_COLUMN_WIDTH, MENU_MARGIN } from '../utils/menuPosition'
 import { MENU_LIMITS } from '../utils/menuLimits'
+import {
+  TRANSFER_CATEGORIES, TRANSFER_MAP, TRANSFER_SUBS, TRANSFER_NOSUB,
+  transferFieldOf, type TransferField,
+} from '../utils/transfer'
 import { useTeams } from '../contexts/TeamsContext'
 import type { Collection } from '../utils/collections'
 import { templateVarCount, type MessageTemplate } from '../utils/messageTemplates'
@@ -108,52 +112,9 @@ const KIND_LABELS_DARK: Record<NodeKind, { label: string; color: string }> = {
   intentGroupNode: { label: 'Intenção',         color: 'bg-slate-800 text-slate-400' },
 }
 
-// Nó "Transferência": seletor de 2 níveis espelhando a plataforma. Nível 1 =
-// categoria; "Por vendedor"/"Por time" têm um nível 2 (sub-opção) que decide o
-// `transferType` final e o tipo de campo. Fonte única dos 6 destinos.
-const TRANSFER_CATEGORIES = [
-  { value: 'userPrevious', label: 'Devolver ao vendedor' },
-  { value: 'branch',       label: 'Pelo endereço físico' },
-  { value: 'user',         label: 'Por vendedor' },
-  { value: 'group',        label: 'Por time' },
-]
-
-/** Campo que cada destino exige: picker de vendedor/time (objectId), variável/texto, ou nenhum. */
-type TransferField = 'none' | 'userPicker' | 'teamPicker' | 'variable'
-
-// transferType → categoria/sub-opção/campo. Usado pelo buildDraft (derivar do
-// salvo) e pelo gate (saber se o tipo exige valor).
-const TRANSFER_MAP: Record<string, { category: string; sub: string | null; field: TransferField }> = {
-  direct4userPrevious: { category: 'userPrevious', sub: null,       field: 'none' },
-  directFromBranch:    { category: 'branch',       sub: null,       field: 'none' },
-  direct4user:         { category: 'user',         sub: 'name',     field: 'userPicker' },
-  search4user:         { category: 'user',         sub: 'email',    field: 'variable' },
-  direct4group:        { category: 'group',        sub: 'simple',   field: 'teamPicker' },
-  search4group:        { category: 'group',        sub: 'advanced', field: 'variable' },
-}
-
-// Sub-opções por categoria (nível 2). Categorias ausentes aqui não têm nível 2.
-const TRANSFER_SUBS: Record<string, { value: string; label: string; transferType: string }[]> = {
-  user: [
-    { value: 'name',  label: 'Busca por nome', transferType: 'direct4user' },
-    { value: 'email', label: 'Por e-mail',     transferType: 'search4user' },
-  ],
-  group: [
-    { value: 'simple',   label: 'Busca simples',  transferType: 'direct4group' },
-    { value: 'advanced', label: 'Busca avançada', transferType: 'search4group' },
-  ],
-}
-
-// transferType das categorias SEM nível 2 (mapeamento direto 1↔1).
-const TRANSFER_NOSUB: Record<string, string> = {
-  userPrevious: 'direct4userPrevious',
-  branch:       'directFromBranch',
-}
-
-/** Campo exigido por um transferType (default 'none' para legados/desconhecidos). */
-function transferFieldOf(transferType: string): TransferField {
-  return TRANSFER_MAP[transferType]?.field ?? 'none'
-}
+// Os mapas de Transferência (categorias, transferType→campo, sub-opções) vivem na
+// FONTE ÚNICA `src/utils/transfer.ts` — importados acima e reusados por set_transfer,
+// nodeCatalog e validate(). Aqui só os consumimos no seletor de 2 níveis da UI.
 
 /** Opções de gatilho (ConditionType) — os 10 tipos oficiais da plataforma. */
 const COND_TYPE_OPTIONS = Object.entries(CONDITION_TYPE_LABELS).map(([value, label]) => ({ value, label }))

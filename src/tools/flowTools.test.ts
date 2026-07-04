@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os'
 import { FlowStore } from './flowStore'
 import {
   createNode, setActionField, setMessage, setCategory, setKeywords, setContext,
-  setNodeChoices, setMenu, connectNodes, connectToBot,
+  setNodeChoices, setMenu, setTransfer, connectNodes, connectToBot,
   validate, revert, listNodes, describeNode,
 } from './flowTools'
+import type { TransferResolvers, ResolveResult } from './resolvers'
 import type { BotFlowJson, BotMessage } from '../types'
 
 /**
@@ -861,5 +862,174 @@ describe('Leitura — list_nodes e describe_node compactos', () => {
     expect(line).toContain('outro bot')
     expect(line).not.toMatch(/→\(start\)/)
     expect(describeNode(store, crossBot!.id)).toContain('→outro bot')
+  })
+})
+
+describe('set_transfer — preenche a Transferência de verdade (v0.35.0)', () => {
+  const TEAM_ID = 'S1Cl3fbnFG'
+  const USER_ID = 'H8eCHFdDdc'
+
+  /** Resolvers mockados: "Financeiro" resolve p/ um time; "João Silva" p/ um usuário. */
+  const resolvers: TransferResolvers = {
+    async resolveTeam(name): Promise<ResolveResult> {
+      if (name.toLowerCase() === 'financeiro') return { ok: true, id: TEAM_ID, name: 'Financeiro' }
+      if (name.toLowerCase() === 'suporte') return { ok: false, message: '⚠️ nome ambíguo "suporte" — 2 times idênticos: Suporte N1 (A1), Suporte N2 (A2) · PARE e confirme' }
+      return { ok: false, message: `nenhum time corresponde a "${name}" (3 times disponíveis)` }
+    },
+    async resolveUser(name): Promise<ResolveResult> {
+      if (name.toLowerCase() === 'joão silva') return { ok: true, id: USER_ID, name: 'João Silva' }
+      return { ok: false, message: `nenhum usuário corresponde a "${name}" (0 usuários disponíveis)` }
+    },
+  }
+
+  /** Cria um transferNode e devolve o id. */
+  function newTransfer(store: FlowStore, name: string): string {
+    return /id ([0-9a-f-]{36})/.exec(createNode(store, 'transferNode', name))![1]
+  }
+  /** Ação de transferência de um nó recarregado do disco. */
+  function transferAction(id: string) {
+    return reload().list.find(i => i.id === id)!.conditions[0].action
+  }
+
+  it('group + simple + "Financeiro" → direct4group + value=objectId resolvido', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_group')
+    const out = await setTransfer(store, resolvers, id, 'group', 'simple', 'Financeiro')
+    expect(out).toContain('direct4group')
+    expect(out).toContain(TEAM_ID)
+    const a = transferAction(id)
+    expect(a.transferType).toBe('direct4group')
+    expect(a.value).toBe(TEAM_ID)
+  })
+
+  it('user + name + "João Silva" → direct4user + value=objectId do usuário', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_user')
+    await setTransfer(store, resolvers, id, 'user', 'name', 'João Silva')
+    const a = transferAction(id)
+    expect(a.transferType).toBe('direct4user')
+    expect(a.value).toBe(USER_ID)
+  })
+
+  it('userPrevious → direct4userPrevious sem destino (value null), sem resolver', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_prev')
+    await setTransfer(store, resolvers, id, 'userPrevious')
+    const a = transferAction(id)
+    expect(a.transferType).toBe('direct4userPrevious')
+    expect(a.value).toBeNull()
+  })
+
+  it('branch → directFromBranch sem destino', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_branch')
+    await setTransfer(store, resolvers, id, 'branch')
+    expect(transferAction(id).transferType).toBe('directFromBranch')
+  })
+
+  it('search (group + advanced) grava a VARIÁVEL verbatim, sem resolver', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_search')
+    await setTransfer(store, resolvers, id, 'group', 'advanced', '@chat.customerSupportRequestId')
+    const a = transferAction(id)
+    expect(a.transferType).toBe('search4group')
+    expect(a.value).toBe('@chat.customerSupportRequestId')
+  })
+
+  it('time não-encontrado → ERRO e nada gravado (mantém o tipo default do template)', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_notfound')
+    const out = await setTransfer(store, resolvers, id, 'group', 'simple', 'Marketing')
+    expect(out).toMatch(/⚠️ erro/)
+    expect(out).toContain('nenhum time corresponde')
+    // nada gravado: segue o default 'direct4userPrevious' do createIntentTemplate
+    expect(transferAction(id).transferType).toBe('direct4userPrevious')
+  })
+
+  it('nome ambíguo → ERRO listando os candidatos (não auto-escolhe)', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_amb')
+    const out = await setTransfer(store, resolvers, id, 'group', 'simple', 'Suporte')
+    expect(out).toMatch(/⚠️ erro/)
+    expect(out).toMatch(/ambíguo/)
+    expect(out).not.toMatch(/⚠️.*⚠️/) // um único marcador de erro (não duplica o ⚠️)
+  })
+
+  it('categoria user SEM sub → ERRO (exige sub-opção), nada gravado', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_nosub')
+    const out = await setTransfer(store, resolvers, id, 'user')
+    expect(out).toMatch(/⚠️ erro.*sub-opção/)
+    expect(transferAction(id).transferType).toBe('direct4userPrevious')
+  })
+
+  it('categoria inválida ("team" inventado) → ERRO', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_bad')
+    const out = await setTransfer(store, resolvers, id, 'team')
+    expect(out).toMatch(/⚠️ erro.*categoria de transferência inválida/)
+  })
+
+  it('tipo de variável sem target → ERRO', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = newTransfer(store, 't_novar')
+    const out = await setTransfer(store, resolvers, id, 'group', 'advanced')
+    expect(out).toMatch(/⚠️ erro.*exige uma variável/)
+  })
+
+  it('nó que não é transferNode → ERRO', async () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'defaultNode', 't_msg'))![1]
+    const out = await setTransfer(store, resolvers, id, 'group', 'simple', 'Financeiro')
+    expect(out).toMatch(/⚠️ erro.*não é um nó de transferência/)
+  })
+})
+
+describe('set_action_field — transferType redirecionado ao set_transfer (v0.35.0)', () => {
+  it('tentar gravar transferType devolve erro-guia e NÃO grava', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'transferNode', 't_guard'))![1]
+    const out = setActionField(store, id, 'transferType', 'team')
+    expect(out).toMatch(/⚠️ erro/)
+    expect(out).toMatch(/set_transfer/)
+    // segue o default do template — "team" nunca foi gravado
+    expect(reload().list.find(i => i.id === id)!.conditions[0].action.transferType).toBe('direct4userPrevious')
+  })
+})
+
+describe('validate — nudge de Transferência incompleta/inválida (v0.35.0)', () => {
+  it('transfer sem transferType → nudge "sem tipo definido" (não-bloqueante)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'transferNode', 'tr_semtipo'))![1]
+    store.flow.list.find(i => i.id === id)!.conditions[0].action.transferType = null
+    const report = validate(store)
+    expect(report).toMatch(/tr_semtipo.*sem tipo definido/)
+    expect(report).not.toMatch(/❌/)
+  })
+
+  it('transferType inválido ("team") → nudge apontando o valor errado', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'transferNode', 'tr_team'))![1]
+    store.flow.list.find(i => i.id === id)!.conditions[0].action.transferType = 'team'
+    const report = validate(store)
+    expect(report).toMatch(/tr_team.*transferType inválido "team"/)
+  })
+
+  it('tipo que exige destino sem value → nudge "sem destino"', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'transferNode', 'tr_semdest'))![1]
+    const a = store.flow.list.find(i => i.id === id)!.conditions[0].action
+    a.transferType = 'direct4group'
+    a.value = null
+    const report = validate(store)
+    expect(report).toMatch(/tr_semdest.*sem destino/)
+  })
+
+  it('transfer completo (direct4userPrevious, sem value exigido) → SEM nudge de transfer', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const id = /id ([0-9a-f-]{36})/.exec(createNode(store, 'transferNode', 'tr_ok'))![1]
+    setCategory(store, id, 'Transferência') // evita o nudge de "Sem Categoria"
+    // template já nasce direct4userPrevious (campo none) → nenhum nudge de transfer específico
+    expect(validate(store)).not.toMatch(/tr_ok.*(sem tipo|transferType inválido|sem destino)/)
   })
 })
