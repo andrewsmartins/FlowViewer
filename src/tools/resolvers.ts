@@ -66,6 +66,26 @@ type MatchResult =
   | { kind: 'partial'; refs: NamedRef[] }
   | { kind: 'none' }
 
+/**
+ * Resultado ESTRUTURADO de uma resolução nome→id, para tools que precisam GRAVAR o id
+ * (ex.: `set_transfer`), não só exibi-lo. Diferente das `find_*` (que devolvem texto pro
+ * agente ler), aqui o consumidor programático pega o `id` no sucesso ou a `message`-guia
+ * (ambíguo/candidatos/sem-token/erro) no fracasso — para repassar ao agente e PARAR sem gravar.
+ */
+export type ResolveResult =
+  | { ok: true; id: string; name: string; note?: string }
+  | { ok: false; message: string }
+
+/**
+ * Superfície mínima que o `set_transfer` consome dos resolvers (resolução nome→id
+ * estruturada). Tipar por interface — não pela classe `Resolvers` concreta — deixa a tool
+ * testável com um mock e mantém `flowTools` desacoplado da rede/token.
+ */
+export interface TransferResolvers {
+  resolveTeam(name: string): Promise<ResolveResult>
+  resolveUser(name: string): Promise<ResolveResult>
+}
+
 /** Normaliza para o match pt-BR: minúscula, sem acento, sem espaços nas pontas. */
 function normalize(s: string): string {
   return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
@@ -139,11 +159,21 @@ function formatMatch(result: MatchResult, noun: Noun, query: string, total: numb
 }
 
 /**
+ * Converte um `MatchResult` em `ResolveResult` (para os `resolve*`): match exato → `{ ok,
+ * id }`; qualquer outro caso (ambíguo/parcial/nada) → `{ ok: false }` carregando a mesma
+ * mensagem-guia das `find_*`, para o consumidor repassar ao agente e PARAR sem gravar.
+ */
+function matchToResolve(result: MatchResult, noun: Noun, query: string, total: number): ResolveResult {
+  if (result.kind === 'exact') return { ok: true, id: result.ref.id, name: result.ref.name }
+  return { ok: false, message: formatMatch(result, noun, query, total) }
+}
+
+/**
  * Conjunto de resolvers de uma sessão. Mantém os caches sob demanda (decisão 4):
  * a 1ª chamada de cada um dispara o fetch e cacheia; as seguintes batem no cache.
  * Read-only ⇒ sem invalidação. UMA instância por processo MCP (igual à FlowStore).
  */
-export class Resolvers {
+export class Resolvers implements TransferResolvers {
   private teamsCache: Team[] | null = null
   private botsCache: Bot[] | null = null
   private endpointsCache: BotEndpoint[] | null = null
@@ -171,18 +201,28 @@ export class Resolvers {
     return this.teamsCache
   }
 
-  /** `find_team(nome)` — resolve um time da loja para o `objectId` (transfer). */
-  async findTeam(name: string): Promise<string> {
-    if (!this.deps.token) return NO_TOKEN_MSG
+  /**
+   * `resolve_team(nome)` — versão ESTRUTURADA do find_team para o `set_transfer`: devolve o
+   * `objectId` no match exato, ou a mensagem-guia (ambíguo/candidatos/sem-token/erro) para o
+   * agente PARAR sem gravar. `find_team` (texto) é um wrapper fino disto.
+   */
+  async resolveTeam(name: string): Promise<ResolveResult> {
+    if (!this.deps.token) return { ok: false, message: NO_TOKEN_MSG }
     const botId = this.botId()
-    if (!botId) return NO_BOTID_MSG
+    if (!botId) return { ok: false, message: NO_BOTID_MSG }
     try {
       const teams = await this.loadTeams(botId)
       const refs = teams.map(t => ({ id: t.objectId, name: t.name }))
-      return formatMatch(matchByName(refs, name), NOUNS.time, name, refs.length)
+      return matchToResolve(matchByName(refs, name), NOUNS.time, name, refs.length)
     } catch (e) {
-      return errorToMessage(e)
+      return { ok: false, message: errorToMessage(e) }
     }
+  }
+
+  /** `find_team(nome)` — resolve um time da loja para o `objectId` (transfer), em texto. */
+  async findTeam(name: string): Promise<string> {
+    const r = await this.resolveTeam(name)
+    return r.ok ? formatMatch({ kind: 'exact', ref: { id: r.id, name: r.name } }, NOUNS.time, name, 0) : r.message
   }
 
   /** `list_teams()` — mapa compacto dos times da loja (nome | id). */
@@ -214,25 +254,38 @@ export class Resolvers {
   }
 
   /**
-   * `find_user(nome)` — resolve um vendedor (usuário supervisionado) para o
-   * `objectId`. NÃO usa botId (são "supervisionados pela conta do token" —
-   * decisão 1). Avisa se a busca bateu no teto de página (alvo pode ter sido
-   * truncado — refinar o nome).
+   * `resolve_user(nome)` — versão ESTRUTURADA do find_user para o `set_transfer`. NÃO usa
+   * botId (usuários são "supervisionados pela conta do token" — decisão 1). Quando NÃO há
+   * match exato e a busca bateu no teto de página, anexa o aviso de truncamento à mensagem-
+   * guia (no match exato não há dúvida a resolver, então não anexa).
    */
-  async findUser(name: string): Promise<string> {
-    if (!this.deps.token) return NO_TOKEN_MSG
+  async resolveUser(name: string): Promise<ResolveResult> {
+    if (!this.deps.token) return { ok: false, message: NO_TOKEN_MSG }
     try {
       const users = await this.loadUsers(name)
       const refs = users.map(u => ({ id: u.objectId, name: u.name }))
-      const base = formatMatch(matchByName(refs, name), NOUNS.usuario, name, refs.length)
+      const result = matchToResolve(matchByName(refs, name), NOUNS.usuario, name, refs.length)
+      // Teto de página: o alvo (ou um homônimo) pode ter sido truncado. Sinaliza SEMPRE que
+      // bateu no teto — no fracasso anexa à mensagem-guia; no sucesso (match exato) devolve como
+      // `note`, pois um "exato" pode esconder um homônimo cortado da página (o antigo find_user
+      // avisava no exato também; sem isso o set_transfer gravaria o id sem sinal de ambiguidade).
       if (users.length >= USERS_PAGE_LIMIT) {
-        return `${base}\n⚠️ a busca retornou ${USERS_PAGE_LIMIT}+ resultados (teto da página) — ` +
+        const warn = `⚠️ a busca retornou ${USERS_PAGE_LIMIT}+ resultados (teto da página) — ` +
           'refine o nome se o alvo não apareceu'
+        return result.ok ? { ...result, note: warn } : { ok: false, message: `${result.message}\n${warn}` }
       }
-      return base
+      return result
     } catch (e) {
-      return errorToMessage(e)
+      return { ok: false, message: errorToMessage(e) }
     }
+  }
+
+  /** `find_user(nome)` — resolve um vendedor (usuário supervisionado) para o `objectId`, em texto. */
+  async findUser(name: string): Promise<string> {
+    const r = await this.resolveUser(name)
+    if (!r.ok) return r.message
+    const base = formatMatch({ kind: 'exact', ref: { id: r.id, name: r.name } }, NOUNS.usuario, name, 0)
+    return r.note ? `${base}\n${r.note}` : base
   }
 
   // --- Bots ------------------------------------------------------------------

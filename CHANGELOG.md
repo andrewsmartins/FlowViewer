@@ -11,6 +11,21 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [0.35.0] - 2026-07-03
+
+### Adicionado
+- **`set_transfer` — o agente preenche o nó de Transferência de verdade** ([src/utils/transfer.ts](src/utils/transfer.ts), [src/tools/flowTools.ts](src/tools/flowTools.ts), [src/tools/resolvers.ts](src/tools/resolvers.ts), [mcp/server.ts](mcp/server.ts)) — fecha o gap em que o agente gravava `transferType="team"` (valor inventado, fora do enum) pelo `set_action_field` cru, deixando um nó de transferência quebrado. A nova tool `set_transfer(node, category, sub?, target?)` espelha o seletor de 2 níveis da plataforma: `category` = `userPrevious` \| `branch` \| `user` \| `group`; `sub` (só user/group) = user→`name`\|`email`, group→`simple`\|`advanced`; deriva o `transferType` canônico (1 dos 6) da **fonte única** `transfer.ts` (impossível inventar) e resolve o destino por **ID** via resolvers (`resolveTeam`/`resolveUser` — "resolve por nome → grava por ID"). `target` = nome do time/vendedor nos tipos de nome (resolvido p/ objectId), a variável verbatim nos tipos email/advanced, ou omitido em userPrevious/branch. Caminho infeliz = **erro duro** (não-encontrado / ambíguo / sem token / target faltando quando o tipo exige) sem gravar nada — o agente pára e confirma com o humano.
+
+### Changed
+- **Fonte única dos mapas de Transferência** ([src/utils/transfer.ts](src/utils/transfer.ts)) — `TRANSFER_MAP`/`TRANSFER_SUBS`/`TRANSFER_NOSUB`/categorias saíram do `DetailPanel` para um módulo Node-pure importado por `DetailPanel`, `set_transfer`, `nodeCatalog` e `validate()`. A duplicação (UI × nodeCatalog) sem fonte única foi a raiz do enum solto que deixou o "team" passar.
+- **`transferType` removido de `ACTION_FIELDS`** ([src/tools/flowTools.ts](src/tools/flowTools.ts)) — `set_transfer` vira o único caminho para gravar a transferência; `set_action_field('transferType', …)` responde **erro-guia** apontando `set_transfer` (o campo ainda é aceito no schema só para devolver a orientação, não um erro cru).
+- **Guidance do `transferNode` no `nodeCatalog`** passa a descrever `set_transfer` (categoria/sub/target) em vez do `transferType`/`value` crus.
+
+### Fixed
+- **Nudge de Transferência incompleta no `validate()`** (`findTransferNudges`) — acusa, não-bloqueante: transfer sem `transferType`, `transferType` desconhecido (ex.: um "team" legado que entrou por import) e tipo que exige destino sem `value`. Espelha o padrão "opção sem conexão" (v0.19.0).
+
+> Cobertura: **+34 testes** ([transfer.test.ts](src/utils/transfer.test.ts): `resolveTransferType` cobre os 6 tipos + acoplamento categoria/sub + caminhos infelizes; [flowTools.test.ts](src/tools/flowTools.test.ts): `set_transfer` resolve time/usuário/variável, erro-duro em não-encontrado/ambíguo/sub-faltando/nó-errado, guard do `set_action_field`, nudges do `validate()`; [resolvers.test.ts](src/tools/resolvers.test.ts): `resolveTeam`/`resolveUser` estruturados + `find_team` como wrapper). Suíte cheia verde (**575 testes**); `tsc` do app e `mcp:typecheck` limpos.
+
 ## [0.34.0] - 2026-07-03
 
 ### Adicionado
