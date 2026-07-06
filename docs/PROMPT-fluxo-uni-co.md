@@ -58,7 +58,7 @@ flowchart TD
 
 ## Os prompts (colar na caixinha, um turno por vez)
 
-### Turno 1 — tronco linear (perguntas 1→5)
+### Turno 1 — tronco linear (1→5) + ramos que terminam em transferência (opções 1, 3, 4, 7)
 
 ```
 Vamos montar o fluxo de atendimento ao lojista do Grupo Uni.co. Comece do zero, encadeando
@@ -78,22 +78,16 @@ em sequência:
    da NF Devolução, 5) Solicitação de faturamento para troca de cliente final, 6) Partes e
    peças (reposição de acessórios), 7) Outras dúvidas.
 
-Conecte 1→2→3→4→5. Deixe as opções dos menus 4 e 5 sem destino por enquanto — ligamos os
-direcionamentos nos próximos passos.
-```
+Conecte 1→2→3→4→5.
 
-### Turno 2 — ramos que terminam em transferência (opções 1, 3, 4, 7)
+Agora ligue, a partir do menu de assunto, os direcionamentos que terminam com a conversa indo
+para um atendente humano. Antes de TODA transferência, insira uma mensagem com este texto de
+fila: "Sua solicitação foi recebida pela equipe e está na fila de atendimento. Nosso tempo
+estimado de retorno é de até 2 horas, mas faremos o possível para falar com você antes disso!
+Você pode encerrar o atendimento a qualquer momento, digitando Fim." Em seguida, a
+transferência deve ir para o time de atendentes (resolva o time pelo nome com as ferramentas;
+se houver mais de um ou nenhum, me pergunte antes de gravar — não invente o ID).
 
-```
-Agora os direcionamentos que terminam com a conversa indo para um atendente humano. Antes de
-TODA transferência, insira uma mensagem com este texto de fila: "Sua solicitação foi recebida
-pela equipe e está na fila de atendimento. Nosso tempo estimado de retorno é de até 2 horas,
-mas faremos o possível para falar com você antes disso! Você pode encerrar o atendimento a
-qualquer momento, digitando Fim." Em seguida, a transferência deve ir para o time de
-atendentes (resolva o time pelo nome com as ferramentas; se houver mais de um ou nenhum,
-me pergunte antes de gravar — não invente o ID).
-
-Ligue, a partir do menu de assunto:
 - Opção 1 (Dúvida Troca de Cliente): vai direto para a mensagem de fila e depois a transferência.
 - Opção 3 (Dúvidas sobre devolução em andamento): mensagem "Qual é o número de atendimento
   que você quer falar?" → aguardar a resposta do lojista → mensagem de fila → transferência.
@@ -103,31 +97,29 @@ Ligue, a partir do menu de assunto:
   direcionamento, explique aqui o seu motivo de contato com o máximo de detalhes possível
   (como prints, dados ou exemplos), isso ajudará a nossa equipe a te dar a melhor resposta.
   Ficamos no aguardo!" → aguardar a resposta → mensagem de fila → transferência.
+
+Deixe as opções 2, 5 e 6 do menu de assunto sem destino por enquanto — ligamos nos próximos
+passos.
 ```
 
-### Turno 3 — opção 5 (faturamento + menu Encerrar/Voltar)
+### Turno 2 — opções 2, 5 e 6 (bifurcações locais + faturamento)
 
 ```
-Ligue a opção 5 do menu de assunto (Solicitação de faturamento para troca de cliente final).
-Envie esta mensagem: "Olá, @customer.name! ✨ Se você é uma franquia ou Outlet Puket, podemos
-verificar a disponibilidade de estoque e possibilidade de faturamento do item para a troca do
-seu cliente final. A solicitação deve ser feita através do Portal de Serviços, em nossa Central
-de relacionamento. Gentileza acessar o link:
+Agora as opções restantes do menu de assunto criado no passo anterior: 2 (Como iniciar
+devolução), 5 (Solicitação de faturamento para troca de cliente final) e 6 (Partes e peças).
+
+Opção 5 (faturamento): envie esta mensagem: "Olá, @customer.name! ✨ Se você é uma franquia ou
+Outlet Puket, podemos verificar a disponibilidade de estoque e possibilidade de faturamento do
+item para a troca do seu cliente final. A solicitação deve ser feita através do Portal de
+Serviços, em nossa Central de relacionamento. Gentileza acessar o link:
 https://grupounico.neoassist.com/?th=tag_vlojistapuketfixa . Clicar sobre o ícone de e-mail,
 selecionar no assunto FATURAMENTO DE PRODUTO e preencher o formulário. Um grande abraço!"
-
 Depois da mensagem, ofereça um menu com duas opções: "Encerrar" e "Voltar ao menu". "Encerrar"
 encerra a conversa. "Voltar ao menu" volta para o menu de assunto ("E sobre o que você quer
-falar?") criado no turno 1.
-```
+falar?").
 
-### Turno 4 — opção 2 (devolução, bifurcação por caso)
-
-```
-Ligue a opção 2 do menu de assunto (Como iniciar devolução). Como o manual muda conforme a
-marca e a categoria, crie um menu "Para te enviar o manual certo, qual é o seu caso?" com três
-opções, cada uma levando a uma mensagem:
-
+Opção 2 (devolução): como o manual muda conforme a marca e a categoria, crie um menu "Para te
+enviar o manual certo, qual é o seu caso?" com três opções, cada uma levando a uma mensagem:
 - "Imaginarium - Franquia": mensagem "Segue o manual de devolução da Imaginarium. (anexar aqui
   o documento: Manual de devolução - Imaginarium)".
 - "Imaginarium - Multimarcas": mensagem "No momento o manual de devolução para Multimarcas
@@ -135,18 +127,12 @@ opções, cada uma levando a uma mensagem:
   caso."
 - "Puket - Franquia ou Multimarcas": mensagem "Segue o manual de devoluções da Puket. (anexar
   aqui o documento: Manual de devoluções - Puket)".
-
 Depois de cada mensagem, ofereça um menu com "Encerrar" e "Falar com atendente". "Encerrar"
-encerra a conversa. "Falar com atendente" leva à mensagem de fila (mesmo texto do turno 2) e
-depois à transferência para o time de atendentes.
-```
+encerra a conversa. "Falar com atendente" leva à mensagem de fila (mesmo texto usado acima
+para as transferências) e depois à transferência para o time de atendentes.
 
-### Turno 5 — opção 6 (partes e peças, bifurcação por marca)
-
-```
-Ligue a opção 6 do menu de assunto (Partes e peças). A mensagem muda conforme a marca, então
-crie um menu "De qual marca?" com "Puket" e "Imaginarium", cada uma levando a uma mensagem:
-
+Opção 6 (partes e peças): a mensagem muda conforme a marca, então crie um menu "De qual
+marca?" com "Puket" e "Imaginarium", cada uma levando a uma mensagem:
 - Puket: "Olá, @customer.name! ✨ Para verificarmos se temos a peça desejada em estoque para
   reposição, será necessário abrir um atendimento através de nosso Portal de Serviços, em nossa
   Central de Relacionamento. Gentileza acessar o link:
@@ -158,12 +144,11 @@ crie um menu "De qual marca?" com "Puket" e "Imaginarium", cada uma levando a um
   para reposição, será necessário abrir um atendimento de dúvida, no portal de devoluções em:
   NOVO ATENDIMENTO >> SOLICITAÇÃO DE PARTES E PEÇAS. Continuamos à disposição para qualquer
   dúvida que a loja possa ter!"
-
 Depois de cada mensagem, ofereça um menu com "Encerrar" e "Voltar ao menu". "Encerrar" encerra
 a conversa. "Voltar ao menu" volta para o menu de assunto criado no turno 1.
 ```
 
-### Turno 6 — mensagens de fora de horário (2 nós soltos)
+### Turno 3 — mensagens de fora de horário (2 nós soltos)
 
 ```
 Por fim, crie duas mensagens SOLTAS (sem conectar ao fluxo) só para deixar o conteúdo pronto

@@ -9,6 +9,7 @@ import {
 } from '../utils/editIntent'
 import { applyConnect, setNextRef } from '../utils/editFlow'
 import { validateFlow } from '../utils/validateFlow'
+import { findMenuLimitViolations } from '../utils/menuLimits'
 
 /**
  * Camada de TOOLS da spike do agente (Fase 1). Cada função envolve UMA função já
@@ -594,16 +595,47 @@ function findKeywordNudges(store: FlowStore): string[] {
 }
 
 /**
+ * Nudge de limites de caractere do Menu (v0.34.0), não-bloqueante: pega menus
+ * LEGADOS/importados que já vieram acima do limite no JSON — o hard-block do
+ * `buildButtonList` cobre o que a UI/agente CRIA agora, mas não reescreve o que já
+ * estava no disco. Itera as mensagens BUTTON/LIST e reusa a mesma tabela (menuLimits.ts).
+ */
+function findMenuLimitNudges(store: FlowStore): string[] {
+  const nudges: string[] = []
+  for (const intent of store.flow.list) {
+    for (const cond of intent.conditions) {
+      for (const msg of cond.assistant_says.flatMap(s => s.messages)) {
+        if ((msg.type !== 'BUTTON' && msg.type !== 'LIST') || !msg.messageConfig) continue
+        const mc = msg.messageConfig
+        const overflow = findMenuLimitViolations({
+          header: mc.header ?? '', title: mc.title ?? '', body: mc.body ?? '', footer: mc.footer ?? '',
+          items: (mc.buttons ?? []).map(b => ({ text: b.text ?? '', description: b.description ?? '' })),
+        })
+        if (overflow.length) {
+          nudges.push(
+            `menu em "${intent.name}" excede limites de caractere (${overflow.join('; ')}) — ` +
+            `a plataforma rejeita; encurte os campos.`,
+          )
+        }
+      }
+    }
+  }
+  return nudges
+}
+
+/**
  * `validate()` — relatório de validade do fluxo (envolve `validateFlow`).
  * Tool separada (Q2): nunca é gate de escrita; o agente chama quando quer
  * (tipicamente no fim). Erros bloqueiam export; avisos só informam — inclui os
- * nudges de captura (`findAskWaitNudges`), de categoria (`findCategoryNudges`) e de
- * roteamento por keyword (`findKeywordNudges`), exclusivos do agente.
+ * nudges de captura (`findAskWaitNudges`), de categoria (`findCategoryNudges`), de
+ * roteamento por keyword (`findKeywordNudges`) e de limites de caractere do menu
+ * (`findMenuLimitNudges`), exclusivos do agente.
  */
 export function validate(store: FlowStore): string {
   const { errors, warnings } = validateFlow(store.flow)
   const allWarnings = [
     ...warnings, ...findAskWaitNudges(store), ...findCategoryNudges(store), ...findKeywordNudges(store),
+    ...findMenuLimitNudges(store),
   ]
   if (!errors.length && !allWarnings.length) return '✅ fluxo válido (0 erros, 0 avisos)'
   const lines: string[] = []

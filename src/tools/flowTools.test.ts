@@ -686,6 +686,40 @@ describe('validate — nudges de roteamento por keyword (v0.33.0)', () => {
   })
 })
 
+describe('validate — nudge de limites de caractere do menu (v0.34.0)', () => {
+  it('acusa menu legado/importado com item acima do limite (20)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'lim_menu'))![1]
+    setMenu(store, menuId, 'Menu', [{ text: 'ok' }])
+    setCategory(store, menuId, 'Atendimento')
+    // simula um menu IMPORTADO acima do limite: injeta direto no modelo. O hard-block
+    // do buildButtonList impede CRIAR um pela tool, mas um JSON legado pode já ter.
+    const node = store.flow.list.find(i => i.id === menuId)!
+    const msg = node.conditions[0].assistant_says.flatMap(s => s.messages).find(m => m.type === 'BUTTON')!
+    msg.messageConfig!.buttons[0].text = 'x'.repeat(25)
+    const report = validate(store)
+    expect(report).toMatch(/lim_menu/)
+    expect(report).toMatch(/excede 20 caracteres/)
+    expect(report).not.toMatch(/❌/) // não-bloqueante
+  })
+
+  it('NÃO acusa um menu dentro dos limites', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'lim_ok'))![1]
+    setMenu(store, menuId, 'Menu', [{ text: 'curto' }])
+    setCategory(store, menuId, 'Atendimento')
+    expect(validate(store)).not.toMatch(/lim_ok/)
+  })
+
+  it('set_menu recusa item acima do limite (hard-block da tool)', () => {
+    const store = FlowStore.fromFile(flowPath)
+    const menuId = /id ([0-9a-f-]{36})/.exec(createNode(store, 'choiceNode', 'lim_block'))![1]
+    const msg = setMenu(store, menuId, 'Menu', [{ text: 'x'.repeat(21) }])
+    expect(msg).toMatch(/⚠️ erro/)
+    expect(msg).toMatch(/excede/)
+  })
+})
+
 describe('Fase 4b — connect_to_bot (redirect cross-bot)', () => {
   // bot diferente do principal do fixture (o alvo cross-bot real da Parte 10).
   const OTHER_BOT = '8df3c1e7-a8c9-4bad-ac5a-2855462da840'

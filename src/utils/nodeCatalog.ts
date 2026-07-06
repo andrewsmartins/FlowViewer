@@ -66,7 +66,11 @@ export const NODE_CATALOG: Record<CreatableKind, NodeTypeEntry> = {
     actionType: 'choice',
     hasError: false,
     summary: 'Menu de escolha (LIST/BUTTON): cada item leva a um destino.',
-    fields: ['choices → use set_choices (destinos posicionais), não set_action_field'],
+    fields: [
+      'choices → use set_choices (destinos posicionais), não set_action_field',
+      'limites de caractere (a plataforma rejeita): cabeçalho 60 · corpo 80 · rodapé 60 · ' +
+        'título do menu 20 · texto do item 20 · descrição do item 72',
+    ],
   },
   captureNode: {
     label: 'Captura',
