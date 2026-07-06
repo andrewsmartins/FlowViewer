@@ -94,8 +94,11 @@ export const NODE_CATALOG: Record<CreatableKind, NodeTypeEntry> = {
     hasError: true,
     summary: 'Transfere a conversa para um time ou atendente humano (folha — o bot para).',
     fields: [
-      'transferType: search4group | direct4group | search4user | direct4user | directFromBranch | direct4userPrevious',
-      'value: ID do time/usuário (resolvido na Fase 4; NUNCA inventar — peça ao humano)',
+      'transferência → use set_transfer(node, category, sub?, target?), NÃO set_action_field (transferType não é gravável por lá)',
+      'category: userPrevious (devolve ao vendedor anterior) | branch (pelo endereço físico) | user (por vendedor) | group (por time)',
+      'sub (exigido só em user/group): user → name (busca por nome) | email (por variável); group → simple (busca simples) | advanced (por variável)',
+      'target: nos tipos de nome (user+name / group+simple) = NOME do vendedor/time (resolvido p/ id via find_user/find_team); ' +
+        'nos de variável (user+email / group+advanced) = a variável verbatim (ex.: @chat.customerSupportRequestId); userPrevious/branch = omitido',
     ],
   },
   waitNode: {

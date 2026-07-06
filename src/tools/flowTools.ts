@@ -10,6 +10,8 @@ import {
 import { applyConnect, setNextRef } from '../utils/editFlow'
 import { validateFlow } from '../utils/validateFlow'
 import { findMenuLimitViolations } from '../utils/menuLimits'
+import { resolveTransferType, TRANSFER_MAP, type TransferField } from '../utils/transfer'
+import type { TransferResolvers } from './resolvers'
 
 /**
  * Camada de TOOLS da spike do agente (Fase 1). Cada função envolve UMA função já
@@ -26,17 +28,28 @@ import { findMenuLimitViolations } from '../utils/menuLimits'
  */
 
 /**
- * Campos de `action` que a tool `set_action_field` sabe gravar (subconjunto de
+ * Campos de `action` GRAVÁVEIS pela tool `set_action_field` (subconjunto de
  * updateActionFields). FONTE ÚNICA: o array `as const` é a verdade; o type deriva
- * dele e o servidor MCP importa o MESMO array para o `z.enum` — assim o schema
- * de runtime e o type de compilação não podem divergir (drift vira erro de tipo).
+ * dele. `transferType` NÃO está aqui (v0.35.0): o nó de Transferência é gravado só
+ * pelo `set_transfer` (que resolve o enum + o destino de uma vez) — assim o valor
+ * inventado "team" é impossível por construção. `set_action_field` ainda ACEITA
+ * `transferType` na entrada, mas só para devolver um erro-guia (ver SET_ACTION_FIELD_INPUTS).
  */
 export const ACTION_FIELDS = [
   'captureDataType', 'captureDataTypesCategory', 'multipleFields',
-  'transferType', 'value', 'variable', 'storeType', 'orderType',
+  'value', 'variable', 'storeType', 'orderType',
   'apiName', 'externalType',
 ] as const
 export type ActionFieldName = (typeof ACTION_FIELDS)[number]
+
+/**
+ * Campos que `set_action_field` RECONHECE na entrada = os graváveis + os REDIRECIONADOS
+ * (`transferType` saiu de ACTION_FIELDS mas continua aceito para responder o erro-guia →
+ * set_transfer, em vez de o agente ver um erro de schema cru). É o array que o servidor MCP
+ * importa para o `z.enum`; o `setActionField` intercepta os redirecionados antes de gravar.
+ */
+export const SET_ACTION_FIELD_INPUTS = [...ACTION_FIELDS, 'transferType'] as const
+export type SetActionFieldInput = (typeof SET_ACTION_FIELD_INPUTS)[number]
 
 /**
  * Resolve uma referência de nó (id OU nome exato) para a intenção do modelo.
@@ -113,8 +126,15 @@ export function createNode(store: FlowStore, kind: string, name: string): string
  * de condição única). `value` aceita string ou array (p/ `multipleFields`).
  */
 export function setActionField(
-  store: FlowStore, ref: string, field: ActionFieldName, value: string | string[], condIdx = 0,
+  store: FlowStore, ref: string, field: SetActionFieldInput, value: string | string[], condIdx = 0,
 ): string {
+  // `transferType` foi removido dos campos graváveis (v0.35.0): o nó de Transferência é
+  // gravado só pelo set_transfer, que resolve o tipo + o destino juntos e mata o "team"
+  // inventado. Interceptamos com um erro-guia (o campo ainda entra pelo schema para chegar aqui).
+  if (field === 'transferType') {
+    return `⚠️ erro: use set_transfer para a Transferência (resolve o tipo válido + o destino de uma vez); ` +
+      `set_action_field não grava transferType`
+  }
   // Só `multipleFields` é lista; os demais campos são escalares. Sem este gate um
   // array gravado em `value`/`captureDataType`/etc. produziria JSON malformado
   // (a plataforma espera string) com confirmação de sucesso.
@@ -135,6 +155,75 @@ export function setActionField(
   store.save()
   const shown = Array.isArray(value) ? `[${value.join(', ')}]` : value
   return `set ${field}=${shown} em "${intent.name}"`
+}
+
+/**
+ * `set_transfer(node, category, sub?, target?)` — preenche o nó de Transferência DE VERDADE:
+ * resolve o `transferType` válido (1 dos 6) a partir da categoria + sub-opção e grava o
+ * `value` (destino) já resolvido. Fecha o gap em que o agente chutava `transferType="team"`
+ * pelo set_action_field cru — aqui o tipo vem da fonte única `transfer.ts` (impossível inventar)
+ * e o destino é resolvido por ID via resolvers (nunca ID alucinado).
+ *
+ * Mapeia a UI de 2 níveis: `category = userPrevious | branch | user | group`; `sub` (exigido só
+ * p/ user/group) → user: name|email · group: simple|advanced. `target` conforme o tipo:
+ * - nome/simple (direct4user/direct4group) → NOME do vendedor/time, resolvido p/ objectId;
+ * - email/advanced (search4user/search4group) → a VARIÁVEL verbatim (ex.: @chat.email);
+ * - userPrevious/branch → omitido (sem destino).
+ *
+ * Caminho infeliz = ERRO DURO, sem gravar nada (Q8): categoria/sub inválida, target faltando
+ * quando o tipo exige, ou nome não-encontrado/ambíguo/sem-token na resolução. O agente recebe
+ * o erro e resolve (garante o time/pergunta ao humano) — nunca inventa ID nem deixa nó meia-boca.
+ */
+export async function setTransfer(
+  store: FlowStore, resolvers: TransferResolvers,
+  ref: string, category: string, sub?: string, target?: string,
+): Promise<string> {
+  const intent = resolveIntent(store, ref)
+  if (isError(intent)) return `⚠️ erro: ${intent.error}`
+  const cond = intent.conditions[0]
+  if (cond?.action.type !== 'transfer') {
+    return `⚠️ erro: "${intent.name}" não é um nó de transferência — set_transfer só se aplica a transferNode`
+  }
+  // Resolve categoria+sub → transferType (fonte única). Categoria/sub inválida = erro-duro.
+  const resolved = resolveTransferType(category, sub)
+  if (!resolved.ok) return `⚠️ erro: ${resolved.reason}`
+  // Resolve o destino (value) conforme o campo do tipo (variável / objectId / nenhum) — erro-duro sem gravar.
+  const dest = await resolveTransferValue(resolvers, resolved.transferType, resolved.field, target)
+  if (!dest.ok) return `⚠️ erro: ${dest.error}`
+
+  store.beginMutation()
+  const result = updateActionFields(intent, 'transfer', { transferType: resolved.transferType, value: dest.value }, 0)
+  if (!result.ok) return `⚠️ erro: ${result.reason}`
+  store.save()
+  const shown = dest.value ? ` → ${dest.value}` : ''
+  return `transferência de "${intent.name}" = ${resolved.transferType}${shown}${dest.note ? `\n${dest.note}` : ''}`
+}
+
+/**
+ * Resolve o `value` (destino) de uma transferência conforme o CAMPO que o tipo exige:
+ * - `variable` (search4user/search4group): grava a variável verbatim (dinâmica, não resolve);
+ * - `userPicker`/`teamPicker` (direct4user/direct4group): nome → objectId via resolvers ("resolve
+ *   por nome → grava por ID"); repassa a `note` do resolver (ex.: aviso de teto de página);
+ * - `none` (userPrevious/branch): sem destino (um target passado é ignorado).
+ * Erro DURO (sem gravar) quando falta o target exigido ou a resolução falha. `target` é aparado
+ * antes de resolver — a validação e a chamada usam o MESMO valor (sem enviar espaço cru à busca).
+ */
+async function resolveTransferValue(
+  resolvers: TransferResolvers, transferType: string, field: TransferField, target?: string,
+): Promise<{ ok: true; value: string; note?: string } | { ok: false; error: string }> {
+  if (field === 'none') return { ok: true, value: '' }
+  const t = (target ?? '').trim()
+  if (field === 'variable') {
+    if (!t) return { ok: false, error: `o tipo "${transferType}" exige uma variável em target (ex.: @chat.customerSupportRequestId)` }
+    return { ok: true, value: t }
+  }
+  const noun = field === 'teamPicker' ? 'time' : 'vendedor'
+  if (!t) return { ok: false, error: `o tipo "${transferType}" exige o nome do ${noun} em target` }
+  const res = field === 'teamPicker' ? await resolvers.resolveTeam(t) : await resolvers.resolveUser(t)
+  // A message-guia do resolver já vem com ⚠️ nos casos AUTH/ambíguo — remove o marcador para não
+  // duplicar com o "⚠️ erro:" que o chamador prefixa (mantém um único marcador de erro).
+  if (!res.ok) return { ok: false, error: res.message.replace(/^⚠️\s*/, '') }
+  return { ok: true, value: res.id, note: res.note }
 }
 
 /**
@@ -624,18 +713,55 @@ function findMenuLimitNudges(store: FlowStore): string[] {
 }
 
 /**
+ * Nudge de Transferência (v0.35.0), não-bloqueante — o par do `set_transfer` no `validate()`:
+ * (1) transfer SEM `transferType` → nó meia-boca que não transfere (defina com set_transfer);
+ * (2) `transferType` DESCONHECIDO (fora dos 6 — ex.: o "team" inventado que entrou por import
+ *     ou por um set_action_field legado) → aponta o valor errado e manda usar set_transfer;
+ * (3) tipo que EXIGE destino (direct/search de user/group) sem `value` → falta o time/vendedor/variável.
+ * Espelha o padrão "opção sem conexão" (v0.19.0): sinaliza o incompleto sem bloquear o export.
+ */
+function findTransferNudges(store: FlowStore): string[] {
+  const nudges: string[] = []
+  const validTypes = Object.keys(TRANSFER_MAP).join(' | ')
+  for (const intent of store.flow.list) {
+    for (const cond of intent.conditions) {
+      if (cond.action?.type !== 'transfer') continue
+      const tt = cond.action.transferType
+      if (!tt) {
+        nudges.push(`nó "${intent.name}" (Transferência) sem tipo definido — use set_transfer para escolher o destino.`)
+        continue
+      }
+      const entry = TRANSFER_MAP[tt]
+      if (!entry) {
+        nudges.push(
+          `nó "${intent.name}" (Transferência) tem transferType inválido "${tt}" — use set_transfer ` +
+          `(tipos válidos: ${validTypes}).`,
+        )
+        continue
+      }
+      if (entry.field !== 'none' && !(cond.action.value ?? '').trim()) {
+        nudges.push(
+          `nó "${intent.name}" (Transferência, ${tt}) sem destino (value) — defina o time/vendedor/variável com set_transfer.`,
+        )
+      }
+    }
+  }
+  return nudges
+}
+
+/**
  * `validate()` — relatório de validade do fluxo (envolve `validateFlow`).
  * Tool separada (Q2): nunca é gate de escrita; o agente chama quando quer
  * (tipicamente no fim). Erros bloqueiam export; avisos só informam — inclui os
  * nudges de captura (`findAskWaitNudges`), de categoria (`findCategoryNudges`), de
- * roteamento por keyword (`findKeywordNudges`) e de limites de caractere do menu
- * (`findMenuLimitNudges`), exclusivos do agente.
+ * roteamento por keyword (`findKeywordNudges`), de limites de caractere do menu
+ * (`findMenuLimitNudges`) e de transferência (`findTransferNudges`), exclusivos do agente.
  */
 export function validate(store: FlowStore): string {
   const { errors, warnings } = validateFlow(store.flow)
   const allWarnings = [
     ...warnings, ...findAskWaitNudges(store), ...findCategoryNudges(store), ...findKeywordNudges(store),
-    ...findMenuLimitNudges(store),
+    ...findMenuLimitNudges(store), ...findTransferNudges(store),
   ]
   if (!errors.length && !allWarnings.length) return '✅ fluxo válido (0 erros, 0 avisos)'
   const lines: string[] = []
