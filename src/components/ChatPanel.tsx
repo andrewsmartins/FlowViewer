@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type ChangeEvent } from 'react'
+import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type ChangeEvent, type CSSProperties } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
 import { useChatSocket, type ChatMessage, type ConnStatus } from '../hooks/useChatSocket'
 import { useClickOutside } from '../hooks/useClickOutside'
@@ -153,27 +153,30 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
               ))}
             </div>
           )}
-          {/* Pill: zinc-800/700/100 (decisão 5); acento amber quando running (decisão 5).
-              onMouseDown inicia drag; onClick abre/trava (suprimido após drag). */}
+          {/* Botão minimizado: retangular arredondado + cor do menu (zinc-950, sempre
+              escura, independente do tema — como o rail), acento amber quando running
+              (redesign do widget, decisão 3). onMouseDown inicia drag; onClick abre/trava
+              (suprimido após drag). */}
           <button
             onMouseDown={onDragMouseDown}
             onClick={handleLauncherClick}
             aria-label={blocked ? 'Agente indisponível — requisitos pendentes' : 'Abrir o agente construtor'}
             aria-expanded={blocked ? gateOpen : undefined}
-            className={`flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold shadow-lg border transition-colors cursor-grab active:cursor-grabbing bg-zinc-800 text-zinc-100 hover:bg-zinc-700 ${running && status === 'open' ? 'border-amber-400' : 'border-zinc-700'}`}
+            className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold shadow-lg border transition-colors cursor-grab active:cursor-grabbing bg-zinc-950 text-zinc-100 hover:bg-zinc-800 ${running && status === 'open' ? 'border-amber-400' : 'border-zinc-800'}`}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
             Agente
             {blocked ? (
-              // Cadeado quando bloqueado (decisão 6): comunica "indisponível" antes do clique.
+              // Cadeado quando bloqueado (decisão 4): comunica "indisponível" antes do clique;
+              // as ondas só aparecem quando desbloqueado.
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <rect x="3" y="11" width="18" height="11" rx="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
             ) : (
-              <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
+              <StatusWaves status={status} running={running} />
             )}
           </button>
         </div>
@@ -242,6 +245,34 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Ícone de ondas sonoras (3 barras verticais animadas) no botão minimizado do
+ * agente (redesign do widget, decisão 4). Substitui o antigo ponto de status:
+ * a COR reflete o estado da conexão WS (reusa `STATUS_DOT` — verde/âmbar/vermelho)
+ * e a animação fica mais rápida no `running` (`--wave-duration`), "respirando"
+ * devagar quando ocioso. `prefers-reduced-motion` deixa as barras estáticas (CSS
+ * em index.css). Puramente decorativo → `aria-hidden`; o estado textual da conexão
+ * vive no header do painel aberto (`STATUS_LABEL`). */
+function StatusWaves({ status, running }: { status: ConnStatus; running: boolean }) {
+  const barColor = STATUS_DOT[status]
+  const duration = running && status === 'open' ? '0.6s' : '1.4s'
+  return (
+    <span
+      className="flex items-center gap-[2px] h-3.5"
+      style={{ '--wave-duration': duration } as CSSProperties}
+      aria-hidden="true"
+    >
+      {[0, 1, 2].map(i => (
+        <span
+          key={i}
+          className={`fluxo-wave-bar w-[3px] h-full rounded-full ${barColor}`}
+          style={{ animationDelay: `${i * 0.18}s` }}
+        />
+      ))}
+    </span>
   )
 }
 

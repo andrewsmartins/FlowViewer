@@ -11,7 +11,15 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
-## [0.35.0] - 2026-07-03
+## [Não lançado]
+
+> Redesign do widget do agente (branch `feat/agent-widget-redesign`) — em andamento. Faltam a
+> expansão animada (decisão 5) e a janela redimensionável (decisão 6); ver PLANS §"Redesign do
+> widget do agente".
+
+### Changed
+- **Botão minimizado do agente com a cara da ferramenta** ([src/components/ChatPanel.tsx](src/components/ChatPanel.tsx)) — a pill `rounded-full bg-zinc-800` (theme-agnóstica por acaso) virou um retângulo arredondado `rounded-2xl bg-zinc-950` (cor do menu/rail, sempre escura, independente do tema), mantendo o acento `border-amber-400` quando o turno está `running` e o texto "Agente" + ícone de balão. O painel aberto não muda (segue theme-aware). (Redesign do widget, decisão 3.)
+- **Ponto de status → ícone de ondas sonoras animado** ([src/components/ChatPanel.tsx](src/components/ChatPanel.tsx), [src/index.css](src/index.css)) — o `STATUS_DOT` (ponto único) no botão minimizado deu lugar a um `StatusWaves`: 3 barras verticais que pulsam em `scaleY` num loop escalonado (keyframe `fluxo-soundwave`), feito um equalizador. A **cor** reflete o estado da conexão WS (reusa o mapa `STATUS_DOT` — verde/âmbar/vermelho) e a animação fica **mais rápida no `running`** (0.6s × 1.4s ocioso, via `--wave-duration`). Respeita `prefers-reduced-motion` (barras estáticas). O cadeado do gate bloqueado é preservado — as ondas só aparecem quando desbloqueado. (Redesign do widget, decisão 4.)
 
 ### Adicionado
 - **`set_transfer` — o agente preenche o nó de Transferência de verdade** ([src/utils/transfer.ts](src/utils/transfer.ts), [src/tools/flowTools.ts](src/tools/flowTools.ts), [src/tools/resolvers.ts](src/tools/resolvers.ts), [mcp/server.ts](mcp/server.ts)) — fecha o gap em que o agente gravava `transferType="team"` (valor inventado, fora do enum) pelo `set_action_field` cru, deixando um nó de transferência quebrado. A nova tool `set_transfer(node, category, sub?, target?)` espelha o seletor de 2 níveis da plataforma: `category` = `userPrevious` \| `branch` \| `user` \| `group`; `sub` (só user/group) = user→`name`\|`email`, group→`simple`\|`advanced`; deriva o `transferType` canônico (1 dos 6) da **fonte única** `transfer.ts` (impossível inventar) e resolve o destino por **ID** via resolvers (`resolveTeam`/`resolveUser` — "resolve por nome → grava por ID"). `target` = nome do time/vendedor nos tipos de nome (resolvido p/ objectId), a variável verbatim nos tipos email/advanced, ou omitido em userPrevious/branch. Caminho infeliz = **erro duro** (não-encontrado / ambíguo / sem token / target faltando quando o tipo exige) sem gravar nada — o agente pára e confirma com o humano.
