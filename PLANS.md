@@ -1,31 +1,34 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-07-03 (Fase A da v0.34.0 CODADA + testada; falta commit e /verify e2e)
+## 🔄 Handoff — 2026-07-06 (Fases A e B VERIFICADAS e2e + MERGEADAS na main; plano "Agente respeita as regras" fechado)
 
-**Foco da próxima sessão:** fechar a **Fase A** — commitar (branch nova) e rodar o `/verify` e2e ao vivo (fixture Fluent School) — **e/ou** partir para a **Fase B** (`set_transfer`), independente e ainda 100% no papel. Plano travado no PLANS §"Agente respeita as regras…".
+**Foco da próxima sessão:** livre. O plano travado "Agente respeita as regras" está **100% entregue e na `main`**. Candidatos naturais: o prompt **Fluent School** ou **Grupo Uni.co** rodados de verdade pela caixinha (avaliar contra o critério dos docs), ou a **Fase 5 (produto)**. Nada bloqueado.
 
-**Onde paramos:** branch `fix/export-popover-overflow-clipped` (a do v0.33.1, já mergeada — **stale**, não é branch da v0.34.0). Esta sessão **implementou a Fase A inteira** (limites de caractere do Menu) + docs. Tudo em WIP **não-commitado** (misturado com os docs de planejamento da sessão anterior — PLANS/PROMPT/ARCHIVE).
+**Onde paramos:** ambas as fases mergeadas na `main` via squash:
+- **Fase A** (limites de caractere do Menu, v0.34.0) — PR #8, merge `455e1b9`.
+- **Fase B** (`set_transfer`, v0.35.0) — PR #10, merge `16ce33d` (o #9 empilhado foi fechado ao deletar a branch base; recriado como #10 → `main`).
 
-**O que foi mexido (Fase A):**
-- **Novo** [src/utils/menuLimits.ts](src/utils/menuLimits.ts) — fonte única `MENU_LIMITS` + `findMenuLimitViolations`.
-- Hard-block no `buildButtonList` ([editIntent.ts](src/utils/editIntent.ts)); nudge `findMenuLimitNudges` no `validate()` ([flowTools.ts](src/tools/flowTools.ts)); guidance no `choiceNode` ([nodeCatalog.ts](src/utils/nodeCatalog.ts)); `BL_LIMITS` do [DetailPanel.tsx](src/components/DetailPanel.tsx) virou alias da fonte única.
-- **+11 testes** (editIntent.test.ts + flowTools.test.ts). Suíte cheia **539 verde**; `tsc`+`mcp:typecheck` limpos. CHANGELOG + PLANS atualizados; `package.json` → **0.34.0**.
-
-**Armadilha crítica (correção de drift do plano):** os limites do Menu **NÃO** são o WhatsApp cru "por tipo" que o interrogatório travou. Andy decidiu **alinhar ao builder real da OmniChat** (= o `BL_LIMITS` que já existia na UI): **body 80 · título 20 · item 20 FIXO** (BUTTON e LIST, não 20/24) · header 60 · footer 60 · desc 72. Detalhe e porquê no PLANS §Fase A (bloco "Resultado/Correção"). **Consequência p/ o /verify:** os itens do fixture Fluent School ("Falar com um consultor"=22, "Quero ver outras opções"=23) agora são **INVÁLIDOS** (>20) — ao rodar o e2e, encurtar esses itens no prompt OU esperar o hard-block disparar.
+**O que foi feito nesta sessão:**
+- **`/verify` e2e ao vivo** (tools MCP, `OMNI_TOKEN` contra a loja de teste) — PASS em ambas. Fase B: `set_transfer(group,simple,"Financeiro")` → `direct4group` + `value`=objectId real (`S1Cl3fbnFG`), **zero `transferType="team"`**; erro-duro em time inexistente/ambíguo; erro-guia no `set_action_field("transferType")`. Fase A: item 21/header 61/body 81 → recusados; nudge do `validate()` disparou em 2 menus legados reais. Evidência nos corpos dos PRs #8/#10.
+- **PRs abertos, mergeados (squash) e branches deletadas.** Rótulos do PLANS §"Agente respeita as regras" atualizados para IMPLEMENTADA/mergeada.
 
 **Fios soltos / meio-feito:**
-- **Fase A:** falta **commit** (criar branch, ex. `feat/menu-char-limits`; separar docs de código) e o **`/verify` e2e ao vivo** (caixinha + agente). Testes já exercitam os caminhos reais das tools, mas o gate de aceite do plano é o e2e.
-- **Fase B (`set_transfer`):** intacta, só plano — toca o `DetailPanel` (extrair `TRANSFER_MAP`/`TRANSFER_SUBS` p/ `src/utils/transfer.ts`), remove `transferType` de `ACTION_FIELDS`, erro-duro se o time não resolve.
+- **Times do fixture Fluent School não existem na loja de teste:** só **"Financeiro"** existe — não há "Consultores" nem "Suporte ao Aluno" (só um "Suporte" avulso). Para um e2e Fluent School *verbatim* pela caixinha, criar os 3 times OU adaptar o prompt aos times reais.
 - **Fase 2.1 (v0.33.0):** `/verify` e2e ainda pendente (segue viva no PLANS de propósito).
+- **Prompts Fluent School / Grupo Uni.co:** nunca rodados fim-a-fim pela caixinha contra o critério dos docs.
+- **Sobra no working tree:** só `.claude/settings.local.json` (config pessoal do MCP) — fora dos commits de propósito.
 
-**Ao rodar /verify de tools:** muta `public/masterFlow.json`/`work.flow.json` → restaurar via git; o MCP relê o disco só no boot (matar a árvore força respawn fresco).
+**Armadilhas:**
+- **Ao rodar /verify de tools:** muta `public/masterFlow.json`/`work.flow.json` → restaurar via git (`revert` da tool + `git checkout`); o MCP relê o disco só no boot (matar a árvore força respawn fresco).
+- **PR empilhado:** deletar a branch base fecha o PR filho (não retargeta) — recriar apontando para `main` após o merge do pai.
+- **Bash tool é POSIX** (não PowerShell): NÃO usar here-string `@'...'@` em `git commit -m`. Usar `git commit -F <arquivo>`.
 
-**Próximo passo imediato:** conferir `git status`; criar branch da v0.34.0 e commitar a Fase A (docs separados do código); depois rodar o `/verify` e2e (com o ajuste do fixture acima). Ou, se preferir agrupar, ir direto para a Fase B.
+**Próximo passo imediato:** definir o próximo foco (rodar um dos prompts pela caixinha, ou Fase 5). Sem pendência do plano fechado.
 
-**Ponteiros:** PLANS §"Agente respeita as regras… (v0.34.0)" (Fase A ✅ / Fase B planejada); fonte única [menuLimits.ts](src/utils/menuLimits.ts); MCP [mcp/server.ts](mcp/server.ts); UI transfer p/ Fase B [DetailPanel.tsx:125-144](src/components/DetailPanel.tsx#L125-L144).
+**Ponteiros:** PLANS §"Agente respeita as regras… (✅ IMPLEMENTADA e mergeada)"; fontes únicas [transfer.ts](src/utils/transfer.ts) e [menuLimits.ts](src/utils/menuLimits.ts); merges `455e1b9`/`16ce33d`.
 
-**Skills sugeridas ao retomar:** `/verify` (fecha a Fase A, com o app/caixinha rodando); `/code-review` (high) antes de commitar a Fase B (escrita cross-tool); `/interrogar` só se surgir decisão nova fora do plano travado.
+**Skills sugeridas ao retomar:** `/interrogar` para fechar o escopo do próximo foco antes de codar; `/verify` quando houver o quê rodar.
 <!-- HANDOFF:END -->
 
 ## Contexto
@@ -265,7 +268,7 @@ duplo" é irrelevante, pois multi-palavra é sempre inválido); (b) **#5 é não
 - **`setCategory` toca `updatedAt`** (#7, [flowTools.test.ts](src/tools/flowTools.test.ts)): `set_category` bumpa `updatedAt`.
 - **Re-rodar a suíte cheia** como gate de não-regressão.
 
-### Agente respeita as regras: limites do Menu + Transferência de verdade (v0.34.0 — PLANEJADA)
+### Agente respeita as regras: limites do Menu + Transferência de verdade (v0.34.0 + v0.35.0 — ✅ IMPLEMENTADA e mergeada)
 
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-07-03. Decisões TRAVADAS abaixo —
 > registro do raciocínio; não reabrir sem novo interrogatório. Origem: rodando o prompt "Fluent
@@ -330,7 +333,12 @@ valida NENHUM limite de caractere**. Nenhuma constante de limite existe no camin
 - **`/verify` e2e (fixture Fluent School):** rodar o prompt; assert que nenhum item/campo excede a tabela
   (e, se algum menu for BUTTON com item >20, que a tool recusou).
 
-#### Fase B — `set_transfer`: preencher a Transferência de verdade
+#### Fase B — `set_transfer`: preencher a Transferência de verdade ✅ IMPLEMENTADA (v0.35.0, PR #10, merge `16ce33d`)
+
+> **Resultado (2026-07-06):** entregue e mergeada. Tool `set_transfer` + fonte única `transfer.ts` +
+> `transferType` removido de `ACTION_FIELDS` (erro-guia) + nudge `findTransferNudges`. `/verify` e2e ao
+> vivo (tools MCP, `OMNI_TOKEN` contra a loja de teste) confirmou: `direct4group` com `value`=objectId real,
+> zero `transferType="team"`, erro-duro em time inexistente/ambíguo. +34 testes, suíte 575 verde.
 
 **Diagnóstico (achado do código):** `transferType` está em `ACTION_FIELDS` ([flowTools.ts:33](src/tools/flowTools.ts#L33))
 e o `set_action_field` grava **texto livre, sem validar o enum** → o agente chutou `"team"`. O enum real
