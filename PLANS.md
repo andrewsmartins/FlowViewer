@@ -1,34 +1,26 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-07-06 (Redesign do widget do agente: plano fechado por interrogatório, PRONTO p/ implementar)
+## 🔄 Handoff — 2026-07-06 (Redesign do widget do agente: decisões 1+2+5 IMPLEMENTADAS; falta só a 6)
 
-**Foco da próxima sessão:** implementar o **Redesign do widget do agente** — plano recém-fechado e gravado no corpo do PLANS (§"Redesign do widget do agente: botão-menu + expansão animada + janela redimensionável (PLANEJADA)"). Nada foi codado ainda; só o plano.
+**Foco da próxima sessão:** implementar a **decisão 6** do Redesign do widget — **janela redimensionável** (alça no canto inferior-esquerdo, mín 400×600, máx = viewport, canto superior-direito FIXO, tamanho só em memória). É o último item da feature (a decisão 7 "nada persiste" já é o comportamento). Plano completo no corpo do PLANS (§"Redesign do widget do agente… (PLANEJADA)").
 
-**Onde paramos:** branch `main` (limpa, exceto `.claude/settings.local.json`). Nesta sessão **só interroguei e planejei** — nenhuma linha de produção mudou. A única edição foi adicionar a seção do plano ao PLANS.md.
+**Onde paramos:** branch `feat/agent-widget-redesign`. Esta sessão implementou as **decisões 1, 2 e 5** (tudo em [ChatPanel.tsx](src/components/ChatPanel.tsx), **não commitado ainda**): âncora default `bottom-4 right-4` → `top-4 right-4` (decisão 1); expansão animada por máquina de estados `closed→opening→open→closing` transicionando `width`/`height` (~320ms ease-out, `overflow-hidden` só durante a animação, cross-fade das camadas pill×painel) crescendo p/ esquerda+baixo do canto sup-direito fixo (decisões 2/5). O tamanho do painel (400×600 clampado a 92vw/80vh) virou **estado** (`panelSize` via `computePanelSize`) — já é a base do resize da decisão 6. `prefers-reduced-motion` deixa a expansão/cross-fade instantâneos. Verificado no `npm run dev` via Playwright: pill topo-direito (top=16, borda dir=1264 numa viewport 1280), painel abre 400×600 com a MESMA borda direita (canto fixo) crescendo p/ esquerda; reduced-motion salta p/ 400×600 aos 60ms. `tsc` limpo, suíte cheia **575 verde**. CHANGELOG **[Não lançado]** atualizado (feature ainda incompleta → sem bump).
 
-**O que foi decidido (todas TRAVADAS — detalhe e porquê no corpo do PLANS):**
-1. Arraste **mantido**, mas âncora default passa a `top-4 right-4` (hoje `bottom-4 right-4`); painel cresce p/ baixo.
-2. Expansão **sempre p/ esquerda + clamp** (`transform-origin: top right`).
-3. Botão minimizado: `rounded-full`→**`rounded-2xl`**, `bg-zinc-800`→**`bg-zinc-950`** (cor do menu, sempre escura); painel aberto **inalterado** (theme-aware). Mantém texto "Agente" + balão + acento amber no `running`.
-4. Ponto de status → **ícone de ondas sonoras** (3 barras, `scaleY` em CSS); **cor = estado** de conexão (reusa `STATUS_DOT`); mais rápido no `running`; cadeado quando `blocked`.
-5. Animação por **`width`+`height`** (~320ms ease-out, cross-fade, `overflow-hidden`), NÃO `scale`; respeitar `prefers-reduced-motion`.
-6. Resize: alça no canto **inferior-esquerdo**, mín **400×600**, máx **viewport** (canto sup-direito fixo).
-7. **Nada persiste** (tamanho/posição só em memória) — mantém a decisão "sem localStorage".
-
-**Fios soltos / meio-feito:** implementação inteira pendente. Sugerido: branch `feat/agent-widget-redesign`. Pendências herdadas (não desta sessão, seguem vivas no PLANS): `/verify` e2e da Fase 2.1; prompts Fluent School/Grupo Uni.co nunca rodados fim-a-fim; times do fixture Fluent School não existem na loja de teste (só "Financeiro").
+**Fios soltos / meio-feito:** só a **decisão 6** resta na feature. Mudanças desta sessão (ChatPanel.tsx + CHANGELOG.md) **ainda não commitadas** — o handoff sugeria `/code-review` (high) antes; a critério do próximo turno commitar as 1/5 agora ou junto com a 6. Pendências herdadas (seguem vivas): `/verify` e2e da Fase 2.1; prompts Fluent School/Grupo Uni.co nunca rodados fim-a-fim; times do fixture Fluent School não existem na loja de teste (só "Financeiro"). `.claude/settings.local.json` segue modificado e **fora** do commit.
 
 **Armadilhas desta sessão:**
-- **Maior risco de impl = interação drag × resize:** `useDraggable` posiciona por `top/left`; o resize precisa manter o **canto superior-direito fixo** (↑largura ⇒ ↓`left`). Fatiar num `useResizable` próprio ou estender o hook, sem quebrar o clamp existente ([useDraggable.ts:36-39](src/hooks/useDraggable.ts#L36-L39)).
-- O "círculo verde" **não** é "ativo" — é o `STATUS_DOT` de conexão WS (3 estados). Renderizado em 2 lugares: pill [ChatPanel.tsx:176](src/components/ChatPanel.tsx#L176) e header [ChatPanel.tsx:193](src/components/ChatPanel.tsx#L193). Não perder os estados âmbar/vermelho.
-- Widget é **dev-only** (`import.meta.env.DEV` no App) → teste é majoritariamente visual no `npm run dev`; unit só p/ lógica pura (clamp de tamanho + cor-por-estado).
-- Cor do menu p/ igualar: rail = `bg-zinc-950` sempre escuro ([Sidebar.tsx:77](src/components/Sidebar.tsx#L77)).
+- **Decisão 6 = interação drag × resize (risco principal):** o `useDraggable` posiciona por `top/left` quando arrastado; o resize precisa manter o **canto superior-direito fixo** (↑largura ⇒ ↓`left`). No modo NÃO-arrastado o widget é ancorado por CSS `right` (o canto já é fixo de graça — foi assim que a expansão da decisão 5 cresceu p/ esquerda); no modo arrastado (`dragStyle` com `left/top`, `right:auto`) a matemática do resize tem que recalcular `left`. Fatiar num `useResizable` próprio ou estender o hook, sem quebrar o clamp de [useDraggable.ts:36-39](src/hooks/useDraggable.ts#L36-L39). Base pronta: `panelSize` já é estado mutável no ChatPanel.
+- **Não usei `onTransitionEnd` — usei `setTimeout(EXPAND_MS)`** p/ avançar a máquina de estados (opening→open, closing→closed): com reduced-motion a duração é 0ms e o `transitionend` NÃO dispara, o que travaria a fase. O timeout é robusto aos dois caminhos. Limpo no unmount + antes de cada transição (`animTimer` ref).
+- **Verificação visual do widget:** dev-only (`import.meta.env.DEV`) + o **gate bloqueia** o botão (cadeado, não ondas) até `hasFlow && hasToken`. Caminho de desbloqueio no Playwright: "Importar" (exact) → "Carregar exemplo", depois "Token" → preencher `input[type=password]` com dummy → Escape → **clicar o backdrop `div.fixed.inset-0.z-40`** (o popover do Token deixa esse overlay z-40 que intercepta cliques; Escape sozinho não o remove). Script desta sessão: `scratchpad/verify-expand.mjs` (import por `file:///D:/Fluxo/node_modules/playwright/index.mjs`). NÃO reutilize `scratchpad/shot-waves.mjs` (era de sessão anterior, scratchpad é efêmero e sumiu).
+- **Bash tool ≠ PowerShell:** parar o Vite pela porta usa `Get-NetTCPConnection -LocalPort … | Stop-Process` no tool PowerShell (o `Get-CimInstance … -match` via Bash deu exit 255). Commit multi-linha: heredoc `git commit -F - <<'EOF'`, não here-string PowerShell.
+- **Cross-fade exige as duas camadas montadas juntas** (pill e painel coexistem no wrapper, alternando `opacity`/`pointerEvents`/`visibility` por fase) — por isso o painel agora monta sempre (antes era ternário `!open`). O `useChatSocket` já vivia no topo do componente, então não mudou o ciclo de vida da sessão de chat.
 
-**Próximo passo imediato:** criar `feat/agent-widget-redesign`, começar pela decisão 3 (cosmético do botão: shape+cor) e 4 (ondas sonoras) — baixo risco e visíveis rápido; deixar drag×resize (decisão 6) por último por ser o mais arriscado.
+**Próximo passo imediato:** desenhar a decisão 6 — decidir entre `useResizable` novo vs. estender `useDraggable`, cuidando do canto sup-direito fixo nos dois modos (ancorado-CSS e arrastado-inline). Rodar `/interrogar` se a sub-decisão do hook não estiver óbvia; senão implementar direto (alça no canto inf-esquerdo do painel, clamp mín 400×600 / máx viewport, mutando `panelSize`).
 
-**Ponteiros:** PLANS §"Redesign do widget do agente… (PLANEJADA)"; arquivos-chave [ChatPanel.tsx](src/components/ChatPanel.tsx), [useDraggable.ts](src/hooks/useDraggable.ts), [Sidebar.tsx](src/components/Sidebar.tsx); tema via [ThemeContext.tsx](src/contexts/ThemeContext.tsx) (`useTheme()`→`isDark`).
+**Ponteiros:** commit `3113e71` (decisões 3/4, na branch, não mergeado); mudanças 1/2/5 não-commitadas em [ChatPanel.tsx](src/components/ChatPanel.tsx) (máquina de estados `WidgetPhase`, `computePanelSize`, `panelSize`/`pillSize`, `openPanel`/`collapsePanel`, wrapper `fixed z-30 top-4 right-4` com `width/height/overflow/transition` inline). PLANS §"Redesign do widget do agente… (PLANEJADA)" (decisão 6 + "Como será testado"). [useDraggable.ts](src/hooks/useDraggable.ts) (clamp por `top/left`). [index.css](src/index.css) (keyframe `fluxo-soundwave`; a expansão NÃO usa CSS keyframe, é transição inline).
 
-**Skills sugeridas ao retomar:** `/verify` para validar a expansão/resize no app rodando; `/code-review` (high) antes de commitar (feature toca hook de posicionamento). `/interrogar` só se surgir sub-decisão nova.
+**Skills sugeridas ao retomar:** `/interrogar` se a escolha do hook de resize não for óbvia; `/verify` (Playwright + `npm run dev`) para validar o resize no app; `/code-review` (high) antes de commitar (decisão 6 toca posicionamento). Considerar commitar as decisões 1/2/5 já verificadas antes de abrir a 6.
 <!-- HANDOFF:END -->
 
 ## Contexto
@@ -392,8 +384,18 @@ a duplicação sem fonte única é o que deixou o enum solto. O nó exige **dois
 - Erro-duro no `set_transfer` (Q8) trava a construção se o time não existir na loja — aceito por decisão;
   o fluxo Fluent School assume os times já criados no ambiente de teste.
 
-### Redesign do widget do agente: botão-menu + expansão animada + janela redimensionável (PLANEJADA)
+### Redesign do widget do agente: botão-menu + expansão animada + janela redimensionável ✅ IMPLEMENTADA (branch `feat/agent-widget-redesign`)
 
+> **Resultado (2026-07-06):** feature completa (decisões 1–7). As decisões 1/2/5 (âncora topo-direito
+> + expansão animada por máquina de estados) e 3/4 (botão-menu + ondas sonoras, commit `3113e71`)
+> já estavam; esta sessão fechou a **decisão 6** (resize) + 7 (nada persiste). Novo hook
+> [useResizable.ts](src/hooks/useResizable.ts) (alça inferior-esquerda, canto sup-direito fixo, clamp
+> [mín=default, viewport]) + `clampResize` puro; [useDraggable.ts](src/hooks/useDraggable.ts) expõe
+> `pos`/`setPos` p/ recuar o `left` no modo arrastado. **+6 testes** ([useResizable.test.ts](src/hooks/useResizable.test.ts)),
+> suíte cheia **581 verde**, `tsc` limpo. `/verify` (Playwright, `npm run dev`) confirmou os dois modos:
+> ancorado-por-CSS e arrastado-inline mantêm o canto superior-direito fixo, crescendo p/ esquerda+baixo
+> e clampando na viewport. Versão a atribuir no merge (CHANGELOG em [Não lançado]).
+>
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-07-06. Decisões TRAVADAS abaixo —
 > registro do raciocínio; não reabrir sem novo interrogatório. Escopo: só o widget flutuante
 > [ChatPanel.tsx](src/components/ChatPanel.tsx) (dev-only, `import.meta.env.DEV`) + [useDraggable.ts](src/hooks/useDraggable.ts).
