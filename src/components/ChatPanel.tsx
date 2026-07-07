@@ -301,10 +301,10 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
           aria-expanded={blocked ? gateOpen : undefined}
           className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold shadow-lg border transition-colors cursor-grab active:cursor-grabbing bg-zinc-950 text-zinc-100 hover:bg-zinc-800 ${running && status === 'open' ? 'border-amber-400' : 'border-zinc-800'}`}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 translate-y-[1px]">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          Agente
+          <span className="leading-none">Agent</span>
           {blocked ? (
             // Cadeado quando bloqueado (decisão 4): comunica "indisponível" antes do clique;
             // as ondas só aparecem quando desbloqueado.
@@ -337,25 +337,28 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
         <div
           className={`relative flex flex-col w-full h-full rounded-2xl border shadow-2xl ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
           role="dialog"
-          aria-label="Agente construtor de fluxo"
+          aria-label="Flow Agent — construtor de fluxo"
         >
-          {/* Header — handle de drag (não inicia em botões descendentes). */}
+          {/* Header — handle de drag (não inicia em botões descendentes). Sempre
+              escuro (bg-zinc-950), igual ao rail do menu esquerdo (Sidebar), pra
+              amarrar o widget à identidade da plataforma. `rounded-t-2xl` respeita
+              os cantos arredondados do painel. */}
           <div
             onMouseDown={e => { if (!(e.target as HTMLElement).closest('button')) onDragMouseDown(e) }}
             style={{ cursor: 'grab' }}
-            className={`flex items-center gap-2 px-4 py-3 border-b select-none ${isDark ? 'border-slate-700' : 'border-slate-100'}`}
+            className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800 rounded-t-2xl bg-zinc-950 select-none"
           >
-            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
+            <StatusWaves status={status} running={running} />
             <div className="min-w-0 flex-1">
-              <p className={`text-sm font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Agente construtor</p>
-              <p className={`text-[11px] leading-tight truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <p className="text-sm font-semibold leading-tight text-zinc-100">Flow Agent</p>
+              <p className="text-[11px] leading-tight truncate text-zinc-400">
                 {running && statusText ? statusText : STATUS_LABEL[status]}
               </p>
             </div>
             <button
               onClick={collapsePanel}
               aria-label="Recolher o agente"
-              className={isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}
+              className="text-zinc-400 hover:text-zinc-200"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="5" y1="12" x2="19" y2="12" />
@@ -405,7 +408,7 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
             title="Arraste para redimensionar"
             className={`absolute bottom-0 left-0 h-5 w-5 cursor-nesw-resize ${isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-300 hover:text-slate-500'}`}
           >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="absolute bottom-1 left-1 h-3 w-3">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="absolute bottom-1 left-1 h-3 w-3 rotate-90">
               <line x1="1" y1="15" x2="15" y2="1" />
               <line x1="1" y1="9" x2="9" y2="1" />
             </svg>
@@ -417,13 +420,15 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
 }
 
 /**
- * Ícone de ondas sonoras (3 barras verticais animadas) no botão minimizado do
- * agente (redesign do widget, decisão 4). Substitui o antigo ponto de status:
- * a COR reflete o estado da conexão WS (reusa `STATUS_DOT` — verde/âmbar/vermelho)
- * e a animação fica mais rápida no `running` (`--wave-duration`), "respirando"
- * devagar quando ocioso. `prefers-reduced-motion` deixa as barras estáticas (CSS
- * em index.css). Puramente decorativo → `aria-hidden`; o estado textual da conexão
- * vive no header do painel aberto (`STATUS_LABEL`). */
+ * Ícone de ondas sonoras (3 barras verticais animadas) — indicador de status da
+ * conexão do agente. Usado nos DOIS estados do widget: no botão minimizado (pill)
+ * e no header do painel aberto (substitui o antigo ponto de status circular, pra
+ * o mesmo indicador aparecer aberto ou fechado). A COR reflete o estado da conexão
+ * WS (reusa `STATUS_DOT` — verde/âmbar/vermelho) e a animação fica mais rápida no
+ * `running` (`--wave-duration`), "respirando" devagar quando ocioso.
+ * `prefers-reduced-motion` deixa as barras estáticas (CSS em index.css). Puramente
+ * decorativo → `aria-hidden`; o estado textual da conexão vive no header do painel
+ * aberto (`STATUS_LABEL`). */
 function StatusWaves({ status, running }: { status: ConnStatus; running: boolean }) {
   const barColor = STATUS_DOT[status]
   const duration = running && status === 'open' ? '0.6s' : '1.4s'
