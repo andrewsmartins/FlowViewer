@@ -108,6 +108,24 @@ body { margin: 0; }
 }
 .fluxo-shake { animation: fluxo-shake 0.4s ease-in-out; }
 
+/* Ondas sonoras do botão do agente (redesign do widget, decisão 4): 3 barras
+   verticais que pulsam em `scaleY` num loop escalonado, feito um equalizador.
+   Substitui o antigo ponto de status; a COR (Tailwind bg-*) e a VELOCIDADE
+   (`--wave-duration`, mais rápida no `running`) vêm do ChatPanel. Mesmo padrão
+   de keyframe em CSS puro do resto deste arquivo. */
+@keyframes fluxo-soundwave {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+.fluxo-wave-bar {
+  transform-origin: center;
+  animation: fluxo-soundwave var(--wave-duration, 1.4s) ease-in-out infinite;
+}
+/* Acessibilidade: sem movimento, barras estáticas em altura intermediária. */
+@media (prefers-reduced-motion: reduce) {
+  .fluxo-wave-bar { animation: none; transform: scaleY(0.7); }
+}
+
 /* Handles maiores para facilitar mirar ao reconectar arestas */
 .react-flow__handle {
   width: 10px;

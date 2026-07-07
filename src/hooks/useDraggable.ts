@@ -12,6 +12,10 @@ interface Pos { x: number; y: number }
  * `onMouseDown` para o handle de drag, e `wasDragged()` para suprimir onClick
  * quando o mouseup encerra um drag (não um clique simples).
  *
+ * Expõe também `pos`/`setPos`: o resize (`useResizable`, decisão 6) precisa recuar
+ * o `left` no modo arrastado p/ manter o canto superior-direito fixo. `pos == null`
+ * significa "ainda no posicionamento CSS padrão" (nunca arrastado).
+ *
  * Clamp dentro da viewport; sem snapping (decisão 3). Posição só em memória,
  * sem localStorage (decisão 4).
  */
@@ -52,6 +56,8 @@ export function useDraggable<T extends HTMLElement = HTMLDivElement>() {
 
   return {
     ref,
+    pos,
+    setPos,
     style: pos ? { top: pos.y, left: pos.x, right: 'auto' as const, bottom: 'auto' as const } : undefined,
     onMouseDown,
     wasDragged: () => drag.current.wasDrag,

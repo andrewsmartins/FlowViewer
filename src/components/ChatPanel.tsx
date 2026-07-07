@@ -1,16 +1,29 @@
-import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type ChangeEvent } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, type FormEvent, type KeyboardEvent, type ChangeEvent, type CSSProperties } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
 import { useChatSocket, type ChatMessage, type ConnStatus } from '../hooks/useChatSocket'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { useDraggable } from '../hooks/useDraggable'
+import { useResizable, type Size } from '../hooks/useResizable'
 import { chatGatePending, type ChatGateRequirement } from '../utils/chatGate'
 import type { BotFlowJson } from '../types'
 
 /**
  * Caixinha de chat do agente construtor (PoC local, passo 4 — PLANS §
- * "Caixinha de chat"). Widget flutuante no canto inferior direito: overlay sobre
- * o canvas, sem mexer no layout. Só renderizada no dev build (o App a monta sob
- * `import.meta.env.DEV`), pois depende do backend local.
+ * "Caixinha de chat"). Widget flutuante ancorado no canto SUPERIOR direito
+ * (redesign do widget, decisão 1): overlay sobre o canvas, sem mexer no layout.
+ * Só renderizada no dev build (o App a monta sob `import.meta.env.DEV`), pois
+ * depende do backend local.
+ *
+ * Abre com EXPANSÃO ANIMADA (redesign do widget, decisão 5): um wrapper único
+ * transiciona `width`/`height` entre o footprint da pill e o tamanho do painel
+ * (~320ms ease-out, `overflow-hidden` durante a animação), enquanto as duas
+ * camadas (pill × painel) fazem cross-fade. A âncora no topo-direito faz a janela
+ * crescer p/ a esquerda e p/ baixo (decisão 2). Respeita `prefers-reduced-motion`.
+ *
+ * A janela é REDIMENSIONÁVEL (redesign do widget, decisão 6): a alça no canto
+ * inferior-esquerdo arrasta via `useResizable` mantendo o canto superior-direito
+ * fixo — cresce livre da mín (`computePanelSize`, o default) até a viewport. O
+ * tamanho vive só em memória (decisão 7); recarregar volta ao default.
  *
  * Encapsula o `useChatSocket` (uma sessão do Agent SDK por chat). Ao ENVIAR,
  * serializa o canvas atual via `getFlow` e manda no flush (decisão 5); o turno
@@ -60,25 +73,99 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   closed:     'Offline — rode `npm run ws:dev`',
 }
 
+/**
+ * Máquina de estados da expansão (redesign do widget, decisão 5). `opening`/
+ * `closing` são os estados transitórios em que o wrapper anima width/height e
+ * recorta o overflow; `closed`/`open` são os repousos.
+ */
+type WidgetPhase = 'closed' | 'opening' | 'open' | 'closing'
+
+/** Duração da expansão (decisão 5) e do cross-fade das camadas, em ms. */
+const EXPAND_MS = 320
+const FADE_MS = 200
+
+/**
+ * Tamanho-alvo do painel aberto, clampado à viewport (equivale ao antigo
+ * `w-[400px] max-w-[92vw] h-[600px] max-h-[80vh]`). É a base do resize da
+ * decisão 6 — vive em estado, e também é o **piso** do redimensionamento
+ * (mín = default): resize só cresce, nunca encolhe abaixo daqui.
+ */
+function computePanelSize(): Size {
+  return {
+    w: Math.min(400, Math.round(window.innerWidth * 0.92)),
+    h: Math.min(600, Math.round(window.innerHeight * 0.80)),
+  }
+}
+
+/** Lê o prefers-reduced-motion (encurta a expansão e o cross-fade — decisão 5). */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, hasToken, onRequestImport, onRequestToken }: ChatPanelProps) {
   const isDark = useTheme()
-  const [open, setOpen] = useState(false)
+  const [phase, setPhase] = useState<WidgetPhase>('closed')
   const [gateOpen, setGateOpen] = useState(false)
   const [draft, setDraft] = useState('')
+  const [pillSize, setPillSize] = useState<Size | null>(null)
+  const [panelSize, setPanelSize] = useState<Size>(computePanelSize)
+  const [reduced, setReduced] = useState(prefersReducedMotion)
   const { status, messages, running, statusText, send } = useChatSocket({ onFlowUpdated })
   const scrollRef    = useRef<HTMLDivElement>(null)
   const textareaRef  = useRef<HTMLTextAreaElement>(null)
-  const gateRef      = useClickOutside(() => setGateOpen(false))
-  const { ref: dragRef, style: dragStyle, onMouseDown: onDragMouseDown, wasDragged } = useDraggable<HTMLDivElement>()
+  const launcherRef  = useRef<HTMLButtonElement>(null)
+  const animTimer    = useRef<ReturnType<typeof setTimeout>>()
+  const gateRef      = useClickOutside<HTMLDivElement>(() => setGateOpen(false))
+  const { ref: dragRef, pos, setPos, style: dragStyle, onMouseDown: onDragMouseDown, wasDragged } = useDraggable<HTMLDivElement>()
 
-  // Gate só na abertura (decisão 5): avaliado no clique; uma vez dentro, segue.
+  // Resize pela alça inferior-esquerda (decisão 6): grava o tamanho novo e, SÓ no
+  // modo arrastado (`pos != null`, posicionado por left/top), recua o `left` p/
+  // manter o canto superior-direito fixo. No modo ancorado-por-CSS (`right-4`) a
+  // borda direita já é fixa — não toca na posição. O piso é o default (`computePanelSize`).
+  const { onMouseDown: onResizeMouseDown, resizing } = useResizable<HTMLDivElement>(
+    dragRef,
+    computePanelSize(),
+    (size, anchor) => {
+      setPanelSize(size)
+      if (pos) setPos({ x: anchor.rightX - size.w, y: anchor.topY })
+    },
+  )
+
+  // Gate só na abertura (decisão 5 do gate): avaliado no clique; uma vez dentro, segue.
   const pending = chatGatePending(hasFlow, hasToken)
   const blocked = pending.length > 0
+
+  // ── Máquina de estados da expansão (decisão 5) ─────────────────────────────
+  // `collapsed` = os dois extremos "pequenos" (fechado e fechando) — define o
+  // alvo de tamanho e qual camada aparece no cross-fade.
+  const collapsed = phase === 'closed' || phase === 'closing'
+  // Antes da 1ª medição da pill o wrapper fica `auto` (a pill em fluxo o dimensiona);
+  // depois passa a px explícito p/ que a transição de width/height funcione.
+  const boxSize = pillSize == null ? undefined : (collapsed ? pillSize : panelSize)
+  // overflow-hidden só DURANTE a animação (recorta o painel sendo revelado); nos
+  // repousos volta a `visible` p/ não cortar a sombra dos cartões nem o popover do gate.
+  const clipping = phase === 'opening' || phase === 'closing'
+  const sizeDur = reduced ? '0ms' : `${EXPAND_MS}ms`
+  const fadeDur = reduced ? '0ms' : `${FADE_MS}ms`
+
+  function openPanel() {
+    clearTimeout(animTimer.current)
+    if (reduced) { setPhase('open'); return }   // sem animação: pula direto
+    setPhase('opening')
+    animTimer.current = setTimeout(() => setPhase('open'), EXPAND_MS)
+  }
+
+  function collapsePanel() {
+    clearTimeout(animTimer.current)
+    if (reduced) { setPhase('closed'); return }
+    setPhase('closing')
+    animTimer.current = setTimeout(() => setPhase('closed'), EXPAND_MS)
+  }
 
   function handleLauncherClick() {
     if (wasDragged()) return  // clique suprimido quando encerra um drag
     if (blocked) { setGateOpen(o => !o); return }
-    setOpen(true)
+    openPanel()
   }
 
   function handleGateCta(req: ChatGateRequirement) {
@@ -86,6 +173,35 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
     if (req === 'flow') onRequestImport()
     else onRequestToken()
   }
+
+  // Mede o footprint real da pill p/ ancorar a animação de width/height (decisão 5).
+  // Só quando recolhido (a pill é a camada visível em tamanho natural); re-mede se o
+  // conteúdo mudar (cadeado ↔ ondas, acento `running`), mantendo o alvo "fechado" fiel.
+  useLayoutEffect(() => {
+    const el = launcherRef.current
+    if (!el || !collapsed) return
+    const w = Math.ceil(el.offsetWidth)
+    const h = Math.ceil(el.offsetHeight)
+    setPillSize(prev => (prev && prev.w === w && prev.h === h) ? prev : { w, h })
+  }, [collapsed, blocked, running])
+
+  // Acompanha prefers-reduced-motion ao vivo (encurta expansão + cross-fade — decisão 5).
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReduced(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  // Reclampa o painel quando a viewport muda (base do resize da decisão 6).
+  useEffect(() => {
+    const onResize = () => setPanelSize(computePanelSize())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // Limpa o timer da máquina de estados ao desmontar (evita setState órfão).
+  useEffect(() => () => clearTimeout(animTimer.current), [])
 
   // Propaga o lock do turno para o App (canvas read-only durante o turno).
   useEffect(() => { onRunningChange(running) }, [running, onRunningChange])
@@ -119,88 +235,130 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
     e.target.style.height = `${e.target.scrollHeight}px`
   }
 
-  // Wrapper externo único: mantém o drag contínuo entre pill e painel (decisão 1).
+  // Wrapper externo único: dono da posição (drag), do tamanho animado (decisão 5)
+  // e do clip da expansão. Ancorado no topo-direito por padrão (decisão 1) — a
+  // janela cresce p/ a esquerda e p/ baixo (decisão 2). As duas camadas abaixo
+  // (pill × painel) fazem cross-fade dentro dele.
   return (
     <div
       ref={dragRef}
-      className={`fixed z-30${dragStyle ? '' : ' bottom-4 right-4'}`}
-      style={dragStyle}
+      className={`fixed z-30 rounded-2xl${dragStyle ? '' : ' top-4 right-4'}`}
+      style={{
+        ...dragStyle,
+        width: boxSize?.w,
+        height: boxSize?.h,
+        overflow: clipping ? 'hidden' : 'visible',
+        // Sem transição durante o resize: a alça deve seguir o cursor em tempo real
+        // (a transição de 320ms da expansão criaria rubber-band no arraste).
+        transition: resizing ? 'none' : `width ${sizeDur} ease-out, height ${sizeDur} ease-out`,
+      }}
     >
-      {!open ? (
-        // ── Launcher recolhido ──────────────────────────────────────────────
-        <div ref={gateRef}>
-          {/* Popover do gate (decisões 3 e 4): só os requisitos pendentes, cada um
-              com seu CTA. Some sozinho quando `blocked` zera (sinais satisfeitos). */}
-          {gateOpen && blocked && (
-            <div
-              role="dialog"
-              aria-label="Requisitos para usar o agente"
-              className={`absolute bottom-full right-0 mb-2 w-[280px] rounded-xl border shadow-2xl p-3 flex flex-col gap-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
-            >
-              <p className={`text-xs font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                Para abrir o agente, falta:
-              </p>
-              {pending.map(req => (
-                <div key={req} className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
-                  <span className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{GATE_REQUIREMENT[req].title}</span>
-                  <button
-                    onClick={() => handleGateCta(req)}
-                    className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors"
-                  >
-                    {GATE_REQUIREMENT[req].cta}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Pill: zinc-800/700/100 (decisão 5); acento amber quando running (decisão 5).
-              onMouseDown inicia drag; onClick abre/trava (suprimido após drag). */}
-          <button
-            onMouseDown={onDragMouseDown}
-            onClick={handleLauncherClick}
-            aria-label={blocked ? 'Agente indisponível — requisitos pendentes' : 'Abrir o agente construtor'}
-            aria-expanded={blocked ? gateOpen : undefined}
-            className={`flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold shadow-lg border transition-colors cursor-grab active:cursor-grabbing bg-zinc-800 text-zinc-100 hover:bg-zinc-700 ${running && status === 'open' ? 'border-amber-400' : 'border-zinc-700'}`}
+      {/* ── Camada recolhida (pill) ─────────────────────────────────────────
+          Antes da 1ª medição fica em fluxo (dimensiona o wrapper `auto`); depois
+          ancora no topo-direito p/ acompanhar o canto fixo durante a animação. */}
+      <div
+        ref={gateRef}
+        className={pillSize == null ? '' : 'absolute top-0 right-0'}
+        style={{
+          opacity: collapsed ? 1 : 0,
+          pointerEvents: phase === 'closed' ? 'auto' : 'none',
+          transition: `opacity ${fadeDur} ease-out`,
+        }}
+      >
+        {/* Popover do gate (decisões 3 e 4): abre p/ BAIXO agora que a âncora é o
+            topo (decisão 1). Só os requisitos pendentes, cada um com seu CTA. */}
+        {gateOpen && blocked && (
+          <div
+            role="dialog"
+            aria-label="Requisitos para usar o agente"
+            className={`absolute top-full right-0 mt-2 w-[280px] rounded-xl border shadow-2xl p-3 flex flex-col gap-2 ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            Agente
-            {blocked ? (
-              // Cadeado quando bloqueado (decisão 6): comunica "indisponível" antes do clique.
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <rect x="3" y="11" width="18" height="11" rx="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            ) : (
-              <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
-            )}
-          </button>
-        </div>
-      ) : (
-        // ── Painel aberto ────────────────────────────────────────────────────
-        <div
-          className={`flex flex-col rounded-2xl border shadow-2xl w-[400px] max-w-[92vw] h-[600px] max-h-[80vh] ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
-          role="dialog"
-          aria-label="Agente construtor de fluxo"
+            <p className={`text-xs font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+              Para abrir o agente, falta:
+            </p>
+            {pending.map(req => (
+              <div key={req} className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
+                <span className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{GATE_REQUIREMENT[req].title}</span>
+                <button
+                  onClick={() => handleGateCta(req)}
+                  className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors"
+                >
+                  {GATE_REQUIREMENT[req].cta}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Botão minimizado: retangular arredondado + cor do menu (zinc-950, sempre
+            escura, independente do tema — como o rail), acento amber quando running
+            (redesign do widget, decisão 3). onMouseDown inicia drag; onClick abre/trava
+            (suprimido após drag). `launcherRef` mede o footprint p/ a animação. */}
+        <button
+          ref={launcherRef}
+          onMouseDown={onDragMouseDown}
+          onClick={handleLauncherClick}
+          aria-label={blocked ? 'Agente indisponível — requisitos pendentes' : 'Abrir o agente construtor'}
+          aria-expanded={blocked ? gateOpen : undefined}
+          className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold shadow-lg border transition-colors cursor-grab active:cursor-grabbing bg-zinc-950 text-zinc-100 hover:bg-zinc-800 ${running && status === 'open' ? 'border-amber-400' : 'border-zinc-800'}`}
         >
-          {/* Header — handle de drag (não inicia em botões descendentes). */}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 translate-y-[1px]">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <span className="leading-none">Agent</span>
+          {blocked ? (
+            // Cadeado quando bloqueado (decisão 4): comunica "indisponível" antes do clique;
+            // as ondas só aparecem quando desbloqueado.
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          ) : (
+            <StatusWaves status={status} running={running} />
+          )}
+        </button>
+      </div>
+
+      {/* ── Camada expandida (painel) ───────────────────────────────────────
+          Sobreposta, ancorada no topo-direito e dimensionada ao tamanho FINAL:
+          a animação do wrapper a revela progressivamente. `visibility:hidden`
+          quando totalmente fechado a tira do hit-testing e do foco por tab. */}
+      <div
+        className="absolute top-0 right-0"
+        style={{
+          width: panelSize.w,
+          height: panelSize.h,
+          opacity: collapsed ? 0 : 1,
+          visibility: phase === 'closed' ? 'hidden' : 'visible',
+          pointerEvents: phase === 'open' ? 'auto' : 'none',
+          transition: `opacity ${fadeDur} ease-out`,
+        }}
+        aria-hidden={phase !== 'open'}
+      >
+        <div
+          className={`relative flex flex-col w-full h-full rounded-2xl border shadow-2xl ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
+          role="dialog"
+          aria-label="Flow Agent — construtor de fluxo"
+        >
+          {/* Header — handle de drag (não inicia em botões descendentes). Sempre
+              escuro (bg-zinc-950), igual ao rail do menu esquerdo (Sidebar), pra
+              amarrar o widget à identidade da plataforma. `rounded-t-2xl` respeita
+              os cantos arredondados do painel. */}
           <div
             onMouseDown={e => { if (!(e.target as HTMLElement).closest('button')) onDragMouseDown(e) }}
             style={{ cursor: 'grab' }}
-            className={`flex items-center gap-2 px-4 py-3 border-b select-none ${isDark ? 'border-slate-700' : 'border-slate-100'}`}
+            className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800 rounded-t-2xl bg-zinc-950 select-none"
           >
-            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[status]} ${running ? 'animate-pulse' : ''}`} />
+            <StatusWaves status={status} running={running} />
             <div className="min-w-0 flex-1">
-              <p className={`text-sm font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Agente construtor</p>
-              <p className={`text-[11px] leading-tight truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <p className="text-sm font-semibold leading-tight text-zinc-100">Flow Agent</p>
+              <p className="text-[11px] leading-tight truncate text-zinc-400">
                 {running && statusText ? statusText : STATUS_LABEL[status]}
               </p>
             </div>
             <button
-              onClick={() => setOpen(false)}
+              onClick={collapsePanel}
               aria-label="Recolher o agente"
-              className={isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}
+              className="text-zinc-400 hover:text-zinc-200"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="5" y1="12" x2="19" y2="12" />
@@ -239,9 +397,55 @@ export function ChatPanel({ getFlow, onFlowUpdated, onRunningChange, hasFlow, ha
               {running ? '…' : 'Enviar'}
             </button>
           </form>
+
+          {/* Alça de resize (decisão 6): canto inferior-esquerdo, mantém o canto
+              superior-direito fixo. Herda o pointerEvents da camada do painel — só
+              é interativa quando `phase === 'open'`. Grip diagonal (nesw). */}
+          <div
+            onMouseDown={onResizeMouseDown}
+            role="separator"
+            aria-label="Redimensionar o agente"
+            title="Arraste para redimensionar"
+            className={`absolute bottom-0 left-0 h-5 w-5 cursor-nesw-resize ${isDark ? 'text-slate-600 hover:text-slate-400' : 'text-slate-300 hover:text-slate-500'}`}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="absolute bottom-1 left-1 h-3 w-3 rotate-90">
+              <line x1="1" y1="15" x2="15" y2="1" />
+              <line x1="1" y1="9" x2="9" y2="1" />
+            </svg>
+          </div>
         </div>
-      )}
+      </div>
     </div>
+  )
+}
+
+/**
+ * Ícone de ondas sonoras (3 barras verticais animadas) — indicador de status da
+ * conexão do agente. Usado nos DOIS estados do widget: no botão minimizado (pill)
+ * e no header do painel aberto (substitui o antigo ponto de status circular, pra
+ * o mesmo indicador aparecer aberto ou fechado). A COR reflete o estado da conexão
+ * WS (reusa `STATUS_DOT` — verde/âmbar/vermelho) e a animação fica mais rápida no
+ * `running` (`--wave-duration`), "respirando" devagar quando ocioso.
+ * `prefers-reduced-motion` deixa as barras estáticas (CSS em index.css). Puramente
+ * decorativo → `aria-hidden`; o estado textual da conexão vive no header do painel
+ * aberto (`STATUS_LABEL`). */
+function StatusWaves({ status, running }: { status: ConnStatus; running: boolean }) {
+  const barColor = STATUS_DOT[status]
+  const duration = running && status === 'open' ? '0.6s' : '1.4s'
+  return (
+    <span
+      className="flex items-center gap-[2px] h-3.5"
+      style={{ '--wave-duration': duration } as CSSProperties}
+      aria-hidden="true"
+    >
+      {[0, 1, 2].map(i => (
+        <span
+          key={i}
+          className={`fluxo-wave-bar w-[3px] h-full rounded-full ${barColor}`}
+          style={{ animationDelay: `${i * 0.18}s` }}
+        />
+      ))}
+    </span>
   )
 }
 

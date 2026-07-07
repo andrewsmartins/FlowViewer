@@ -1,34 +1,22 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-07-06 (Fases A e B VERIFICADAS e2e + MERGEADAS na main; plano "Agente respeita as regras" fechado)
+## 🔄 Handoff — 2026-07-06 (Redesign do widget do agente MERGEADO como v0.36.0)
 
-**Foco da próxima sessão:** livre. O plano travado "Agente respeita as regras" está **100% entregue e na `main`**. Candidatos naturais: o prompt **Fluent School** ou **Grupo Uni.co** rodados de verdade pela caixinha (avaliar contra o critério dos docs), ou a **Fase 5 (produto)**. Nada bloqueado.
+**Foco da próxima sessão:** feature do widget **fechada** — sem trabalho pendente nela. Retomar as **pendências herdadas** (abaixo) ou o próximo item do backlog.
 
-**Onde paramos:** ambas as fases mergeadas na `main` via squash:
-- **Fase A** (limites de caractere do Menu, v0.34.0) — PR #8, merge `455e1b9`.
-- **Fase B** (`set_transfer`, v0.35.0) — PR #10, merge `16ce33d` (o #9 empilhado foi fechado ao deletar a branch base; recriado como #10 → `main`).
+**Onde paramos:** PR **#12** (`feat/agent-widget-redesign` → `main`) **mergeado como v0.36.0**. Fecha o Redesign do widget (decisões 1–7): âncora topo-direito + expansão animada (1/2/5), botão-menu `bg-zinc-950` + `StatusWaves` (3/4), janela redimensionável pela alça inferior-esquerda mantendo o canto superior-direito fixo (6/7), e o polimento final desta série — header do painel com a cor do menu, renome **"Flow Agent"**/"Agent" e `StatusWaves` também no header. CHANGELOG bumpado: seção `## [0.36.0]` (widget) + `## [0.35.0]` (set_transfer, que estava solta em [Não lançado] por um lapso do merge do PR #10). `package.json` → 0.36.0. `tsc` limpo; suíte **581 verde**.
 
-**O que foi feito nesta sessão:**
-- **`/verify` e2e ao vivo** (tools MCP, `OMNI_TOKEN` contra a loja de teste) — PASS em ambas. Fase B: `set_transfer(group,simple,"Financeiro")` → `direct4group` + `value`=objectId real (`S1Cl3fbnFG`), **zero `transferType="team"`**; erro-duro em time inexistente/ambíguo; erro-guia no `set_action_field("transferType")`. Fase A: item 21/header 61/body 81 → recusados; nudge do `validate()` disparou em 2 menus legados reais. Evidência nos corpos dos PRs #8/#10.
-- **PRs abertos, mergeados (squash) e branches deletadas.** Rótulos do PLANS §"Agente respeita as regras" atualizados para IMPLEMENTADA/mergeada.
+**Fios soltos / meio-feito:** nenhum na feature do widget. Pendências herdadas (seguem vivas, independentes): `/verify` e2e da Fase 2.1; prompts Fluent School/Grupo Uni.co nunca rodados fim-a-fim; times do fixture Fluent School não existem na loja de teste (só "Financeiro"). `.claude/settings.local.json` segue modificado e **fora** dos commits (intencional, como sempre).
 
-**Fios soltos / meio-feito:**
-- **Times do fixture Fluent School não existem na loja de teste:** só **"Financeiro"** existe — não há "Consultores" nem "Suporte ao Aluno" (só um "Suporte" avulso). Para um e2e Fluent School *verbatim* pela caixinha, criar os 3 times OU adaptar o prompt aos times reais.
-- **Fase 2.1 (v0.33.0):** `/verify` e2e ainda pendente (segue viva no PLANS de propósito).
-- **Prompts Fluent School / Grupo Uni.co:** nunca rodados fim-a-fim pela caixinha contra o critério dos docs.
-- **Sobra no working tree:** só `.claude/settings.local.json` (config pessoal do MCP) — fora dos commits de propósito.
+**Armadilhas (referência do widget, se voltar a mexer):**
+- **Resize × transição de expansão:** o wrapper tem `transition: width/height 320ms`. Sem desligá-la durante o arraste, a alça criava **rubber-band**. Solução: `transition: resizing ? 'none' : …`. Preservar esse gate.
+- **Piso do resize = `computePanelSize()`, NÃO 400×600 fixo:** em viewport estreita o default já vem clampado a 92vw/80vh; piso fixo quebraria telas pequenas (piso > teto). Por isso `useResizable` recebe o mín recomputado por render.
+- **`/verify` do widget (Playwright):** rail são botões-ícone por `aria-label`. `getByLabel('Importar',{exact})` → `getByText('Carregar exemplo')` → `getByLabel('Token',{exact})` → preencher `input[type=password]` → `Escape` → clicar o backdrop `div.fixed.inset-0.z-40`. Painel monta sempre (cross-fade); a alça `getByLabel('Redimensionar o agente')` existe no DOM já aberto.
 
-**Armadilhas:**
-- **Ao rodar /verify de tools:** muta `public/masterFlow.json`/`work.flow.json` → restaurar via git (`revert` da tool + `git checkout`); o MCP relê o disco só no boot (matar a árvore força respawn fresco).
-- **PR empilhado:** deletar a branch base fecha o PR filho (não retargeta) — recriar apontando para `main` após o merge do pai.
-- **Bash tool é POSIX** (não PowerShell): NÃO usar here-string `@'...'@` em `git commit -m`. Usar `git commit -F <arquivo>`.
+**Ponteiros:** PR #12 (merge na `main`). Feature no corpo do PLANS §"Redesign do widget do agente… ✅ IMPLEMENTADA". Arquivos: [useResizable.ts](src/hooks/useResizable.ts) + [useResizable.test.ts](src/hooks/useResizable.test.ts), [useDraggable.ts](src/hooks/useDraggable.ts), [ChatPanel.tsx](src/components/ChatPanel.tsx). CHANGELOG §[0.36.0].
 
-**Próximo passo imediato:** definir o próximo foco (rodar um dos prompts pela caixinha, ou Fase 5). Sem pendência do plano fechado.
-
-**Ponteiros:** PLANS §"Agente respeita as regras… (✅ IMPLEMENTADA e mergeada)"; fontes únicas [transfer.ts](src/utils/transfer.ts) e [menuLimits.ts](src/utils/menuLimits.ts); merges `455e1b9`/`16ce33d`.
-
-**Skills sugeridas ao retomar:** `/interrogar` para fechar o escopo do próximo foco antes de codar; `/verify` quando houver o quê rodar.
+**Skills sugeridas ao retomar:** `/verify` para as pendências herdadas (Fase 2.1 e2e, prompts Fluent School/Uni.co) quando forem retomadas.
 <!-- HANDOFF:END -->
 
 ## Contexto
@@ -391,6 +379,82 @@ a duplicação sem fonte única é o que deixou o enum solto. O nó exige **dois
   fatiar a extração sem mudar comportamento (só mover + importar), com a suíte verde como gate.
 - Erro-duro no `set_transfer` (Q8) trava a construção se o time não existir na loja — aceito por decisão;
   o fluxo Fluent School assume os times já criados no ambiente de teste.
+
+### Redesign do widget do agente: botão-menu + expansão animada + janela redimensionável ✅ IMPLEMENTADA e mergeada (v0.36.0, PR #12)
+
+> **Resultado (2026-07-06):** feature completa (decisões 1–7). As decisões 1/2/5 (âncora topo-direito
+> + expansão animada por máquina de estados) e 3/4 (botão-menu + ondas sonoras, commit `3113e71`)
+> já estavam; esta sessão fechou a **decisão 6** (resize) + 7 (nada persiste). Novo hook
+> [useResizable.ts](src/hooks/useResizable.ts) (alça inferior-esquerda, canto sup-direito fixo, clamp
+> [mín=default, viewport]) + `clampResize` puro; [useDraggable.ts](src/hooks/useDraggable.ts) expõe
+> `pos`/`setPos` p/ recuar o `left` no modo arrastado. **+6 testes** ([useResizable.test.ts](src/hooks/useResizable.test.ts)),
+> suíte cheia **581 verde**, `tsc` limpo. `/verify` (Playwright, `npm run dev`) confirmou os dois modos:
+> ancorado-por-CSS e arrastado-inline mantêm o canto superior-direito fixo, crescendo p/ esquerda+baixo
+> e clampando na viewport. Versão a atribuir no merge (CHANGELOG em [Não lançado]).
+>
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-07-06. Decisões TRAVADAS abaixo —
+> registro do raciocínio; não reabrir sem novo interrogatório. Escopo: só o widget flutuante
+> [ChatPanel.tsx](src/components/ChatPanel.tsx) (dev-only, `import.meta.env.DEV`) + [useDraggable.ts](src/hooks/useDraggable.ts).
+
+**Objetivo (1 frase):** o botão minimizado do agente ganha a **cara da ferramenta** (retangular
+arredondado, cor do menu, ícone animado no lugar do ponto de status), abre com **expansão animada
+da direita p/ esquerda** e a janela passa a ser **redimensionável** (mín = tamanho atual, cresce livre).
+
+**Estado atual (achado do código):** o `ChatPanel` é um wrapper único (`fixed z-30`) com ternário
+`!open ? pill : painel`. A pill é `rounded-full bg-zinc-800` (não segue o tema), ancorada
+`bottom-4 right-4`, arrastável via `useDraggable` (posição só em memória, sem localStorage). A
+abertura é **troca instantânea** (sem transição). O "círculo verde" é na verdade o `STATUS_DOT` de
+**conexão WebSocket** (verde=open · âmbar=connecting · vermelho=closed), renderizado na pill (`h-2 w-2`)
+e no header (`h-2.5 w-2.5`); quando bloqueado pelo gate, um cadeado substitui o ponto. Janela **fixa**
+`w-[400px] max-w-[92vw] h-[600px] max-h-[80vh]`, sem resize. Rail/menu = `bg-zinc-950` (sempre escuro,
+independe do tema — [Sidebar.tsx:77](src/components/Sidebar.tsx#L77)); painel aberto segue o tema (slate).
+
+**Decisões (com o porquê):**
+1. **Arraste MANTIDO, mas inicia no topo-direito (Q1).** Troca a âncora default `bottom-4 right-4` →
+   `top-4 right-4` (painel passa a crescer p/ baixo). O `useDraggable` continua; posição segue **só em
+   memória** (decisão registrada intacta). *Por quê manter:* o usuário quis preservar o reposicionamento.
+2. **Expansão SEMPRE p/ esquerda + clamp (Q2).** `transform-origin: top right`; a janela cresce p/
+   esquerda e p/ baixo. Se o botão foi arrastado p/ perto da borda esquerda e não couber, faz **clamp**
+   de volta p/ dentro da viewport ao fim da animação. *Por quê:* direção fixa é previsível; clamp cobre o
+   caminho-infeliz sem lógica condicional de direção.
+3. **Formato `rounded-2xl` + cor `bg-zinc-950` SEMPRE escura (Q3).** A pill vira retângulo arredondado
+   igual ao painel/sidebar (`rounded-2xl`), cor do menu (`zinc-950`, hover `zinc-800`), independente do
+   tema — como o rail. Mantém o acento `border-amber-400` quando `running`. O **painel aberto NÃO muda**
+   (segue theme-aware slate) — o pedido de cor foi só sobre o minimizado. Mantém texto "Agente" + ícone de balão.
+4. **Ícone único sempre visível, cor = estado de conexão (Q4).** Remove o ponto; entra um **ícone de ondas
+   sonoras** (3 barrinhas verticais, keyframes CSS de `scaleY` em loop) no lugar. A **cor** reflete o estado
+   (verde/âmbar/vermelho, reusando o mapa `STATUS_DOT`); quando `running`, anima **mais rápido**; parado,
+   "respira" devagar. *Por quê não substituir tudo:* preserva o diagnóstico de conexão (útil no dev — chat
+   depende de `npm run ws:dev`). Quando **bloqueado** pelo gate, mantém o **cadeado** (ondas só quando desbloqueado).
+5. **Animação = transição de `width`+`height`, não scale (Q5).** Máquina de estados `closed → opening →
+   open → closing`. O container transiciona largura/altura entre o footprint da pill e o tamanho do painel
+   em **~320ms `ease-out`**, `overflow-hidden`, conteúdo em **cross-fade**. *Por quê width/height e não
+   `transform: scale`:* scale distorce/espreme o texto; o usuário pediu que "expanda de verdade", não um
+   pop. Respeitar **`prefers-reduced-motion`** (encurtar/desligar a expansão e as ondas).
+6. **Resize: alça no canto INFERIOR-ESQUERDO, mín 400×600, máx = viewport (Q6).** Ancorado no topo-direito,
+   arrastar a alça p/ esquerda/baixo aumenta (canto superior-direito fica fixo). Mín = tamanho atual
+   (400×600); cresce livre até as bordas da viewport (clamp). Tamanho **só em memória** — nada persiste (Q7).
+7. **Nada persiste (Q7).** Tamanho e posição vivem só na sessão; recarregar volta ao default (topo-direito,
+   400×600). *Por quê (após o usuário levantar "produto real"):* o caminho-produto (Fase 5) guardará
+   preferências no **servidor/conta**, não no browser; localStorage agora seria stopgap descartável. Mantém
+   a decisão registrada "sem localStorage" e o requisito "inicia no topo-direito" sem conflito.
+
+**Riscos/caminho-infeliz:**
+- **Interação drag × resize (principal risco de impl):** o `useDraggable` posiciona por `top/left` quando
+  arrastado, mas o resize exige **âncora fixa no canto superior-direito** (aumentar largura ⇒ diminuir `left`).
+  A matemática do resize precisa manter esse canto fixo tanto no modo ancorado-por-CSS quanto no arrastado-inline.
+  Fatiar num hook próprio (`useResizable`) ou estender o `useDraggable`, sem quebrar o clamp já existente.
+- **Clamp na expansão:** se arrastado p/ a esquerda, medir se 400px cabem; senão empurrar p/ dentro no fim.
+- **Estados de gate durante animação:** abrir enquanto `blocked` não deve iniciar a expansão (hoje abre o
+  popover); a máquina de estados só entra em `opening` quando desbloqueado.
+
+**Como será testado:**
+- **Manual/visual no `npm run dev`** (widget é dev-only e a feature é majoritariamente animação/interação):
+  botão com cara de menu; expansão devagar da direita p/ esquerda; ondas mudando de cor por estado (derrubar
+  o `ws:dev` → vermelho; subir → verde); resize a partir do canto inf-esquerdo respeitando mín 400×600 e a
+  borda da viewport; arrastar p/ borda esquerda e abrir → clamp; recarregar → volta ao topo-direito 400×600.
+- **Unit (lógica pura):** função de **clamp de tamanho** (mín/máx/viewport) e o mapa cor-por-estado das ondas.
+- **`prefers-reduced-motion`** com a flag ligada no DevTools → sem animação de expansão nem de ondas.
 
 ## Melhorias paralelas (independentes das fases)
 
