@@ -3,6 +3,7 @@
 Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um fluxo do zero a partir do botId), edite nós, conexões e conteúdo no canvas, e exporte de volta no formato aceito pela plataforma.
 
 > 📖 **[Guia de uso](docs/GUIA-DE-USO.md)** — passo a passo de todas as features, do import ao push para o rascunho do bot.
+> 🚚 **[Guia de migração](docs/GUIA-DE-MIGRACAO.md)** — referência de integração para levar a ferramenta à infra da OmniChat (token, endpoints, storage, agente, hosting).
 
 ---
 
@@ -44,7 +45,7 @@ Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um f
 Uma **caixinha de chat** integrada ao FlowViewer permite construir e editar nós por linguagem natural. Disponível **somente no build de desenvolvimento** (`npm run dev` + `npm run ws:dev` em paralelo).
 
 - O motor é o **Claude Agent SDK** — usa a autenticação da assinatura do Claude Code CLI (sem `ANTHROPIC_API_KEY`).
-- O agente opera o **servidor MCP local** (`mcp/server.ts`, stdio) com 13 tools: `create_node`, `set_message`, `set_category`, `set_menu`, `set_action_field`, `set_choices`, `set_keywords`, `set_context`, `connect`, `connect_to_bot`, `validate`, `revert` e as de leitura/resolução de nomes.
+- O agente opera o **servidor MCP local** (`mcp/server.ts`, stdio) com **24 tools**: leitura (`list_nodes`, `describe_node`, `describe_node_type`), mutação (`create_node`, `set_message`, `set_category`, `set_menu`, `set_transfer`, `set_action_field`, `set_choices`, `set_keywords`, `set_context`, `connect`, `connect_to_bot`, `validate`, `revert`) e resolução de nomes (`find_team`, `find_user`, `find_bot`, `list_teams`/`list_bots`/`list_entities`/`list_api_integrations`/`list_intents`).
 - Ao enviar uma mensagem, o canvas é travado (somente-leitura) durante o turno; ao fim, o fluxo atualizado é refletido automaticamente. **Ctrl+Z** desfaz o que o agente fez.
 - **Pré-requisitos:** `claude` instalado e logado (`claude /login`), token de sessão configurado (`OMNI_TOKEN` em `flow-viewer.env`), fluxo carregado.
 
@@ -235,7 +236,7 @@ backend/
 ├── server.ts                   Ponte WebSocket (`npm run ws:dev`): 1 sessão Agent SDK por conexão, streama eventos para o front
 └── index.html                  Página de teste standalone da ponte (sem React)
 mcp/
-├── server.ts                   Servidor MCP stdio (`npm run mcp`): expõe 13 tools de leitura/mutação do fluxo
+├── server.ts                   Servidor MCP stdio (`npm run mcp`): expõe as 24 tools (leitura, mutação e resolução de nomes)
 ├── nodeManifest.ts             Formatador do manifesto de tipos de nó (deriva do NODE_CATALOG)
 └── tsconfig.json               Config TypeScript isolada para o servidor MCP
 src/
@@ -266,7 +267,7 @@ src/
 │   └── restoreFlow.ts          Restauração a partir de backup (deletar→recriar→sobrescrever)
 ├── tools/
 │   ├── flowStore.ts            FlowStore: carrega/salva o arquivo de fluxo (fonte de verdade do agente)
-│   ├── flowTools.ts            13 tools MCP (create_node, set_message, set_category, set_keywords, set_context, set_menu, connect, validate…)
+│   ├── flowTools.ts            15 tools MCP (create_node, set_message, set_menu, set_transfer, set_keywords, set_context, connect, validate…)
 │   └── resolvers.ts            8 resolvers nome→ID sobre a API OmniChat (find_team, find_bot…)
 ├── components/
 │   ├── TopBar.tsx              Toolbar: importar, exportar, enviar, restaurar, undo/redo, validação

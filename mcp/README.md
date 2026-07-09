@@ -53,17 +53,38 @@ arquivo na 1ª escrita.
 
 ## Ferramentas expostas
 
+São **24 tools** no total: 3 de leitura, 13 de mutação e 8 resolvers (nome → ID contra a API). Fonte da verdade: os `registerTool(...)` em [`server.ts`](server.ts).
+
+### Leitura (inspecionar antes de editar)
+
 | Tool | O que faz |
 |---|---|
-| `list_nodes` | Mapa compacto do fluxo (1 linha por nó). |
-| `describe_node` | Campos de um nó (gatilho, ação, mensagens, destino). |
+| `list_nodes` | Mapa compacto do fluxo (1 linha por nó: nome, id, kind, categoria, destino). |
+| `describe_node` | Campos de UM nó (gatilho, ação, mensagens, destino). |
 | `describe_node_type` | Campos configuráveis de um tipo criável (sem arg = lista todos). |
-| `create_node` | Cria um nó com os defaults do tipo; retorna o id. |
-| `set_action_field` | Grava um campo do `action` (transferType, captureDataType, …). |
-| `set_choices` | Define os destinos de um nó de Escolha. |
-| `connect` | Liga origem→destino na 1ª vaga livre. |
+
+### Mutação (constroem e editam o fluxo)
+
+| Tool | O que faz |
+|---|---|
+| `create_node` | Cria um nó com os defaults do tipo; retorna o id (referência das demais tools). |
+| `set_message` | Grava o texto (TEXT) da mensagem de um nó (não serve para nó de Escolha — use `set_menu`). |
+| `set_category` | Grava a categoria da intenção (agrupa o fluxo); reutilize uma categoria existente. |
+| `set_keywords` | SUBSTITUI as palavras-chave da intenção-ALVO — é o que ROTEIA botão/lista (casamento "contém"). |
+| `set_context` | Escopa a keyword de uma intenção a UM menu (ou limpa → keyword global). |
+| `set_menu` | Cria a mensagem de itens (BUTTON/LIST) de um nó de Escolha; infere BUTTON vs LIST. |
+| `set_choices` | Define os destinos posicionais de um nó de Escolha. |
+| `set_transfer` | Preenche o nó de Transferência: categoria (1 dos 6 tipos) + destino resolvido por nome → ID. |
+| `set_action_field` | Grava um campo do `action` (`captureDataType`, `orderType`, `storeType`, …). `transferType` → use `set_transfer`. |
+| `connect` | Liga origem→destino na 1ª vaga livre (next ou slot de escolha). |
+| `connect_to_bot` | Redireciona o `next` de um nó para uma intenção de OUTRO bot (redirect cross-bot). |
 | `validate` | Relatório de validade (erros bloqueiam export; avisos informam). |
 | `revert` | Desfaz tudo desde a 1ª mutação da sessão. |
+
+### Resolvers (nome → ID, read-only contra a API)
+
+| Tool | O que faz |
+|---|---|
 | `find_team` / `list_teams` | Resolve/lista os times da loja → `objectId` (transfer). |
 | `find_user` | Resolve um vendedor (usuário supervisionado) → `objectId`. Busca server-side. |
 | `find_bot` / `list_bots` | Resolve/lista os bots ativos da conta → `botId` (redirect cross-bot). |
@@ -84,9 +105,9 @@ candidatos e o modelo **para e pergunta** — nunca auto-escolhe.
 
 Smoke read-only real: `npx tsx scripts/smoke-phase4-resolvers.ts [nomeDoTime]`.
 
-## Limitações conhecidas (spike → Fase 3)
+## Limitações conhecidas
 
 - `set_action_field`/`connect` operam por `condIdx` (default 0) → nós-grupo
   (`intentGroupNode`, 2+ condições) só parcialmente endereçáveis.
-- `setDataNode` (`bulkUpdate`) e o conteúdo de mensagem (LIST/BUTTON) ainda **não**
-  são editáveis por tool.
+- `setDataNode` (`bulkUpdate`) ainda **não** é editável por tool. O conteúdo de
+  mensagem já é: TEXT via `set_message`, BUTTON/LIST via `set_menu`.
