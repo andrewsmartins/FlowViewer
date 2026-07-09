@@ -1,6 +1,6 @@
 # Guia de uso — FlowViewer
 
-Guia do editor visual de fluxos de chatbot OmniChat. Atualizado para a **v0.30.0**.
+Guia do editor visual de fluxos de chatbot OmniChat. Atualizado para a **v0.36.0**.
 
 > O ciclo completo: **importar (ou criar do zero) → editar no canvas → validar → exportar JSON → enviar para o rascunho do bot (UI ou CLI) → publicar manualmente na plataforma**.
 
@@ -224,7 +224,7 @@ O FlowViewer inclui uma **caixinha de chat** que permite construir e editar nós
 
 **Pré-requisitos:**
 - `claude` instalado e logado (`claude /login`)
-- Token de sessão inserido na barra lateral (`OMNI_TOKEN` no arquivo `flow-viewer.env`)
+- Token de sessão configurado em `flow-viewer.env` (`OMNI_TOKEN`) — é de lá que o servidor MCP lê para resolver nomes (times, bots, vendedores). O campo de token da barra lateral é outro caminho: serve ao **envio pela UI**, não ao agente.
 - Um fluxo carregado no canvas
 
 **Como iniciar:**
@@ -233,14 +233,14 @@ npm run dev        # servidor Vite (frontend)
 npm run ws:dev     # ponte WebSocket (backend local — em outro terminal)
 ```
 
-O botão **Agente** aparece no canto inferior direito apenas no `npm run dev`. Ao clicar:
+O botão **Agent** (widget "Flow Agent") aparece no canto **superior direito** apenas no `npm run dev`; ao abrir, a janela expande a partir dele e pode ser redimensionada pela alça inferior-esquerda. Ao clicar:
 1. A caixinha verifica se há fluxo carregado e token definido (popover indica o que falta).
 2. Envie um prompt em linguagem natural ("crie um nó de mensagem com texto Olá").
-3. O agente opera as tools do servidor MCP (`create_node`, `set_message`, `set_menu`, `connect`, etc.) e o canvas atualiza ao fim do turno.
+3. O agente opera as tools do servidor MCP (`create_node`, `set_message`, `set_menu`, `set_transfer`, `set_keywords`, `connect`, etc.) e o canvas atualiza ao fim do turno.
 4. **Ctrl+Z** desfaz o que o agente fez, igual a qualquer outra edição.
 
 > O canvas fica em modo somente-leitura durante o turno do agente — edições manuais são liberadas ao fim. Os dois modos (agente e manual) coexistem na mesma sessão.
 
 ---
 
-> 📖 Veja também: [README](../README.md) (visão geral e tipos de nó) · [Testes automatizados](TESTES-AUTOMATIZADOS.md) · [Modelo de intenção da OmniChat](MODELO-INTENCAO-OMNICHAT.md)
+> 📖 Veja também: [README](../README.md) (visão geral e tipos de nó) · [Guia de migração](GUIA-DE-MIGRACAO.md) (integração à infra OmniChat) · [Testes automatizados](TESTES-AUTOMATIZADOS.md) · [Modelo de intenção da OmniChat](MODELO-INTENCAO-OMNICHAT.md)
