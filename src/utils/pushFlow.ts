@@ -23,9 +23,9 @@
  * logado nem incluído no relatório devolvido.
  */
 import type { BotFlowJson, BotIntent } from '../types'
-
-const API = 'https://k0yowczqxg.execute-api.us-east-1.amazonaws.com/prod'
-const APP_ID = 'UCeS99itvZg1tsea2OSoyKvpLbKddhoVAPotIQOy'
+// Base e headers vêm da fonte única `src/config.ts` (antes duplicados aqui como
+// `API`/`APP_ID`/`buildHeaders`). `sessionHeaders` ≡ o antigo `buildHeaders`.
+import { API, sessionHeaders } from '../config'
 
 /** Resposta mínima que precisamos do fetch — facilita o mock nos testes. */
 export interface FetchResponse {
@@ -154,7 +154,7 @@ export async function fetchServerIntents(deps: {
   botId: string
 }): Promise<BotIntent[]> {
   const res = await deps.fetch(`${API}/v1/${deps.botId}/intents?fullObject=true`, {
-    headers: buildHeaders(deps.token),
+    headers: sessionHeaders(deps.token),
   })
   if (!res.ok) {
     throw new Error(`não foi possível ler o estado atual do bot (status ${res.status})`)
@@ -175,20 +175,9 @@ export async function deleteIntent(
 ): Promise<{ status: number }> {
   const res = await deps.fetch(`${API}/v1/${deps.botId}/intents/${intentId}`, {
     method: 'DELETE',
-    headers: buildHeaders(deps.token),
+    headers: sessionHeaders(deps.token),
   })
   return { status: res.status }
-}
-
-function buildHeaders(token: string): Record<string, string> {
-  return {
-    accept: 'application/json',
-    authorization: `Bearer ${token}`,
-    'content-type': 'application/json',
-    'x-omnichat-platform': 'web',
-    'x-parse-application-id': APP_ID,
-    'x-parse-session-token': token,
-  }
 }
 
 /**
@@ -215,7 +204,7 @@ export async function pushFlow(flow: BotFlowJson, options: PushOptions): Promise
     throw new Error(`o botId do fluxo (${botIds[0]}) não bate com o alvo (${botId})`)
   }
 
-  const headers = buildHeaders(token)
+  const headers = sessionHeaders(token)
 
   // 1) Estado atual do servidor — também é o backup pré-escrita.
   const backupRes = await fetch(`${API}/v1/${botId}/intents?fullObject=true`, { headers })

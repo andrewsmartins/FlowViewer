@@ -16,11 +16,8 @@
  *
  * Segurança: o token vai só no header do passo 1 e NUNCA é logado.
  */
-
-const FILES_API = 'https://private-api2.omni.chat/files'
-// Versão do app web da OmniChat — o gateway de arquivos exige este header (401 sem ele).
-// Valor fixo capturado da plataforma; atualizar se a API passar a recusar versões antigas.
-const PLATFORM_VERSION = '1.116.16'
+// Base e versão vêm da fonte única `src/config.ts` (antes duplicadas aqui).
+import { FILES_API, PLATFORM_VERSION } from '../config'
 
 export type UploadMediaType = 'IMAGE' | 'FILE' | 'VIDEO'
 

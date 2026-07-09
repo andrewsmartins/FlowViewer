@@ -14,13 +14,12 @@
  * ao `pushFlow.ts`.
  */
 import type { FetchLike } from './pushFlow'
-
-/** Base da `execute-api` (bots/times/entities) — reusada por `entities.ts`. */
-export const API = 'https://k0yowczqxg.execute-api.us-east-1.amazonaws.com/prod'
-/** Base do Parse — reusada pelo `collections.ts` (mesma loja, mesmo app). */
-export const PARSE = 'https://api-private2.omni.chat/parse'
-// ID público do app Parse (visível a qualquer navegador na plataforma — não é segredo).
-export const APP_ID = 'UCeS99itvZg1tsea2OSoyKvpLbKddhoVAPotIQOy'
+// Config de API centralizada em `src/config.ts` (fonte única — ver o header de lá).
+// Importamos para uso interno (fetchActiveBots/fetchTeams) E re-exportamos para não
+// quebrar os importadores históricos que puxam `API`/`PARSE`/`APP_ID`/`sessionHeaders`
+// de `./teams` (endpoints, entities, users, collections, messageTemplates).
+import { API, PARSE, APP_ID, sessionHeaders } from '../config'
+export { API, PARSE, APP_ID, sessionHeaders }
 
 /** Time da loja — só os campos que a variável `@team.{id}` precisa. */
 export interface Team {
@@ -44,18 +43,6 @@ export interface Bot {
 export interface Deps {
   fetch: FetchLike
   token: string
-}
-
-/** Headers de sessão — iguais aos do push (Bearer + session-token + app-id). */
-export function sessionHeaders(token: string): Record<string, string> {
-  return {
-    accept: 'application/json',
-    authorization: `Bearer ${token}`,
-    'content-type': 'application/json',
-    'x-omnichat-platform': 'web',
-    'x-parse-application-id': APP_ID,
-    'x-parse-session-token': token,
-  }
 }
 
 /**

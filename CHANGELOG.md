@@ -11,6 +11,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ---
 
+## [Não lançado]
+
+### Changed
+- **Fonte única da config de API** ([src/config.ts](src/config.ts), [src/utils/teams.ts](src/utils/teams.ts), [src/utils/pushFlow.ts](src/utils/pushFlow.ts), [src/utils/uploadMedia.ts](src/utils/uploadMedia.ts)) — refactor interno sem mudança de comportamento (valores idênticos, sem bump). As bases de API (`API`/`PARSE`/`FILES_API`), o `APP_ID`, a `PLATFORM_VERSION` e os `sessionHeaders` estavam **duplicados** entre o caminho de escrita (`pushFlow.ts`: `API`/`APP_ID`/`buildHeaders`) e o hub de leitura/resolução (`teams.ts`: `API`/`PARSE`/`APP_ID`/`sessionHeaders` — idênticos ao `buildHeaders`), além de `FILES_API`/`PLATFORM_VERSION` soltos no `uploadMedia.ts`. Cópias divergentes abriam o pior caso silencioso: o app **ler de um ambiente e gravar em outro** (push no bot errado). Agora vivem só em `src/config.ts`; `teams.ts` importa e **re-exporta** (importadores históricos — endpoints, entities, users, collections, messageTemplates — seguem intactos) e `pushFlow`/`uploadMedia` puxam de lá. Escopo travado em `src/` com **constantes literais** (o módulo roda também no caminho Node do MCP, sem Vite — nada de `import.meta.env`); a parametrização por ambiente é a "metade 2". Gates: `npm test` **581 verde**, `tsc` e `mcp:typecheck` limpos. (Ver PLANS §"Fonte única de config de API" e [docs/GUIA-DE-MIGRACAO.md](docs/GUIA-DE-MIGRACAO.md) §3.)
+
 ## [0.36.0] - 2026-07-06
 
 > Redesign do widget do agente construtor (decisões 1–7). Ver PLANS §"Redesign do widget do agente".
