@@ -265,7 +265,7 @@
                         "text": "Teste por Tipo"
                       },
                       {
-                        "description": "Testes por tipo de ação do nó (captura, edição, loja, API, transferência, aguardar)",
+                        "description": "Ação do nó: captura, edição, loja, API, transferência, aguardar",
                         "id": "fe3bbf1c-9828-4b6f-ab82-9251510a0e1d",
                         "text": "Teste por Ação"
                       }
@@ -364,7 +364,7 @@
                       {
                         "description": "Compara a última intenção atendida",
                         "id": "917a18b0-2ab9-442b-ac6b-eff1c5eb384f",
-                        "text": "A última intenção foi"
+                        "text": "Última intenção foi"
                       },
                       {
                         "description": "Variável sem valor preenchido",

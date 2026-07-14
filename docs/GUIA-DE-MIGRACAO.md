@@ -83,14 +83,16 @@ Tudo que fala com a OmniChat está **fixo no código** (nenhuma variável de amb
 
 ### 3.1 Bases de URL e IDs fixos
 
-| Constante | Valor | Onde | Observação |
-|---|---|---|---|
-| API de intents/bots/times/listas/APIs | `https://k0yowczqxg.execute-api.us-east-1.amazonaws.com/prod` | [pushFlow.ts:27](../src/utils/pushFlow.ts#L27) **e** [teams.ts:19](../src/utils/teams.ts#L19) | **Duplicada em 2 arquivos** — centralizar antes de parametrizar. |
-| `APP_ID` (Parse Application Id) | `UCeS99itvZg1tsea2OSoyKvpLbKddhoVAPotIQOy` | [pushFlow.ts:28](../src/utils/pushFlow.ts#L28) **e** [teams.ts:23](../src/utils/teams.ts#L23) | Idem — duplicado. |
-| API de arquivos (upload) | `https://private-api2.omni.chat/files` | [uploadMedia.ts:20](../src/utils/uploadMedia.ts#L20) | Host **diferente** (API Gateway, não Parse). |
-| `PLATFORM_VERSION` | `1.116.16` | [uploadMedia.ts:23](../src/utils/uploadMedia.ts#L23) | Valor **capturado** da plataforma; o gateway de arquivos dá 401 sem ele. Pode precisar acompanhar a versão real da plataforma. |
+> **Já centralizado (PR #13, `d4cb026`):** as constantes abaixo viviam duplicadas em `pushFlow.ts` e `teams.ts` — hoje moram só em [src/config.ts](../src/config.ts), que `teams.ts` importa e reexporta (mantendo os importadores históricos intactos) e que `pushFlow.ts`/`uploadMedia.ts` consomem direto. **O que falta não é mais deduplicar — é parametrizar por ambiente** (`import.meta.env` no front / `process.env` no MCP): hoje `src/config.ts` só tem constantes literais de propósito (o módulo roda também no caminho Node do MCP, sem Vite).
 
-> Os módulos de fetch de `teams.ts` reexportam `API`/`APP_ID`; `users.ts`, `endpoints.ts`, `entities.ts` e os resolvers os consomem. Uma boa primeira mexida na migração é **uma fonte única** dessas constantes (ex.: `src/config.ts` lendo `import.meta.env` no front e `process.env` no MCP), depois trocar por ambiente.
+| Constante | Valor | Onde (fonte única) | Observação |
+|---|---|---|---|
+| API de intents/bots/times/listas/APIs | `https://k0yowczqxg.execute-api.us-east-1.amazonaws.com/prod` | [src/config.ts:23](../src/config.ts#L23) | Consumida via `import { API } from '../config'` em `pushFlow.ts`/`teams.ts`. |
+| `APP_ID` (Parse Application Id) | `UCeS99itvZg1tsea2OSoyKvpLbKddhoVAPotIQOy` | [src/config.ts:32](../src/config.ts#L32) | Idem — importada, não mais redeclarada. |
+| API de arquivos (upload) | `https://private-api2.omni.chat/files` | [src/config.ts:29](../src/config.ts#L29) | Host **diferente** (API Gateway, não Parse). |
+| `PLATFORM_VERSION` | `1.116.16` | [src/config.ts:39](../src/config.ts#L39) | Valor **capturado** da plataforma; o gateway de arquivos dá 401 sem ele. Pode precisar acompanhar a versão real da plataforma. |
+
+> `sessionHeaders(token)` (headers de sessão Parse) também mora em `src/config.ts`, reusada por `teams.ts` e `pushFlow.ts` (era o `buildHeaders` duplicado). Consumidores indiretos — `users.ts`, `endpoints.ts`, `entities.ts` e os resolvers — seguem importando `API`/`APP_ID` de `teams.ts` (reexport), sem mudança de comportamento.
 
 ### 3.2 Headers de autenticação (dois perfis distintos)
 
@@ -188,8 +190,9 @@ Independentemente de como a migração for feita, manter as invariantes que o pr
 | [src/tools/flowStore.ts](../src/tools/flowStore.ts) | Fonte de verdade do fluxo (arquivo/memória) | **Tocar** — trocar storage (`fromObject`). |
 | [src/tools/flowTools.ts](../src/tools/flowTools.ts) | 15 tools de leitura/mutação | Reusar como está. |
 | [src/tools/resolvers.ts](../src/tools/resolvers.ts) | 8 resolvers nome→ID + token | Reusar; token vem de fora. |
-| [src/utils/pushFlow.ts](../src/utils/pushFlow.ts) | Push (2 passadas + remap), API, APP_ID, headers | **Tocar** — centralizar/parametrizar endpoints. |
-| [src/utils/teams.ts](../src/utils/teams.ts) | Fetch de times + **cópia** de API/APP_ID | **Tocar** — deduplicar constantes. |
+| [src/config.ts](../src/config.ts) | Fonte única: `API`/`PARSE`/`FILES_API`/`APP_ID`/`PLATFORM_VERSION` + `sessionHeaders()` | **Tocar** — parametrizar por ambiente (`import.meta.env`/`process.env`) quando a infra de vocês definir staging×produção; hoje são literais. |
+| [src/utils/pushFlow.ts](../src/utils/pushFlow.ts) | Push (2 passadas + remap); importa `API`/`sessionHeaders` de `config.ts` | Reusar como está — endpoints já centralizados. |
+| [src/utils/teams.ts](../src/utils/teams.ts) | Fetch de times; importa e **reexporta** `API`/`APP_ID`/`sessionHeaders` de `config.ts` | Reusar como está — sem cópia própria. |
 | [src/utils/uploadMedia.ts](../src/utils/uploadMedia.ts) | Upload S3 presigned + `PLATFORM_VERSION` | **Tocar** — CORS/versão/endpoint. |
 | [mcp/server.ts](../mcp/server.ts) | Servidor MCP stdio + `loadOmniToken` | **Tocar** — origem do token e do fluxo. |
 | [backend/server.ts](../backend/server.ts) | Ponte WS + Agent SDK (CLI) | **Substituir** — API no lugar do CLI. |

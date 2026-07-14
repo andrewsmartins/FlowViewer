@@ -1,11 +1,11 @@
 # Testes automatizados
 
-Documentação da suíte de testes do FlowViewer: **469 testes unitários** (Vitest, 22 arquivos) e **15 scripts de smoke** (Playwright, browser real).
+Documentação da suíte de testes do FlowViewer: **581 testes unitários** (Vitest, 25 arquivos) e **15 scripts de smoke** (Playwright, browser real).
 
 - **Unitários** (`npm test`) — rápidos, sem rede e sem browser; rodam sobre os módulos puros de `src/utils/`. São a rede de segurança do dia a dia.
 - **Smokes** (`node scripts/smoke-*.mjs`) — exercitam o app inteiro num browser headless contra o dev server. Os que tocam a plataforma usam um **`fetch` falso** (nunca a API real). São a prova de que a feature funciona ponta a ponta na UI.
 
-> Última execução verificada: **469 passed (22 arquivos)** em ~3.0s — `npx vitest run`.
+> Última execução verificada: **581 passed (25 arquivos)** em ~3.2s — `npx vitest run`.
 
 ---
 
@@ -28,33 +28,36 @@ Os smokes que falam com a plataforma (`smoke-phase4b*`) interceptam `window.fetc
 
 ---
 
-# Parte 1 — Testes unitários (251)
+# Parte 1 — Testes unitários (581)
 
 | Arquivo | Casos | O que cobre |
 |---|---:|---|
-| [`editIntent.test.ts`](../src/utils/editIntent.test.ts) | 113 | Patches de conteúdo do intent, validação no export, `addTextMessage`/`updateMessageText`, campos por tipo de condição, `updateActionFields`/`updateSetDataItems`, `addCondition` tipada |
+| [`editIntent.test.ts`](../src/utils/editIntent.test.ts) | 131 | Patches de conteúdo do intent, validação no export, `addTextMessage`/`updateMessageText`, campos por tipo de condição, `updateActionFields`/`updateSetDataItems`, `addCondition` tipada, limites de caractere do Menu (Fase A) |
+| [`flowTools.test.ts`](../src/tools/flowTools.test.ts) | 89 | Tools do agente MCP: `create_node`, `set_message`, `set_menu`, `set_transfer`, `set_keywords`, `set_context`, `set_category`, `set_choices`, `connect_to_bot`, `set_action_field`, `connect`, `validate`, `revert` — cenários felizes + guardas de erro |
 | [`intentTemplates.test.ts`](../src/utils/intentTemplates.test.ts) | 65 | Templates canônicos dos 11 tipos, criação de nó/condição, `applyConnect`/`applyEdgeDelete`, round-trip de serialização de grupo |
-| [`flowTools.test.ts`](../src/tools/flowTools.test.ts) | 40 | Tools do agente MCP: `create_node`, `set_message`, `set_menu`, `connect_to_bot`, `set_action_field`, `connect`, `validate`, `revert` — cenários felizes + guardas de erro |
 | [`parseFlow.test.ts`](../src/utils/parseFlow.test.ts) | 49 | JSON → nós + arestas (Modelo B), agrupamento, contexto, caminhos infelizes |
-| [`resolvers.test.ts`](../src/tools/resolvers.test.ts) | 24 | Resolvers nome→ID da API OmniChat: `find_team`/`list_teams`, `find_user`, `find_bot`/`list_bots`, `list_api_integrations`, `list_entities`, `list_intents` — exato/candidatos/ambíguo/401/cache/matching pt-BR |
-| [`nodeCatalog.test.ts`](../src/utils/nodeCatalog.test.ts) | 18 | `NODE_CATALOG`: label/actionType/hasError para os 11 `CreatableKind`; constantes derivadas (`CREATABLE_KINDS`, `CREATABLE_KIND_LABELS`, `ACTION_KINDS_WITH_ERROR`, `actionToNodeKind`) |
-| [`editFlow.phase3b.test.ts`](../src/utils/editFlow.phase3b.test.ts) | 18 | Escolhas (botão↔slot), condições, conectar por condição, excluir intenção |
-| [`pushFlow.test.ts`](../src/utils/pushFlow.test.ts) | 18 | Push ao rascunho: 2 passadas, remap de IDs, guardrails |
+| [`resolvers.test.ts`](../src/tools/resolvers.test.ts) | 31 | Resolvers nome→ID da API OmniChat: `find_team`/`list_teams`, `find_user`, `find_bot`/`list_bots`, `list_api_integrations`, `list_entities`, `list_intents` — exato/candidatos/ambíguo/401/cache/matching pt-BR |
 | [`editFlow.test.ts`](../src/utils/editFlow.test.ts) | 23 | Round-trip de serialização, decodificação de IDs de aresta, reconexão |
+| [`DetailPanel.routing.test.ts`](../src/components/DetailPanel.routing.test.ts) | 19 | Roteamento por opção do nó de Escolha (Fase 2.1): escrita cross-intent condicionada a "editou-desde-a-abertura", anti-clobber (`updatedAt`/wipe/duplicado), `duplicateDestHints`, `splitKeywordInput` |
 | [`variables.test.ts`](../src/utils/variables.test.ts) | 19 | Catálogo de variáveis (picker de `@`), modificadores, `variableDisplay`, tokens de Time |
+| [`editFlow.phase3b.test.ts`](../src/utils/editFlow.phase3b.test.ts) | 18 | Escolhas (botão↔slot), condições, conectar por condição, excluir intenção |
+| [`nodeCatalog.test.ts`](../src/utils/nodeCatalog.test.ts) | 18 | `NODE_CATALOG`: label/actionType/hasError para os 11 `CreatableKind`; constantes derivadas (`CREATABLE_KINDS`, `CREATABLE_KIND_LABELS`, `ACTION_KINDS_WITH_ERROR`, `actionToNodeKind`) |
+| [`pushFlow.test.ts`](../src/utils/pushFlow.test.ts) | 18 | Push ao rascunho: 2 passadas, remap de IDs, guardrails |
 | [`teams.test.ts`](../src/utils/teams.test.ts) | 13 | Variável "Times": `fetchRetailerId`/`fetchTeams`/`fetchStoreTeams` + caminhos infelizes |
-| [`messageTemplates.test.ts`](../src/utils/messageTemplates.test.ts) | 10 | `fetchMessageTemplates`, `templateVarCount`, `templateBody`, `distinctPlaceholders` — modelos de mensagem e variáveis `{{n}}` |
+| [`transfer.test.ts`](../src/utils/transfer.test.ts) | 13 | `resolveTransferType` — os 6 tipos de Transferência (Fase B), acoplamento categoria/sub, caminhos infelizes |
 | [`duplicate.test.ts`](../src/utils/duplicate.test.ts) | 10 | Duplicação fiel (clone de intenção/condição, regen de IDs de botão, nomes únicos) |
+| [`messageTemplates.test.ts`](../src/utils/messageTemplates.test.ts) | 10 | `fetchMessageTemplates`, `templateVarCount`, `templateBody`, `distinctPlaceholders` — modelos de mensagem e variáveis `{{n}}` |
 | [`restoreFlow.test.ts`](../src/utils/restoreFlow.test.ts) | 10 | Restauração de backup (deletar→recriar→sobrescrever), consistência eventual |
-| [`menuPosition.test.ts`](../src/utils/menuPosition.test.ts) | 7 | `computeMenuLeft` — posicionamento do dropdown dentro da viewport |
 | [`collections.test.ts`](../src/utils/collections.test.ts) | 7 | `fetchCollections`/`fetchStoreCollections` — listas de coleções/produtos para o picker de Coleção |
+| [`menuPosition.test.ts`](../src/utils/menuPosition.test.ts) | 7 | `computeMenuLeft` — posicionamento do dropdown dentro da viewport |
 | [`history.test.ts`](../src/utils/history.test.ts) | 6 | Pilha de undo/redo |
+| [`useResizable.test.ts`](../src/hooks/useResizable.test.ts) | 6 | `clampResize` — cresce nas duas direções, piso no mín, teto na viewport, invariante do canto superior-direito fixo |
 | [`chatGate.test.ts`](../src/utils/chatGate.test.ts) | 4 | Gate da caixinha de chat: `hasFlow × hasToken` → 4 casos (ambos OK, falta fluxo, falta token, faltam os dois) |
 | [`endpoints.test.ts`](../src/utils/endpoints.test.ts) | 4 | `fetchBotEndpoints` — lista de APIs do bot para o picker de Chamada de API |
 | [`entities.test.ts`](../src/utils/entities.test.ts) | 4 | `fetchStoreEntities` — lista de entidades/lojas físicas para o picker de Loja física |
 | [`users.test.ts`](../src/utils/users.test.ts) | 4 | `fetchSupervisedUsers` — busca paginada de atendentes com filtro server-side |
 | [`exportImage.test.ts`](../src/utils/exportImage.test.ts) | 3 | Bounds do export PNG/SVG cientes de grupos |
-| **Total** | **469** | |
+| **Total** | **581** | |
 
 ---
 
