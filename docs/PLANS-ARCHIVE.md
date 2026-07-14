@@ -195,9 +195,9 @@ intenções que cria, para agrupar o fluxo na plataforma OmniChat sem explodir e
 > limpos. **Pendente:** `/verify` e2e pela caixinha (critério de aceite abaixo).
 >
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-06-26. Decisões TRAVADAS abaixo —
-> registro do raciocínio; não reabrir sem novo interrogatório. Origem: ao construir o fluxo Uni.co
-> (turnos 2/3/4/7, "mensagem X → aguardar a resposta"), o agente monta `defaultNode` + `waitNode`
-> em vez de um `captureNode`.
+> registro do raciocínio; não reabrir sem novo interrogatório. Origem: ao construir um fluxo de
+> lojista de teste (turnos 2/3/4/7, "mensagem X → aguardar a resposta"), o agente monta
+> `defaultNode` + `waitNode` em vez de um `captureNode`.
 
 **Objetivo (1 frase):** fazer o agente usar **um `captureNode`** sempre que o passo for "perguntar
 algo e esperar a resposta", em vez do par `defaultNode` + `waitNode`.
@@ -226,7 +226,7 @@ algo e esperar a resposta", em vez do par `defaultNode` + `waitNode`.
    **um** dos 11 `CAPTURE_FIELDS` (CNPJ→`cnpj`, e-mail→`mail`, telefone→`fullPhoneNumber`). Composto/ambíguo/sem
    mapeamento → deixa `free`. Nunca erra o tipo (pior caso = pergunta+espera); `set_action_field` **não valida** enum
    hoje, então a disciplina vive na guidance. Vocabulário = os 11 `CAPTURE_FIELDS`, não os 22 do enum da plataforma.
-   *Consequência:* o "Qual seu CNPJ **e nome da loja**?" do Uni.co (composto) vira captura **free** — o humano lê a resposta.
+   *Consequência:* uma pergunta composta como "Qual seu CNPJ **e nome da loja**?" vira captura **free** — o humano lê a resposta.
 4. **Agente NUNCA grava `variable` (decorre do diagnóstico).** Espelha a UI. `variable` = tipo `custom`, fora do escopo.
 5. **Nudge preciso: só `defaultNode` COM mensagem TEXT → `waitNode` (Q5).** É a assinatura de "perguntou e esperou".
    `defaultNode` sem texto → `waitNode` não acusa (raro e ambíguo). Menos falso-positivo.

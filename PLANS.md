@@ -1,22 +1,21 @@
 # PLANS.md — FlowViewer: de visualizador a editor de fluxos OmniChat
 
 <!-- HANDOFF:START -->
-## 🔄 Handoff — 2026-07-06 (Redesign do widget do agente MERGEADO como v0.36.0)
+## 🔄 Handoff — 2026-07-14 (`/verify` e2e das Fases B/A contra API real + fix no fixture; NÃO commitado)
 
-**Foco da próxima sessão:** feature do widget **fechada** — sem trabalho pendente nela. Retomar as **pendências herdadas** (abaixo) ou o próximo item do backlog.
+**Foco da próxima sessão:** **commitar o fix do fixture** (numa branch, não na `main`) e decidir 2 pendências abertas (abaixo). Verificação e2e das features do agente está essencialmente fechada.
 
-**Onde paramos:** PR **#12** (`feat/agent-widget-redesign` → `main`) **mergeado como v0.36.0**. Fecha o Redesign do widget (decisões 1–7): âncora topo-direito + expansão animada (1/2/5), botão-menu `bg-zinc-950` + `StatusWaves` (3/4), janela redimensionável pela alça inferior-esquerda mantendo o canto superior-direito fixo (6/7), e o polimento final desta série — header do painel com a cor do menu, renome **"Flow Agent"**/"Agent" e `StatusWaves` também no header. CHANGELOG bumpado: seção `## [0.36.0]` (widget) + `## [0.35.0]` (set_transfer, que estava solta em [Não lançado] por um lapso do merge do PR #10). `package.json` → 0.36.0. `tsc` limpo; suíte **581 verde**.
+**Onde paramos:** rodei o `/verify` e2e pendente das features já mergeadas, dirigindo as **tools MCP** (o mesmo surface do agente) contra a **API real** da loja de teste. Andy liberou o time **"Andrews Teste 1"** (destravou o `set_transfer`, que exigia time real). Resultados: **Fase B (`set_transfer`) e Fase A (limites de menu) e2e-VERDES** — happy-path (`group/simple "Andrews Teste 1"` → `direct4group` + objectId real) e todos os caminhos-infelizes (time inexistente/ambíguo → erro sem gravar; `set_action_field transferType` → erro-guia; nó não-transfer → erro; item >20 e body >80 → hard-block; nudge de keyword-com-espaço e nudges de menu legado no `validate()`). **Achei e corrigi um defeito**: o fixture canônico `public/masterFlow.json` tinha 2 campos de menu acima dos limites que a Fase A passou a impor (o próprio app rejeitaria o exemplo). Trim mínimo de 2 linhas; confirmado em runtime (nudges sumiram) e regressão verde (`flowTools.test.ts` 89/89).
 
-**Fios soltos / meio-feito:** nenhum na feature do widget. Pendências herdadas (seguem vivas, independentes): `/verify` e2e da Fase 2.1; prompts Fluent School/Grupo Uni.co nunca rodados fim-a-fim; times do fixture Fluent School não existem na loja de teste (só "Financeiro"). `.claude/settings.local.json` segue modificado e **fora** dos commits (intencional, como sempre).
+**Fios soltos / meio-feito:** **`public/masterFlow.json` está não-commitado** (o fix de 2 linhas — descrição do item 3 de `Menu_Testes` 83→63; texto do item 2 de `Menu_Tipos_Condicao` 21→19). Precisa: branch + commit (`fix:` ou `chore:`) + nota no CHANGELOG. **2 decisões abertas** que perguntei e ficaram sem resposta antes do `/handoff`: (a) rodar ou não um spot-check de *happy-path* da Fase 2.1 no Playwright — **recomendei NÃO**: a garantia-raiz da Fase 2.1 (não gravar `updatedAt` fantasma em irmão não-editado) é estado interno, não observável por pixel, e já tem 14 unit tests verdes; (b) atualizar o corpo do PLANS marcando Fase B/A como e2e-verificadas e a Fase 2.1 como "core coberto por unit; UI opcional". `.claude/settings.local.json` e `PLANS.md` seguem modificados fora dos commits (como sempre).
 
-**Armadilhas (referência do widget, se voltar a mexer):**
-- **Resize × transição de expansão:** o wrapper tem `transition: width/height 320ms`. Sem desligá-la durante o arraste, a alça criava **rubber-band**. Solução: `transition: resizing ? 'none' : …`. Preservar esse gate.
-- **Piso do resize = `computePanelSize()`, NÃO 400×600 fixo:** em viewport estreita o default já vem clampado a 92vw/80vh; piso fixo quebraria telas pequenas (piso > teto). Por isso `useResizable` recebe o mín recomputado por render.
-- **`/verify` do widget (Playwright):** rail são botões-ícone por `aria-label`. `getByLabel('Importar',{exact})` → `getByText('Carregar exemplo')` → `getByLabel('Token',{exact})` → preencher `input[type=password]` → `Escape` → clicar o backdrop `div.fixed.inset-0.z-40`. Painel monta sempre (cross-fade); a alça `getByLabel('Redimensionar o agente')` existe no DOM já aberto.
+**Armadilhas desta sessão:** (1) **MCP carrega o FLOW_FILE em memória UMA vez** ([mcp/server.ts:53](mcp/server.ts#L53)) — editar `masterFlow.json` no disco é invisível ao MCP em execução; para observar, use `FlowStore.fromFile` fresco (mesmo par do [:280](mcp/server.ts#L280)) ou reinicie o MCP. (2) **O MCP reserializa com LF; o repo é CRLF** — qualquer sessão que escreve pelo MCP deixa `masterFlow.json` "modificado" mesmo após `revert`; conteúdo é byte-idêntico módulo EOL, restaure com `git checkout --`. (3) `set_menu` **recusa sobrescrever** menu já existente ("já tem menu/destinos definidos"). (4) Token de sessão Parse em `flow-viewer.env` estava **válido** nesta sessão, mas expira rápido — se der 401/403, renovar (sem retry).
 
-**Ponteiros:** PR #12 (merge na `main`). Feature no corpo do PLANS §"Redesign do widget do agente… ✅ IMPLEMENTADA". Arquivos: [useResizable.ts](src/hooks/useResizable.ts) + [useResizable.test.ts](src/hooks/useResizable.test.ts), [useDraggable.ts](src/hooks/useDraggable.ts), [ChatPanel.tsx](src/components/ChatPanel.tsx). CHANGELOG §[0.36.0].
+**Próximo passo imediato:** `git switch -c fix/masterflow-menu-limits`, commitar o fix de `public/masterFlow.json` + CHANGELOG (`Fixed`), abrir PR. **Confirmar antes:** `git diff --numstat public/masterFlow.json` deve ser `2 2` (só as 2 linhas; se vier o arquivo todo, é EOL — refazer só as 2 linhas preservando CRLF).
 
-**Skills sugeridas ao retomar:** `/verify` para as pendências herdadas (Fase 2.1 e2e, prompts Fluent School/Uni.co) quando forem retomadas.
+**Ponteiros:** features verificadas — PLANS §"Fase 2.1" (v0.33.0), §"Fase A" (v0.34.0), §"Fase B" (v0.35.0, PR #10 `16ce33d`). Fix no fixture: [public/masterFlow.json](public/masterFlow.json) itens de `Menu_Testes`/`Menu_Tipos_Condicao`. Resolução de time: `find_team` ao vivo (token em `flow-viewer.env`; ver [memória OMNI_TOKEN]). MCP: [.mcp.json](.mcp.json) `FLOW_FILE=public/masterFlow.json`. Pendências herdadas ainda vivas: prompt de lojista de teste (removido do repo por conter dado de cliente real — ver repo pessoal) nunca rodado fim-a-fim; §"Fase 5" (produto).
+
+**Skills sugeridas:** `/code-review` antes de commitar o fix; `/verify` só se for fazer o spot-check de UI da Fase 2.1 (baixo valor, ver acima); `/interrogar` antes de codar feature nova.
 <!-- HANDOFF:END -->
 
 ## Contexto
@@ -141,22 +140,13 @@ Fases 1–4 respeitarem isso, a Fase 5 segue viável.
 - ~~O refactor do `NODE_CATALOG` (Fase 2) arrisca os 383 testes do DetailPanel.~~ ✅ Resolvido:
   Fase 2 mergeada (merge `e701026`) com a suíte verde como gate em cada um dos 4 commits.
 
-### Prompt de construção do fluxo "Grupo Uni.co (lojista)"
+### Prompt de construção de fluxo de lojista (exercício com PDF de cliente real)
 
-> Prompt multi-turno fechado por interrogatório (skill `interrogar`) em 2026-06-26. Artefato
-> reutilizável: 6 turnos de chat + mapa Mermaid + critério em
-> [docs/PROMPT-fluxo-uni-co.md](docs/PROMPT-fluxo-uni-co.md). Origem: PDF "Reestruturação
-> Omnichat Lojista".
-
-**Objetivo:** construir pela caixinha o fluxo do PDF **o mais fiel possível**, dentro das tools.
-Topologia: tronco linear (saudação→marca→captura CNPJ→categoria→assunto de 7 opções) + os 7
-direcionamentos, com **bifurcação local (menu)** só nos ramos 2 (devolução, por marca×categoria)
-e 6 (partes/peças, por marca) — porque **não há condição por variável nas tools**. Dinâmicos →
-variáveis reais (`@customer.name`, `@chat.customerSupportRequestId`). Serve também de `/verify`
-do `set_message`. **Gap de tool descoberto:** intenção dentro/fora-de-horário com "Senão" exige
-tools de condição inexistentes (add_condition + critério `@bot.isOpenNow` + flag Senão) — fora-de-
-horário virou 2 nós soltos como aproximação; candidato a feature futura. Pendente: rodar pela
-caixinha e avaliar contra o critério do doc.
+> Prompt multi-turno fechado por interrogatório (skill `interrogar`) em 2026-06-26. Removido do
+> repo (continha dado de cliente real) — artefato completo preservado só no repo pessoal.
+> **Gap de tool descoberto**, que segue válido independente do exercício: intenção dentro/fora-de-
+> horário com "Senão" exige tools de condição inexistentes (add_condition + critério
+> `@bot.isOpenNow` + flag Senão) — candidato a feature futura.
 
 ### Correções pós-code-review da Fase 2 (Fase 2.1) ✅ IMPLEMENTADA (v0.33.0, branch `feat/menu-keywords-routing`)
 
@@ -465,6 +455,39 @@ independe do tema — [Sidebar.tsx:77](src/components/Sidebar.tsx#L77)); painel 
 - Avaliar `elkjs` se a estética do layout automático incomodar: é port-aware
   (considera a posição dos handles, melhora fluxos com muitos botões/saídas).
   Restrito a `parseFlow.ts:dagreLayout`.
+- **Fonte única de config de API (dedup — "metade 1") — ✅ IMPLEMENTADA e mergeada (PR #13, merge `d4cb026`).**
+  Mata o risco de **drift de ambiente**: `API` + `APP_ID` + headers de sessão estão
+  DUPLICADOS entre o caminho de escrita ([pushFlow.ts:27-28,183-192](src/utils/pushFlow.ts#L27))
+  e o hub de leitura/resolução ([teams.ts:19-59](src/utils/teams.ts#L19)) — o
+  `sessionHeaders` do teams é idêntico ao `buildHeaders` do push. Migrar um endpoint
+  e esquecer o outro faz o app **ler de um ambiente e gravar em outro, em silêncio**
+  (pior caso: push no bot errado). Contexto em [docs/GUIA-DE-MIGRACAO.md](docs/GUIA-DE-MIGRACAO.md) §3.
+  - **Escopo travado:** só `src/`. Os scripts `.mjs` são Node CLI standalone
+    (duplicação SEPARADA) → **FORA** deste escopo; revisitar na "metade 2" ou
+    quando o futuro do CLI/`backend` for decidido.
+  - **NÃO** introduzir `import.meta.env`/`process.env` aqui — é a "metade 2"
+    (parametrização por ambiente), deixada pro time da plataforma. Config são
+    **constantes literais**, senão quebra o `mcp:typecheck`/runtime do MCP (Node,
+    sem Vite). Valores idênticos aos atuais (dedup, **não** bump).
+  - **Passos:**
+    1. Criar `src/config.ts` exportando `API`, `PARSE`, `FILES_API`, `APP_ID`,
+       `PLATFORM_VERSION` e `sessionHeaders(token)`.
+    2. `teams.ts`: trocar as defs locais por `import { … } from '../config'` +
+       re-export (mantém intactos os imports de `endpoints`/`entities`/`collections`/
+       `messageTemplates`/`users`); remover o `sessionHeaders` local.
+    3. `pushFlow.ts`: remover `API`/`APP_ID`/`buildHeaders` locais; importar `API`
+       e `sessionHeaders` de `../config`; trocar os usos de `buildHeaders` por
+       `sessionHeaders` (idênticos). `FetchLike`/`FetchResponse` **ficam** no
+       `pushFlow.ts`.
+    4. `uploadMedia.ts`: importar `FILES_API`/`PLATFORM_VERSION` de `../config`
+       (remover as consts locais); headers inline podem ficar (opcional: extrair
+       `filesHeaders`).
+  - **Armadilha nº1 — import circular:** `config.ts` NÃO importa de `pushFlow`/`teams`
+    (por isso `FetchLike` fica no `pushFlow`). **nº2:** o caminho Node (resolvers →
+    teams → config) tem que passar `npm run mcp:typecheck` — nada de API só-de-browser.
+  - **Teste (refactor sem mudança de comportamento):** baseline `npm test` verde
+    (581) + `tsc` limpo + `npm run mcp:typecheck` limpo. A suíte de `pushFlow`/
+    `teams`/`resolvers` já cobre — nenhum teste novo necessário.
 
 ## Riscos e decisões registradas
 
