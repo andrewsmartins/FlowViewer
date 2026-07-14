@@ -4,6 +4,340 @@
 > Não entra no contexto das retomadas de sessão — consulte sob demanda. O índice de uma linha por fase fica no fim do `PLANS.md`.
 > Ordem: features standalone recentes primeiro; a seção "## Fases" segue a ordem cronológica original (Fase 1 → 16) por legibilidade histórica.
 
+### Fonte única de configuração de API (dedup — "metade 1") ✅ IMPLEMENTADA e mergeada (PR #13, merge `d4cb026`)
+
+- **Fonte única de config de API (dedup — "metade 1") — ✅ IMPLEMENTADA e mergeada (PR #13, merge `d4cb026`).**
+  Mata o risco de **drift de ambiente**: `API` + `APP_ID` + headers de sessão estão
+  DUPLICADOS entre o caminho de escrita ([pushFlow.ts:27-28,183-192](src/utils/pushFlow.ts#L27))
+  e o hub de leitura/resolução ([teams.ts:19-59](src/utils/teams.ts#L19)) — o
+  `sessionHeaders` do teams é idêntico ao `buildHeaders` do push. Migrar um endpoint
+  e esquecer o outro faz o app **ler de um ambiente e gravar em outro, em silêncio**
+  (pior caso: push no bot errado). Contexto em [docs/GUIA-DE-MIGRACAO.md](docs/GUIA-DE-MIGRACAO.md) §3.
+  - **Escopo travado:** só `src/`. Os scripts `.mjs` são Node CLI standalone
+    (duplicação SEPARADA) → **FORA** deste escopo; revisitar na "metade 2" ou
+    quando o futuro do CLI/`backend` for decidido.
+  - **NÃO** introduzir `import.meta.env`/`process.env` aqui — é a "metade 2"
+    (parametrização por ambiente), deixada pro time da plataforma. Config são
+    **constantes literais**, senão quebra o `mcp:typecheck`/runtime do MCP (Node,
+    sem Vite). Valores idênticos aos atuais (dedup, **não** bump).
+  - **Passos:**
+    1. Criar `src/config.ts` exportando `API`, `PARSE`, `FILES_API`, `APP_ID`,
+       `PLATFORM_VERSION` e `sessionHeaders(token)`.
+    2. `teams.ts`: trocar as defs locais por `import { … } from '../config'` +
+       re-export (mantém intactos os imports de `endpoints`/`entities`/`collections`/
+       `messageTemplates`/`users`); remover o `sessionHeaders` local.
+    3. `pushFlow.ts`: remover `API`/`APP_ID`/`buildHeaders` locais; importar `API`
+       e `sessionHeaders` de `../config`; trocar os usos de `buildHeaders` por
+       `sessionHeaders` (idênticos). `FetchLike`/`FetchResponse` **ficam** no
+       `pushFlow.ts`.
+    4. `uploadMedia.ts`: importar `FILES_API`/`PLATFORM_VERSION` de `../config`
+       (remover as consts locais); headers inline podem ficar (opcional: extrair
+       `filesHeaders`).
+  - **Armadilha nº1 — import circular:** `config.ts` NÃO importa de `pushFlow`/`teams`
+    (por isso `FetchLike` fica no `pushFlow`). **nº2:** o caminho Node (resolvers →
+    teams → config) tem que passar `npm run mcp:typecheck` — nada de API só-de-browser.
+  - **Teste (refactor sem mudança de comportamento):** baseline `npm test` verde
+    (581) + `tsc` limpo + `npm run mcp:typecheck` limpo. A suíte de `pushFlow`/
+    `teams`/`resolvers` já cobre — nenhum teste novo necessário.
+
+### Redesign do widget do agente: botão-menu + expansão animada + janela redimensionável ✅ IMPLEMENTADA e mergeada (v0.36.0, PR #12)
+
+> **Resultado (2026-07-06):** feature completa (decisões 1–7). As decisões 1/2/5 (âncora topo-direito
+> + expansão animada por máquina de estados) e 3/4 (botão-menu + ondas sonoras, commit `3113e71`)
+> já estavam; esta sessão fechou a **decisão 6** (resize) + 7 (nada persiste). Novo hook
+> [useResizable.ts](src/hooks/useResizable.ts) (alça inferior-esquerda, canto sup-direito fixo, clamp
+> [mín=default, viewport]) + `clampResize` puro; [useDraggable.ts](src/hooks/useDraggable.ts) expõe
+> `pos`/`setPos` p/ recuar o `left` no modo arrastado. **+6 testes** ([useResizable.test.ts](src/hooks/useResizable.test.ts)),
+> suíte cheia **581 verde**, `tsc` limpo. `/verify` (Playwright, `npm run dev`) confirmou os dois modos:
+> ancorado-por-CSS e arrastado-inline mantêm o canto superior-direito fixo, crescendo p/ esquerda+baixo
+> e clampando na viewport. Versão a atribuir no merge (CHANGELOG em [Não lançado]).
+>
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-07-06. Decisões TRAVADAS abaixo —
+> registro do raciocínio; não reabrir sem novo interrogatório. Escopo: só o widget flutuante
+> [ChatPanel.tsx](src/components/ChatPanel.tsx) (dev-only, `import.meta.env.DEV`) + [useDraggable.ts](src/hooks/useDraggable.ts).
+
+**Objetivo (1 frase):** o botão minimizado do agente ganha a **cara da ferramenta** (retangular
+arredondado, cor do menu, ícone animado no lugar do ponto de status), abre com **expansão animada
+da direita p/ esquerda** e a janela passa a ser **redimensionável** (mín = tamanho atual, cresce livre).
+
+**Estado atual (achado do código):** o `ChatPanel` é um wrapper único (`fixed z-30`) com ternário
+`!open ? pill : painel`. A pill é `rounded-full bg-zinc-800` (não segue o tema), ancorada
+`bottom-4 right-4`, arrastável via `useDraggable` (posição só em memória, sem localStorage). A
+abertura é **troca instantânea** (sem transição). O "círculo verde" é na verdade o `STATUS_DOT` de
+**conexão WebSocket** (verde=open · âmbar=connecting · vermelho=closed), renderizado na pill (`h-2 w-2`)
+e no header (`h-2.5 w-2.5`); quando bloqueado pelo gate, um cadeado substitui o ponto. Janela **fixa**
+`w-[400px] max-w-[92vw] h-[600px] max-h-[80vh]`, sem resize. Rail/menu = `bg-zinc-950` (sempre escuro,
+independe do tema — [Sidebar.tsx:77](src/components/Sidebar.tsx#L77)); painel aberto segue o tema (slate).
+
+**Decisões (com o porquê):**
+1. **Arraste MANTIDO, mas inicia no topo-direito (Q1).** Troca a âncora default `bottom-4 right-4` →
+   `top-4 right-4` (painel passa a crescer p/ baixo). O `useDraggable` continua; posição segue **só em
+   memória** (decisão registrada intacta). *Por quê manter:* o usuário quis preservar o reposicionamento.
+2. **Expansão SEMPRE p/ esquerda + clamp (Q2).** `transform-origin: top right`; a janela cresce p/
+   esquerda e p/ baixo. Se o botão foi arrastado p/ perto da borda esquerda e não couber, faz **clamp**
+   de volta p/ dentro da viewport ao fim da animação. *Por quê:* direção fixa é previsível; clamp cobre o
+   caminho-infeliz sem lógica condicional de direção.
+3. **Formato `rounded-2xl` + cor `bg-zinc-950` SEMPRE escura (Q3).** A pill vira retângulo arredondado
+   igual ao painel/sidebar (`rounded-2xl`), cor do menu (`zinc-950`, hover `zinc-800`), independente do
+   tema — como o rail. Mantém o acento `border-amber-400` quando `running`. O **painel aberto NÃO muda**
+   (segue theme-aware slate) — o pedido de cor foi só sobre o minimizado. Mantém texto "Agente" + ícone de balão.
+4. **Ícone único sempre visível, cor = estado de conexão (Q4).** Remove o ponto; entra um **ícone de ondas
+   sonoras** (3 barrinhas verticais, keyframes CSS de `scaleY` em loop) no lugar. A **cor** reflete o estado
+   (verde/âmbar/vermelho, reusando o mapa `STATUS_DOT`); quando `running`, anima **mais rápido**; parado,
+   "respira" devagar. *Por quê não substituir tudo:* preserva o diagnóstico de conexão (útil no dev — chat
+   depende de `npm run ws:dev`). Quando **bloqueado** pelo gate, mantém o **cadeado** (ondas só quando desbloqueado).
+5. **Animação = transição de `width`+`height`, não scale (Q5).** Máquina de estados `closed → opening →
+   open → closing`. O container transiciona largura/altura entre o footprint da pill e o tamanho do painel
+   em **~320ms `ease-out`**, `overflow-hidden`, conteúdo em **cross-fade**. *Por quê width/height e não
+   `transform: scale`:* scale distorce/espreme o texto; o usuário pediu que "expanda de verdade", não um
+   pop. Respeitar **`prefers-reduced-motion`** (encurtar/desligar a expansão e as ondas).
+6. **Resize: alça no canto INFERIOR-ESQUERDO, mín 400×600, máx = viewport (Q6).** Ancorado no topo-direito,
+   arrastar a alça p/ esquerda/baixo aumenta (canto superior-direito fica fixo). Mín = tamanho atual
+   (400×600); cresce livre até as bordas da viewport (clamp). Tamanho **só em memória** — nada persiste (Q7).
+7. **Nada persiste (Q7).** Tamanho e posição vivem só na sessão; recarregar volta ao default (topo-direito,
+   400×600). *Por quê (após o usuário levantar "produto real"):* o caminho-produto (Fase 5) guardará
+   preferências no **servidor/conta**, não no browser; localStorage agora seria stopgap descartável. Mantém
+   a decisão registrada "sem localStorage" e o requisito "inicia no topo-direito" sem conflito.
+
+**Riscos/caminho-infeliz:**
+- **Interação drag × resize (principal risco de impl):** o `useDraggable` posiciona por `top/left` quando
+  arrastado, mas o resize exige **âncora fixa no canto superior-direito** (aumentar largura ⇒ diminuir `left`).
+  A matemática do resize precisa manter esse canto fixo tanto no modo ancorado-por-CSS quanto no arrastado-inline.
+  Fatiar num hook próprio (`useResizable`) ou estender o `useDraggable`, sem quebrar o clamp já existente.
+- **Clamp na expansão:** se arrastado p/ a esquerda, medir se 400px cabem; senão empurrar p/ dentro no fim.
+- **Estados de gate durante animação:** abrir enquanto `blocked` não deve iniciar a expansão (hoje abre o
+  popover); a máquina de estados só entra em `opening` quando desbloqueado.
+
+**Como será testado:**
+- **Manual/visual no `npm run dev`** (widget é dev-only e a feature é majoritariamente animação/interação):
+  botão com cara de menu; expansão devagar da direita p/ esquerda; ondas mudando de cor por estado (derrubar
+  o `ws:dev` → vermelho; subir → verde); resize a partir do canto inf-esquerdo respeitando mín 400×600 e a
+  borda da viewport; arrastar p/ borda esquerda e abrir → clamp; recarregar → volta ao topo-direito 400×600.
+- **Unit (lógica pura):** função de **clamp de tamanho** (mín/máx/viewport) e o mapa cor-por-estado das ondas.
+- **`prefers-reduced-motion`** com a flag ligada no DevTools → sem animação de expansão nem de ondas.
+
+### Agente respeita as regras: limites do Menu + Transferência de verdade (v0.34.0 + v0.35.0 — ✅ IMPLEMENTADA e mergeada)
+
+> Plano fechado por interrogatório (skill `interrogar`) em 2026-07-03. Decisões TRAVADAS abaixo —
+> registro do raciocínio; não reabrir sem novo interrogatório. Origem: rodando o prompt "Fluent
+> School" (escola de idiomas, 2 fases — guardado como fixture do `/verify` e2e), o agente (1) criou
+> itens de menu acima do limite de caracteres sem ninguém acusar e (2) preencheu o nó de Transferência
+> com `transferType="team"` (valor inventado, fora do enum) em vez de resolver o time real.
+>
+> **Duas fases independentes (baixo acoplamento — não se cruzam).** Cada uma shippável sozinha (uma versão).
+
+**Objetivo (1 frase):** o agente passa a **respeitar os limites de caractere do Menu** (WhatsApp) e a
+**preencher o nó de Transferência de verdade** (tipo válido dos 6 + destino resolvido por ID), com o
+`validate()` acusando as recidivas.
+
+#### Fase A — Limites de caractere do Menu (nó de Escolha) ✅ IMPLEMENTADA (v0.34.0)
+
+> **Resultado (2026-07-03):** entregue. Fonte única `MENU_LIMITS` em [src/utils/menuLimits.ts](src/utils/menuLimits.ts)
+> + `findMenuLimitViolations`; hard-block no `buildButtonList`; nudge `findMenuLimitNudges` no `validate()`; guidance no
+> `choiceNode` do `nodeCatalog`; `BL_LIMITS` do DetailPanel virou alias da fonte única. **+11 testes**, suíte cheia
+> **539 verde**, `tsc`+`mcp:typecheck` limpos.
+>
+> **Correção do plano (drift pego no /handon):** os valores NÃO são o WhatsApp cru "por tipo" que o interrogatório
+> travou (body 1024 · título 24 · item 20/24). São os do **builder real da OmniChat** já codificados no `BL_LIMITS`
+> da UI e confirmados pela [memória de limites](../memory): **body 80 · título 20 · item 20 FIXO** (BUTTON e LIST) ·
+> header 60 · footer 60 · desc 72. Motivo: "o real vence o documento" — o que a plataforma de fato rejeita é o builder,
+> não o WhatsApp cru. Decidido por Andy no início desta sessão. **Consequência para o /verify:** os itens do fixture
+> Fluent School ("Falar com um consultor"=22, "Quero ver outras opções"=23) agora são **INVÁLIDOS** (>20) — ao rodar
+> o e2e, ou encurtar esses itens no prompt, ou esperar o hard-block disparar. O `maxLength` da UI (decisão #4 do plano)
+> **já existia** desde a Fase 10 (`CharField`); só faltava a extração p/ fonte única + o caminho do agente.
+
+**Diagnóstico (achado do código):** `buildButtonList` ([editIntent.ts:429](src/utils/editIntent.ts#L429)),
+compartilhado por `set_menu` (agente) e `replaceButtonListMessage` (UI), **valida estrutura** (≥1 item,
+≤10 itens, item com texto, body não-vazio — [:434-437](src/utils/editIntent.ts#L434-L437)) mas **não
+valida NENHUM limite de caractere**. Nenhuma constante de limite existe no caminho do menu.
+
+**Decisões (com o porquê):**
+1. **Contrato = padrão WhatsApp POR TIPO (Q2).** Item de menu = **20 (BUTTON) / 24 (linha de LIST)**;
+   demais campos: **header 60 · body 1024 · footer 60 · título de seção 24 · descrição de linha 72**.
+   O limite do item depende do `msgType`, então a checagem roda **depois** que `buildButtonList` decide
+   BUTTON vs LIST (natural — é lá que o tipo é calculado). *Consequência:* os itens do teste ("Falar com
+   um consultor"=22, "Quero ver outras opções"=23) num menu de 4 opções (LIST) são **válidos** (≤24) —
+   a regra pega o real overflow (BUTTON >20 ou qualquer campo acima da tabela).
+2. **Imposição = hard-block no `buildButtonList` + nudge no `validate()` (Q3).** Recusa criar/salvar campo
+   acima do limite **dentro** do `buildButtonList` — um ponto só cobre agente E UI, **coerente com o
+   `>10 itens` já existente** (mesma família "o WhatsApp rejeita"). O nudge no `validate()` pega menus
+   **legados/importados** (criados antes da regra). **Por quê hard e não só nudge:** limite de caractere
+   é restrição estrutural (a plataforma rejeita), não política de design — igual à contagem de itens.
+3. **Escopo = TODOS os campos, tabela-constante única (Q4).** Uma constante com a tabela WhatsApp, fonte
+   única, valida header/body/footer/título/item/descrição. Barato (o `buildButtonList` já monta cada um)
+   e evita que a próxima reclamação seja outro campo estourando.
+4. **UI = `maxLength` nos inputs do DetailPanel (Q4).** Como o `buildButtonList` passa a recusar no
+   "Aplicar", o `maxLength` evita a surpresa de erro-ao-salvar (o humano não digita além do limite).
+   Toca o arquivo mais arriscado (~3500 linhas) — fatiar com cuidado.
+5. **Guidance no `nodeCatalog`/instructions.** O agente já manda dentro do limite (metade do pedido "o
+   Agente precisa respeitar"); o hard-block é a rede quando a guidance falha.
+
+**Como será testado (Fase A):**
+- **Unit** ([editIntent.test.ts](src/utils/editIntent.test.ts)): item 21 chars em menu que vira BUTTON →
+  **recusa**; item 24 em menu LIST → **passa**; item 25 em LIST → **recusa**; header 61 → **recusa**;
+  cada campo no seu limite exato. Nudge do `validate()` ([flowTools.test.ts](src/tools/flowTools.test.ts)):
+  menu legado com item acima do limite → **dispara**; dentro → **não**; não-bloqueante.
+- **`mcp:typecheck`** limpo.
+- **`/verify` e2e (fixture Fluent School):** rodar o prompt; assert que nenhum item/campo excede a tabela
+  (e, se algum menu for BUTTON com item >20, que a tool recusou).
+
+#### Fase B — `set_transfer`: preencher a Transferência de verdade ✅ IMPLEMENTADA (v0.35.0, PR #10, merge `16ce33d`)
+
+> **Resultado (2026-07-06):** entregue e mergeada. Tool `set_transfer` + fonte única `transfer.ts` +
+> `transferType` removido de `ACTION_FIELDS` (erro-guia) + nudge `findTransferNudges`. `/verify` e2e ao
+> vivo (tools MCP, `OMNI_TOKEN` contra a loja de teste) confirmou: `direct4group` com `value`=objectId real,
+> zero `transferType="team"`, erro-duro em time inexistente/ambíguo. +34 testes, suíte 575 verde.
+
+**Diagnóstico (achado do código):** `transferType` está em `ACTION_FIELDS` ([flowTools.ts:33](src/tools/flowTools.ts#L33))
+e o `set_action_field` grava **texto livre, sem validar o enum** → o agente chutou `"team"`. O enum real
+(6 valores) e o mapa categoria→tipo vivem **duplicados** (`nodeCatalog` [nodeCatalog.ts:93](src/utils/nodeCatalog.ts#L93)
+× `DetailPanel` `TRANSFER_MAP`/`TRANSFER_SUBS` [DetailPanel.tsx:125-144](src/components/DetailPanel.tsx#L125-L144)) —
+a duplicação sem fonte única é o que deixou o enum solto. O nó exige **dois campos acoplados**:
+`transferType` (enum de 6) + `value` (objectId resolvido, ou variável nos tipos `search`).
+
+**Decisões (com o porquê):**
+1. **Tool dedicada `set_transfer` (Q5), na filosofia do `set_menu`/`set_category`.** Campo estruturado
+   (enum fechado + valor que exige resolver) = tool semântica, não `set_action_field` cru. É como
+   category/keywords/context já são tratados. **Guidance-só foi recusado** — a orquestração (resolver
+   time, usar objectId, escolher o tipo) é exatamente o que o agente já botou a perder.
+2. **Cobertura COMPLETA dos 6 tipos, espelhando a UI (Q6):**
+   `set_transfer(node, category, sub?, target?)` — `category: userPrevious | branch | user | group`;
+   `sub` (exigido só p/ user/group): `user → name|email`, `group → simple|advanced`; `target`: nos tipos
+   **direct** = nome→resolve p/ objectId (`find_team`/`find_user`), nos **search** = a variável verbatim,
+   em userPrevious/branch = omitido. Mapeia p/ os 6 `transferType`.
+3. **Fonte única dos mapas de transferência (Q6).** Extrair `TRANSFER_MAP`/`TRANSFER_SUBS`/categorias p/
+   um módulo compartilhado (ex.: `src/utils/transfer.ts`), importado por `DetailPanel`, `set_transfer`,
+   `nodeCatalog` e `validate()`. Mata a 3ª cópia — a duplicação foi a raiz do enum solto (CLAUDE.md: não duplicar).
+4. **Remover `transferType` de `ACTION_FIELDS` (Q7).** `set_transfer` vira o **único** caminho → `"team"`
+   impossível por construção. Espelha category/keywords/context (não estão no `set_action_field`).
+   `set_action_field` responde **erro-guia** ("use set_transfer") se `transferType` for tentado. `value`
+   fica em `ACTION_FIELDS` (genérico); quem escreve `value` do transfer é o `set_transfer`.
+5. **Resolução INTERNA na tool (Q5).** `set_transfer` chama `find_team`/`find_user` internamente
+   (name→objectId) — "resolver por nome → gravar por ID", o ID sempre vem de resposta real da API.
+6. **Caminho infeliz = ERRO DURO (Q8).** Não-encontrado / ambíguo (2 times mesmo nome) / sem-token →
+   **falha sem gravar nada** (nunca inventar ID, nunca nó meia-boca). O agente recebe o erro e resolve
+   (garante o time / pergunta ao humano). O `validate()` ainda **nudga** transfer sem `transferType` ou
+   sem `value` quando o tipo exige (padrão "opção sem conexão" da v0.19.0).
+
+**Como será testado (Fase B):**
+- **Unit** ([flowTools.test.ts](src/tools/flowTools.test.ts), com `find_team`/`find_user` mockados):
+  `set_transfer('group','simple', 'Consultores')` → `transferType=direct4group` + `value=<objectId>` ·
+  `userPrevious`/`branch` → tipo certo, value vazio · `search` → grava variável verbatim (sem resolver) ·
+  time não-encontrado → **erro** (nada gravado) · nome ambíguo → **erro listando matches** · sem token →
+  **erro** · nó não-transfer → **erro**. `set_action_field('transferType', …)` → **erro-guia** apontando `set_transfer`.
+  Nudge do `validate()`: transfer sem tipo/sem value exigido → **dispara**; completo → **não**; não-bloqueante.
+- **`mcp:typecheck`** limpo (registro da tool + zod; enum da fonte única).
+- **`/verify` e2e (fixture Fluent School):** rodar o prompt com os times reais existindo na loja de teste;
+  assert que os 3 transfers ("Consultores"/"Financeiro"/"Suporte ao Aluno") ficaram `direct4group` com
+  `value` = objectId real, **zero** `transferType="team"`.
+
+**Riscos/pendências (ambas as fases):**
+- Hard-block no `buildButtonList` muda o comportamento da UI (hoje salva em silêncio) — o `maxLength`
+  mitiga, mas revisar os testes de componente do menu que porventura gravem valores longos.
+- Remover `transferType` de `ACTION_FIELDS` toca testes existentes do `set_action_field` — atualizar.
+- Extração dos mapas de transferência toca o `DetailPanel` (~3500 linhas) — arquivo mais arriscado;
+  fatiar a extração sem mudar comportamento (só mover + importar), com a suíte verde como gate.
+- Erro-duro no `set_transfer` (Q8) trava a construção se o time não existir na loja — aceito por decisão;
+  o fluxo Fluent School assume os times já criados no ambiente de teste.
+
+### Correções pós-code-review da Fase 2 (Fase 2.1) ✅ IMPLEMENTADA (v0.33.0, branch `feat/menu-keywords-routing`)
+
+> **Resultado (2026-06-30):** entregue. Gatilho de escrita de `applyChoiceRouting` trocado para
+> "editou-desde-a-abertura" (snapshot `initialKeyword`/`initialContextOn` DENTRO do `ChoiceMeta`,
+> congelado em `choiceMetaOf`) — dissolve #2/#3/#5/#9. `KeywordTags.commit` splita por espaço
+> (`splitKeywordInput`, exportado p/ teste); nudge "keyword com espaço" no `findKeywordNudges`;
+> hint inline de destino duplicado (`duplicateDestHints`); `console.warn` em ref órfã (#6);
+> `touch()` no `setCategory` (#7); comentário no `beginMutation`/self-ref do `setContext` (#8).
+> **+14 testes** ([DetailPanel.routing.test.ts](src/components/DetailPanel.routing.test.ts) reescrito p/ a nova forma +
+> `duplicateDestHints`/`splitKeywordInput`; [flowTools.test.ts](src/tools/flowTools.test.ts): nudge multi-palavra +
+> `set_category`→`updatedAt`). Suíte cheia **528 verde**, `tsc`+`mcp:typecheck` limpos. **Pendente:** `/verify` e2e.
+>
+> `/code-review` (high) da Fase 2 + interrogatório (skill `interrogar`) em 2026-06-30. O review achou
+> 10 itens; estes são os 3 de correctness de maior risco em `applyChoiceRouting` (escrita cross-intent),
+> nenhum coberto pelos testes atuais (que só conferem valor final, nunca `updatedAt` nem colisão/wipe).
+> Decisões TRAVADAS abaixo. A correção de raiz dissolve #2/#3/#4/#5 e o cleanup #9 de uma vez.
+
+**Bugs (no `applyChoiceRouting`, [DetailPanel.tsx:460](src/components/DetailPanel.tsx#L460)):**
+- **#1** — dois itens de menu ao MESMO alvo → clobber silencioso de keyword (last-write-wins); `IntentSelect`
+  não impede destino repetido (só filtra o próprio nó).
+- **#2** — `context ON` regrava incondicional ([:480](src/components/DetailPanel.tsx#L480)), bumpando
+  `updatedAt`/histórico de irmão NÃO editado — assimetria com o ramo de keyword (que tem guarda).
+- **#3** — meta vazia pode APAGAR keyword viva do alvo (`desired=[]` vs `current=[kw]` → `setIntentKeywords(target, [])`).
+  Caminho de **desync** é seguro (meta `undefined` → `if (!meta) return`, pula); o real é **stale-prop**
+  (painel abre com snapshot de `intents`, prop muda sem rebuild do draft, alvo já tem keyword no apply) — estreito.
+
+**Decisão-raiz: gatilho de escrita = "editou-desde-a-abertura" (não "difere do alvo vivo").** Guardar a
+`choiceMeta` pré-preenchida na abertura (`choiceMetaInitial`, congelada no `buildDraft` e re-congelada no rebuild
+pós-apply) e gravar SÓ os campos cuja meta ATUAL difere da INICIAL — comparando string-crua × string-crua, fora
+da normalização. **Por quê:** o gatilho atual confunde "o humano editou?" com "está diferente do estado vivo?";
+contra um alvo cujo estado vivo divergiu do que o painel mostrou, isso gera escrita fantasma. O snapshot estável
+é a intenção real do usuário. **Consequências:** (a) **#2** some — checkbox não tocado não grava; (b) **#3** some
+— meta defasada = não-editada → nunca dispara wipe; (c) **#5** vira não-problema — o `commit` do `KeywordTags`
+([:638](src/components/DetailPanel.tsx#L638)) já deduplica, então `'vendas, vendas'` é inalcançável pela UI; (d)
+**#9** (higiene duplicada) dissolve — `norm` sai do `applyChoiceRouting`, só `setIntentKeywords` higieniza no write;
+(e) "Aplicar" sem tocar nas Escolhas vira no-op real sobre irmãos (alinha com a decisão 3); (f) limpar keyword de
+propósito (initial=`['x']`, agora=`''`) continua gravando `[]`. O snapshot `initial` mora DENTRO do `choiceMeta`
+(ver decisão #10) + 1 param em `applyChoiceRouting`.
+
+**Decisão #1: hint inline não-bloqueante quando 2+ opções vão ao mesmo destino.** Aviso leve no campo
+("mesmo destino da Opção N — a palavra-chave é compartilhada"). **Por quê:** dois botões → uma intenção é
+topologia legítima (keyword mora no alvo, match "contém"); bloquear no seletor mata o caso válido. Pós-gatilho-novo
+o clobber só sobra se o humano editar AMBAS as opções do mesmo alvo a valores divergentes (raro) — o hint tira o
+"silencioso". `validate()` NÃO pega (pós-apply existe só um conjunto de keywords no alvo) → tem que ser hint de UI.
+Opções dentro do MESMO menu compartilham o `choiceNode.id` → sem conflito de `context` entre elas; o conflito de
+context real é só cross-menu, já coberto pela guarda `else if (target.context === choiceNode.id)`.
+
+**Decisão #4/#5 — keyword multi-palavra é INVÁLIDA na plataforma (só casa palavra individual; território N2 do Andy):**
+o #4 não era sobre espaçamento — `"plano premium"` está errado com 1 ou 2 espaços; o certo é `"plano"` + `"premium"`
+separados. Por isso (a) a comparação do gatilho é **string-crua × inicial** (a mais simples; o caso "consertar espaço
+duplo" é irrelevante, pois multi-palavra é sempre inválido); (b) **#5 é não-problema** (dedup no `commit` do `KeywordTags`).
+**Tratamento = prevenir na UI + sinalizar residual:**
+- **Prevenir (type-time):** `KeywordTags.commit` ([:638](src/components/DetailPanel.tsx#L638)) passa a tratar ESPAÇO
+  como delimitador (split por `/[\s,]+/`, + espaço nas teclas de commit) → digitar `"plano premium"` vira dois chips
+  na hora (feedback visível, não é surpresa silenciosa). Torna o estado inválido impossível de CRIAR pela UI. Afeta
+  também o campo de keyword da meta — correto, multi-palavra é inválido em qualquer keyword. O **display** (`tags`)
+  segue split só por vírgula, exibindo fielmente um keyword legado `"plano premium"` como UM chip (não esconde o estado ruim).
+- **Sinalizar (residual import/agente):** `findKeywordNudges` no `validate()` ([flowTools.ts](src/tools/flowTools.ts))
+  ganha aviso não-bloqueante quando uma keyword contém espaço (`kw.includes(' ')`) — pega o que entrou por import de JSON
+  ou pelo agente (que não passa pela UI). + hint inline amber na opção da Escolha quando o chip exibido tem espaço
+  (espelha o hint "sem palavra-chave" já existente).
+- **`setIntentKeywords` NÃO splita** (mantém só trim/colapsa): split silencioso no setter puro seria surpresa na camada
+  de dados (a decisão 3 do `set_category` rejeitou auto-canonicalizar). A prevenção é da UI; o nudge é a rede cross-path.
+
+**Decisões dos achados menores (#6/#7/#8/#10):**
+- **#10 — estrutura do `choiceMeta` (não colapsar agora).** `ChoiceMeta` vira `{ keyword, contextOn, initialKeyword,
+  initialContextOn }` — o snapshot `initial` mora DENTRO do objeto, sem criar um 3º array paralelo. `initial*` são
+  congelados no `buildDraft` (abertura/rebuild) e re-baseados no `setChoiceDest` (trocar destino = novo ponto-zero);
+  `setChoiceKeyword`/`toggleChoiceContext` NUNCA os tocam. Mantém as 2 estruturas de hoje (`choices` + `choiceMeta`),
+  mesmo alinhamento manual já estável — **não conserta o #10, mas não o piora** (evita o 3º array). O **colapso total**
+  (array único de `{ destId, keyword, contextOn, initial* }`, derivando `choices` no apply) fica como **cleanup futuro
+  opcional** — desproporcional ao risco no DetailPanel (~3500 linhas) agora.
+- **#6 — `return` silencioso (`if (!target || !meta)`).** `console.warn` no caso `!target` com `destId` (ref órfã: alvo
+  inexistente em `intents` → "roteamento ignorado") — atende o CLAUDE.md ("logs sempre que couber") sem ruído de UI; o
+  sinal ao usuário já vem do "opção sem conexão" (v0.19.0). `!meta` segue silencioso COM comentário: é o guard de
+  alinhamento (#10), pular é o caminho seguro (= o que torna o #3 inofensivo), não é erro.
+- **#7 — `touch()`/`updatedAt`.** O `touch()` novo em `setIntentKeywords`/`setIntentContext` é **correto** (write honesto;
+  o inline antigo é que sub-tocava). Uniformizar: **adicionar `touch()` ao `setCategory`** ([flowTools.ts:205](src/tools/flowTools.ts#L205)),
+  hoje sem touch — todo setter de campo de cabeçalho passa a refletir em `updatedAt`. Sem conflito com o gatilho da Fase 2.1
+  (lá quem decide SE chama o setter é o `applyChoiceRouting`; quando chamado, tocar é certo).
+- **#8 — `beginMutation()` no caminho rejeitado de self-ref (`setContext`).** **Aceitar** — inofensivo: `beginMutation` é
+  idempotente ([flowStore.ts:77-79](src/tools/flowStore.ts#L77-L79)), snapshot só na 1ª mutação = base da sessão; um self-ref
+  recusado captura o estado inalterado (base correta), `revert` segue íntegro, no máximo um `.bak` de estado inalterado.
+  Só comentar o porquê. **Não** pré-checar antes do `beginMutation` — reintroduziria a duplicação da guarda que centralizamos
+  no `setIntentContext`, por ganho nulo.
+
+**Como será testado:**
+- **Unit** ([DetailPanel.routing.test.ts](src/components/DetailPanel.routing.test.ts)) ganha o param `choiceMetaInitial`
+  e os casos: meta == inicial → NÃO grava nem bumpa `updatedAt` (#2/#3) · context inalterado → não regrava (#2) ·
+  keyword esvaziada de propósito → limpa.
+- **Hint de destino duplicado:** teste de lógica pura da detecção (helper que mapeia índice → "duplicado de N").
+- **`KeywordTags` split por espaço:** unit de que `commit('plano premium')` produz dois termos (`'plano, premium'`);
+  espaço/Enter/vírgula confirmam; display de valor legado com espaço continua um chip.
+- **Nudge multi-palavra** ([flowTools.test.ts](src/tools/flowTools.test.ts)): keyword com espaço → **dispara** ·
+  keyword de uma palavra → **não** · não-bloqueante.
+- **`setCategory` toca `updatedAt`** (#7, [flowTools.test.ts](src/tools/flowTools.test.ts)): `set_category` bumpa `updatedAt`.
+- **Re-rodar a suíte cheia** como gate de não-regressão.
+
 ### Menus que roteiam de verdade (`set_keywords` + `set_context` + UI por opção) ✅ MERGEADA no `main` (PR #6, v0.33.0) — Fases 1+2 + `/verify` e2e PASSOU
 
 > **Resultado Fase 1 (2026-06-26, branch `feat/menu-keywords-routing`):** entregue a camada de tools.
@@ -195,9 +529,9 @@ intenções que cria, para agrupar o fluxo na plataforma OmniChat sem explodir e
 > limpos. **Pendente:** `/verify` e2e pela caixinha (critério de aceite abaixo).
 >
 > Plano fechado por interrogatório (skill `interrogar`) em 2026-06-26. Decisões TRAVADAS abaixo —
-> registro do raciocínio; não reabrir sem novo interrogatório. Origem: ao construir o fluxo Uni.co
-> (turnos 2/3/4/7, "mensagem X → aguardar a resposta"), o agente monta `defaultNode` + `waitNode`
-> em vez de um `captureNode`.
+> registro do raciocínio; não reabrir sem novo interrogatório. Origem: ao construir um fluxo de
+> lojista de teste (turnos 2/3/4/7, "mensagem X → aguardar a resposta"), o agente monta
+> `defaultNode` + `waitNode` em vez de um `captureNode`.
 
 **Objetivo (1 frase):** fazer o agente usar **um `captureNode`** sempre que o passo for "perguntar
 algo e esperar a resposta", em vez do par `defaultNode` + `waitNode`.
@@ -226,7 +560,7 @@ algo e esperar a resposta", em vez do par `defaultNode` + `waitNode`.
    **um** dos 11 `CAPTURE_FIELDS` (CNPJ→`cnpj`, e-mail→`mail`, telefone→`fullPhoneNumber`). Composto/ambíguo/sem
    mapeamento → deixa `free`. Nunca erra o tipo (pior caso = pergunta+espera); `set_action_field` **não valida** enum
    hoje, então a disciplina vive na guidance. Vocabulário = os 11 `CAPTURE_FIELDS`, não os 22 do enum da plataforma.
-   *Consequência:* o "Qual seu CNPJ **e nome da loja**?" do Uni.co (composto) vira captura **free** — o humano lê a resposta.
+   *Consequência:* uma pergunta composta como "Qual seu CNPJ **e nome da loja**?" vira captura **free** — o humano lê a resposta.
 4. **Agente NUNCA grava `variable` (decorre do diagnóstico).** Espelha a UI. `variable` = tipo `custom`, fora do escopo.
 5. **Nudge preciso: só `defaultNode` COM mensagem TEXT → `waitNode` (Q5).** É a assinatura de "perguntou e esperou".
    `defaultNode` sem texto → `waitNode` não acusa (raro e ambíguo). Menos falso-positivo.

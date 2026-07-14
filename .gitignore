@@ -14,7 +14,10 @@ dist/
 *.env
 
 # Dados reais de clientes OmniChat — nunca commitar (testes os usam localmente)
-samples/
+# Exceção: fixtures sintéticas de teste usadas pelos smokes/scripts de debug.
+samples/*
+!samples/sample01.json
+!samples/sample01-v2.json
 
 # Arquivo de workspace pessoal do editor
 *.code-workspace
@@ -28,6 +31,9 @@ samples/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Config local do Claude Code (permissões específicas da máquina)
+.claude/settings.local.json
 
 # Backups de sessão da camada de tools do agente (FlowStore.beginMutation → <arquivo>.bak)
 *.bak

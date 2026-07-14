@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(cd \"d:\\\\Fluxo\" ; $env:NODE_TLS_REJECT_UNAUTHORIZED=\"0\" ; npm create vite@latest . -- --template react-ts 2>&1)"
-    ]
-  }
-}
