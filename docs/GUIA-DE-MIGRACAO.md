@@ -1,6 +1,6 @@
 # Guia de migração — integrar o FlowViewer à plataforma OmniChat
 
-Referência para o time que vai **enxertar o FlowViewer na infra da OmniChat**. O objetivo aqui **não** é prescrever *como* migrar (isso é decisão de vocês) — é entregar **tudo que a ferramenta assume hoje** e **onde ela está acoplada ao ambiente atual** (dev + gh-pages), para que a adaptação seja informada, não arqueológica.
+Referência para o time que vai **enxertar o FlowViewer na infra da OmniChat**. O objetivo aqui **não** é prescrever *como* migrar (decisão do time) — é entregar **tudo que a ferramenta assume hoje** e **onde ela está acoplada ao ambiente atual** (dev + gh-pages), para que a adaptação seja informada, não arqueológica.
 
 > Leia junto: [README](../README.md) (arquitetura e tipos de nó), [GUIA-DE-USO](GUIA-DE-USO.md) (features ponta a ponta) e [mcp/README](../mcp/README.md) (servidor MCP e as 24 tools).
 
@@ -42,7 +42,7 @@ flowchart TB
 |---|---|---|
 | **Camada de tools** (`src/tools/*`, `src/utils/*` de fetch) | Constrói/edita o fluxo e resolve nome→ID contra a API. Validade no código. | **Durável** — reusar como está; trocar só a **fonte do storage** e a **origem do token**. |
 | **Servidor MCP** (`mcp/server.ts`) | Expõe as tools por **stdio** ao Claude Code. | **Reusável** — o transporte stdio pode ficar; muda quem é o cliente do MCP. |
-| **Ponte + agente** (`backend/server.ts` + Claude Code CLI) | Dirige o Claude Agent SDK autenticado pela assinatura do CLI. | **Descartável** — vocês trocam o CLI pela **API** (decisão de vocês; ver §5). |
+| **Ponte + agente** (`backend/server.ts` + Claude Code CLI) | Dirige o Claude Agent SDK autenticado pela assinatura do CLI. | **Descartável** — o CLI é trocado pela **API** (decisão do time; ver §5). |
 | **Frontend SPA** | Canvas de edição; lê o fluxo por **import**, não ao vivo. | Migra o hosting (gh-pages → infra OmniChat) e recebe o token **injetado**. |
 
 A regra de ouro do projeto (manter na migração): **o modelo opera tools, nunca escreve JSON cru**; **o token vive na camada de tools/fetch, nunca chega ao modelo nem é logado**; **resolve por nome → grava por ID** (o ID sempre vem de resposta real da API — mata referência alucinada).
@@ -73,7 +73,7 @@ Hoje há **dois caminhos independentes** de token, e **os dois** assumem um **to
 - **401/403** (e **400 + "token"** no endpoint de times) → *"renove o token"*, **sem retry** — [resolvers.ts:48-53](../src/tools/resolvers.ts#L48-L53). É a **falha real nº 1** do modelo atual (sessão Parse expira). Se a plataforma trocar por credencial de vida longa, essa classe de erro muda de natureza — revisar as mensagens-guia.
 - Token ausente → *"configure OMNI_TOKEN"*; botId ausente → *"abra/importe um fluxo"*.
 
-> **Decisão em aberto (informada por vocês):** o modelo de auth em produção **ainda não está definido**. Enquanto for token de sessão, tudo acima vale como está. Se virar API key / service account, reveja: (a) a origem em `loadOmniToken` e na UI, (b) o tratamento de expiração/renovação, (c) os headers (§3.2).
+> **Decisão em aberto (a ser informada pela Omni):** o modelo de auth em produção **ainda não está definido**. Enquanto for token de sessão, tudo acima vale como está. Se virar API key / service account, reveja: (a) a origem em `loadOmniToken` e na UI, (b) o tratamento de expiração/renovação, (c) os headers (§3.2).
 
 ---
 
@@ -141,7 +141,7 @@ Hoje o agente é **dev-only** e amarrado ao CLI ([backend/server.ts](../backend/
 - **Auth do modelo** = assinatura do Claude Code CLI (**sem** `ANTHROPIC_API_KEY`).
 - Sobe o MCP como **subprocesso stdio** (`npx -y tsx mcp/server.ts`) passando `FLOW_FILE` do arquivo de trabalho descartável (tmpdir) — nunca o `masterFlow.json` canônico.
 
-**O que vocês já sinalizaram:** na plataforma **não** haverá CLI; o agente provavelmente usará a **API** (Anthropic Messages API / Agent SDK com API key). Isso é decisão de vocês — o que este projeto entrega pronto para reuso:
+**O que já foi sinalizado pelo time:** na plataforma **não** haverá CLI; o agente provavelmente usará a **API** (Anthropic Messages API / Agent SDK com API key). Essa decisão fica com o time de plataforma — o que este projeto entrega pronto para reuso:
 - **O servidor MCP e as 24 tools** ficam iguais (o MCP é agnóstico de cliente).
 - O que é substituído é **`backend/server.ts`**: em vez de `query()` do CLI, o loop de tool-use passa a ser dirigido por API. O MCP pode continuar por stdio (o cliente conecta nele) ou ser embutido.
 - Reavaliar na virada: `permissionMode` (o `bypassPermissions` faz sentido no PoC confiável; num serviço multiusuário, não), `maxTurns`, o modelo, e como cada sessão isola seu arquivo/estado de fluxo.
@@ -153,7 +153,7 @@ Hoje o agente é **dev-only** e amarrado ao CLI ([backend/server.ts](../backend/
 ## 6. Build e hosting do frontend
 
 - **Base path:** `base: '/FlowViewer/'` em [vite.config.ts:6](../vite.config.ts#L6) — casado com o gh-pages. **Mudar** para o path onde a plataforma servir a SPA (ou `/`).
-- **Deploy atual:** `npm run build` → `npm run deploy` (gh-pages, `dist/`). Migra para o pipeline de vocês.
+- **Deploy atual:** `npm run build` → `npm run deploy` (gh-pages, `dist/`). Migra para o pipeline de deploy da plataforma.
 - **Proxies só de dev** ([vite.config.ts:7-29](../vite.config.ts#L7-L29)): `/agent-ws` (WebSocket → backend local) e `/s3-proxy` (contorna o CORS do bucket S3 em `localhost`). **Não** existem em produção.
 - **Upload em produção:** o [uploadMedia.ts:59-68](../src/utils/uploadMedia.ts#L59-L68) usa a **URL absoluta** do S3 quando **não** é dev. Isso depende de o bucket liberar **CORS para a origem da plataforma** — confirmar, senão o upload direto do browser quebra (é o mesmo motivo do proxy em dev).
 - **Sem variáveis de ambiente hoje:** nada de `VITE_*`. Se quiserem staging × produção, é aqui que entra (junto com §3.1).
@@ -177,7 +177,7 @@ Independentemente de como a migração for feita, manter as invariantes que o pr
 | **Auth em produção** | Token de sessão Parse (expira rápido), injetado externamente | **Indefinido** — API key / service account / OAuth? Muda §2 inteira. |
 | **Origem do token** | UI: campo manual · MCP: `flow-viewer.env` | De onde a plataforma injeta em cada lado. |
 | **Storage do fluxo** | Arquivo em disco (`fromFile`) | API/DB da plataforma via `fromObject`/subclasse da FlowStore. |
-| **Como o agente roda** | Claude Code CLI (assinatura) | API (decisão de vocês); rever `permissionMode`/isolamento por sessão. |
+| **Como o agente roda** | Claude Code CLI (assinatura) | API (decisão do time); rever `permissionMode`/isolamento por sessão. |
 | **Hosting + config** | gh-pages, `base:/FlowViewer/`, tudo hardcoded | Path/deploy da plataforma; parametrizar endpoints por ambiente. |
 | **CORS do upload** | Proxy em dev; URL absoluta em prod | Confirmar CORS do bucket para a origem da plataforma. |
 
@@ -190,7 +190,7 @@ Independentemente de como a migração for feita, manter as invariantes que o pr
 | [src/tools/flowStore.ts](../src/tools/flowStore.ts) | Fonte de verdade do fluxo (arquivo/memória) | **Tocar** — trocar storage (`fromObject`). |
 | [src/tools/flowTools.ts](../src/tools/flowTools.ts) | 15 tools de leitura/mutação | Reusar como está. |
 | [src/tools/resolvers.ts](../src/tools/resolvers.ts) | 8 resolvers nome→ID + token | Reusar; token vem de fora. |
-| [src/config.ts](../src/config.ts) | Fonte única: `API`/`PARSE`/`FILES_API`/`APP_ID`/`PLATFORM_VERSION` + `sessionHeaders()` | **Tocar** — parametrizar por ambiente (`import.meta.env`/`process.env`) quando a infra de vocês definir staging×produção; hoje são literais. |
+| [src/config.ts](../src/config.ts) | Fonte única: `API`/`PARSE`/`FILES_API`/`APP_ID`/`PLATFORM_VERSION` + `sessionHeaders()` | **Tocar** — parametrizar por ambiente (`import.meta.env`/`process.env`) quando a infra da plataforma definir staging×produção; hoje são literais. |
 | [src/utils/pushFlow.ts](../src/utils/pushFlow.ts) | Push (2 passadas + remap); importa `API`/`sessionHeaders` de `config.ts` | Reusar como está — endpoints já centralizados. |
 | [src/utils/teams.ts](../src/utils/teams.ts) | Fetch de times; importa e **reexporta** `API`/`APP_ID`/`sessionHeaders` de `config.ts` | Reusar como está — sem cópia própria. |
 | [src/utils/uploadMedia.ts](../src/utils/uploadMedia.ts) | Upload S3 presigned + `PLATFORM_VERSION` | **Tocar** — CORS/versão/endpoint. |
@@ -199,4 +199,4 @@ Independentemente de como a migração for feita, manter as invariantes que o pr
 | [src/App.tsx](../src/App.tsx) | Estado `sessionToken` + loaders | **Tocar** — token injetado, remover campo. |
 | [src/components/Sidebar.tsx](../src/components/Sidebar.tsx) | UI do token (popover de chave) | **Remover** a parte do token. |
 | [vite.config.ts](../vite.config.ts) | `base`, proxies de dev | **Tocar** — base path e config por ambiente. |
-| [.mcp.json](../.mcp.json) | Registro do MCP no Claude Code | Contexto CLI; adaptar ao cliente de vocês. |
+| [.mcp.json](../.mcp.json) | Registro do MCP no Claude Code | Contexto CLI; adaptar ao cliente da plataforma. |
