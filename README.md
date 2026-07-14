@@ -91,7 +91,7 @@ O servidor sobe em `http://localhost:5173`.
 
 > Para usar o **agente de IA** (somente no dev build), suba também a ponte WebSocket em outro terminal: `npm run ws:dev`.
 
-> 🧪 **[Testes automatizados](docs/TESTES-AUTOMATIZADOS.md)** — os 469 testes unitários (22 arquivos) e os 15 smokes documentados, com o que cada um cobre.
+> 🧪 **[Testes automatizados](docs/TESTES-AUTOMATIZADOS.md)** — os 581 testes unitários (25 arquivos) e os 15 smokes documentados, com o que cada um cobre.
 
 ---
 
