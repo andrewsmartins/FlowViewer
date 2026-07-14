@@ -3,6 +3,7 @@
 Editor visual de fluxos de chatbot OmniChat. Importe o JSON do bot (ou crie um fluxo do zero a partir do botId), edite nós, conexões e conteúdo no canvas, e exporte de volta no formato aceito pela plataforma.
 
 > 📖 **[Guia de uso](docs/GUIA-DE-USO.md)** — passo a passo de todas as features, do import ao push para o rascunho do bot.
+
 > 🚚 **[Guia de migração](docs/GUIA-DE-MIGRACAO.md)** — referência de integração para levar a ferramenta à infra da OmniChat (token, endpoints, storage, agente, hosting).
 
 ---
