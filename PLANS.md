@@ -43,13 +43,14 @@
 - CHANGELOG legado (formato Keep a Changelog, pt, até v0.36.0) arquivado **verbatim** em
   [docs/CHANGELOG-ARCHIVE.md](docs/CHANGELOG-ARCHIVE.md); [CHANGELOG.md](CHANGELOG.md) recriado no
   padrão Omnichat adaptado (inglês, sem Jira, baseline v0.36.0).
-- Branch **`devel`** criada localmente a partir de `origin/main` (push pendente de confirmação).
+- Branch **`devel`** criada e publicada em `origin/devel` — inaugura o par `main`+`devel` do fluxo Omnichat.
+- Migração versionada via skill `abrir-pr-omnichat`: bump **0.36.1** (tipo `chore`), com os
+  **dois PRs abertos**: [#17](https://github.com/andrewsmartins/FlowViewer/pull/17) (→`main`) e
+  [#18](https://github.com/andrewsmartins/FlowViewer/pull/18) (→`devel`, via cherry-pick).
 
 **Pendências / próximos passos:**
-- **Push da `devel`** para o remote (confirmar) — pré-requisito da skill `abrir-pr-omnichat`,
-  que abre PRs simultâneos para `main` + `devel`.
+- **Merge dos PRs #17 e #18** — decisão do Andy; a skill só abre, não faz merge.
 - Definir se/quando adotar Jira (retoma o formato completo de CHANGELOG e a criação de task no PR).
-- Commitar as mudanças desta sessão (CHANGELOG + archive + PLANS) numa branch — **sem push sem OK**.
 
 ## Contexto
 
