@@ -18,6 +18,40 @@
 **Skills sugeridas:** `/code-review` antes de commitar o fix; `/verify` só se for fazer o spot-check de UI da Fase 2.1 (baixo valor, ver acima); `/interrogar` antes de codar feature nova.
 <!-- HANDOFF:END -->
 
+## Migração para o ecossistema de dev da Omnichat (marketplace · PR · CHANGELOG)
+
+> Iniciada em 2026-07-16. Distinta da migração *técnica da aplicação* descrita em
+> [docs/GUIA-DE-MIGRACAO.md](docs/GUIA-DE-MIGRACAO.md) (auth/endpoints/hosting). Esta trata do
+> **processo/ferramental de desenvolvimento**: adotar o marketplace de skills, o padrão de PR e o
+> formato de CHANGELOG da Omnichat.
+
+**Fonte de verdade:** repo privado `OmniChat/omnichat-claude-marketplace` (diretrizes em
+`CLAUDE.md`/`README.md` + 2 plugins). Ver [memória `reference_omnichat_marketplace`].
+
+**Decisões travadas (sessão 2026-07-16):**
+- Marketplace registrado no **`.claude/settings.json` versionado** (compartilhado com o time,
+  conforme o README do marketplace) via `extraKnownMarketplaces`. Habilitação dos plugins é ação
+  do usuário.
+- **Jira adiado** — o Fluxo ainda não tem projeto Jira; o CHANGELOG e o fluxo de PR foram
+  **adaptados** para operar sem Jira (referência via PR do GitHub). Retomar formato completo
+  quando um projeto Jira for definido.
+- **Nunca** push/PR sem confirmação explícita (ver memória `feedback_never_push_without_confirmation`).
+
+**Feito (✅):**
+- Marketplace registrado no `.claude/settings.json` (versionado); skills `abrir-pr-omnichat` e
+  `web-app-code-review` disponíveis (esta última é do web-app Angular, não se aplica ao Fluxo).
+- CHANGELOG legado (formato Keep a Changelog, pt, até v0.36.0) arquivado **verbatim** em
+  [docs/CHANGELOG-ARCHIVE.md](docs/CHANGELOG-ARCHIVE.md); [CHANGELOG.md](CHANGELOG.md) recriado no
+  padrão Omnichat adaptado (inglês, sem Jira, baseline v0.36.0).
+- Branch **`devel`** criada e publicada em `origin/devel` — inaugura o par `main`+`devel` do fluxo Omnichat.
+- Migração versionada via skill `abrir-pr-omnichat`: bump **0.36.1** (tipo `chore`), com os
+  **dois PRs abertos**: [#17](https://github.com/andrewsmartins/FlowViewer/pull/17) (→`main`) e
+  [#18](https://github.com/andrewsmartins/FlowViewer/pull/18) (→`devel`, via cherry-pick).
+
+**Pendências / próximos passos:**
+- **Merge dos PRs #17 e #18** — decisão do Andy; a skill só abre, não faz merge.
+- Definir se/quando adotar Jira (retoma o formato completo de CHANGELOG e a criação de task no PR).
+
 ## Contexto
 
 O FlowViewer hoje é um **visualizador read-only**: importa o JSON de intenções de um bot

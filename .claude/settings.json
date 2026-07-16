@@ -1,0 +1,7 @@
+{
+  "extraKnownMarketplaces": {
+    "omnichat-claude-marketplace": {
+      "source": { "source": "github", "repo": "OmniChat/omnichat-claude-marketplace" }
+    }
+  }
+}
